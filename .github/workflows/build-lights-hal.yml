@@ -19,6 +19,7 @@
 
 name: Build lights HAL
 
+
 on:
   workflow_dispatch:
   push:
@@ -54,6 +55,7 @@ jobs:
             -o "$HOME/.bin/repo"
           chmod +x "$HOME/.bin/repo"
           echo "$HOME/.bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.bin:$PATH"
           repo --version
 
       - name: Init + sync minimal manifest
