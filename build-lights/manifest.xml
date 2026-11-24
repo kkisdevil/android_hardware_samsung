@@ -70,6 +70,18 @@
 
   <project path="build/blueprint" name="LineageOS/android_build_blueprint" clone-depth="1" />
 
+  <!-- build/release: release configs (release_config_map + trunk_staging,
+       ap2a, ...). REQUIRED. build/make/core/release_config.mk reads
+       build/release/release_config_map.mk; without this project the map
+       list is empty, ALL_RELEASE_CONFIGS_FOR_PRODUCT is empty, and lunch
+       dies on the final product-config pass with "No release config found
+       for TARGET_RELEASE: trunk_staging". Run #6 would have died on
+       exactly that right after the lunch-combo fix — the combo fix alone
+       is not enough. 34 MB, depth 1.
+       Verified HEAD (lineage-22.2): 5ae4f77404fe7e7bc251661d22af85dc229f80bd -->
+
+  <project path="build/release" name="LineageOS/android_build_release" clone-depth="1" />
+
   <!-- prebuilts/build-tools: ninja, bison, flex, etc. (host tools Soong calls).
        AOSP tag android-15.0.0_r32. -->
 
