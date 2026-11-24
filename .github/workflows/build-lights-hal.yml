@@ -177,7 +177,13 @@ jobs:
       - name: Build lights HAL
         working-directory: lights-build
         run: |
-          set -euo pipefail
+          # NOTE: no `set -u` in this step. AOSP's build/envsetup.sh is
+          # not nounset-safe: sourcing it runs _gettop_once, which reads
+          # $TOP unguarded (envsetup.sh line 21, `[ -n "$TOP" ... ]`),
+          # and lunch/m share the pattern. Run #3 died on exactly that
+          # ("build/envsetup.sh: line 21: TOP: unbound variable").
+          # `set -e` + pipefail still fail the step loudly on real errors.
+          set -eo pipefail
           source build/envsetup.sh
           lunch yuzora_lights-userdebug
           # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
