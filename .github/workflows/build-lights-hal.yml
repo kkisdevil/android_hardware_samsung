@@ -19,7 +19,6 @@
 
 name: Build lights HAL
 
-
 on:
   workflow_dispatch:
   push:
