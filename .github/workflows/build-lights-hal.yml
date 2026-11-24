@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           MISSING=""
           for p in \
-            build/make build/soong build/blueprint \
+            build/make build/soong build/blueprint build/release \
             prebuilts/build-tools prebuilts/go/linux-x86 \
             prebuilts/clang/host/linux-x86 toolchain/pgo-profiles \
             bionic system/libbase system/logging system/core \
@@ -116,7 +116,7 @@ jobs:
             echo "::error::sync incomplete — missing:$MISSING"
             exit 1
           fi
-          echo "All 23 manifest projects present."
+          echo "All 24 manifest projects present."
           # The two files the whole build hinges on:
           test -f build/make/core/config.mk || { echo "::error::build/make/core/config.mk missing"; exit 1; }
           grep -q "define soong_config_set" build/make/core/config.mk \
@@ -129,6 +129,13 @@ jobs:
           # pin is wrong for this soong revision.
           test -d prebuilts/clang/host/linux-x86/clang-r536225 \
             || { echo "::error::clang-r536225 not in synced prebuilts/clang — check the prebuilts/clang pin"; exit 1; }
+          # Release configs must exist: lunch needs build/release, or
+          # product config fails "No release config found for
+          # TARGET_RELEASE: trunk_staging" (run #6 latent failure).
+          test -f build/release/release_config_map.textproto \
+            || { echo "::error::build/release release map missing — check the build/release pin"; exit 1; }
+          test -f build/release/release_configs/trunk_staging.textproto \
+            || { echo "::error::trunk_staging release config missing from build/release"; exit 1; }
           echo "Sync verification passed."
 
       - name: Install device files from manifest repo
@@ -207,10 +214,64 @@ jobs:
           # used by this build-only workflow.
           CLANG_VERSION=$(${ANDROID_BUILD_TOP}/build/soong/scripts/get_clang_version.py)
           export LLVM_AOSP_PREBUILTS_VERSION="${CLANG_VERSION}"
+
+          # check_product (verbatim from LineageOS vendor/lineage/build/envsetup.sh;
+          # run #6 fix): lunch() calls check_product <product> <release> before
+          # _lunch_meat, and it is defined ONLY in the real vendor envsetup.sh —
+          # without it lunch dies with "check_product: command not found" and,
+          # under set -e, the roomservice.py fallback call then kills the step.
+          # It resolves TARGET_DEVICE via _get_build_var_cached; for a
+          # non-lineage_ product LINEAGE_BUILD is empty, which is correct here.
+          function check_product()
+          {
+              local T=$(gettop)
+              if [ ! "$T" ]; then
+                  echo "Couldn't locate the top of the tree. Try setting TOP." >&2
+                  return
+              fi
+              if (echo -n $1 | grep -q -e "^lineage_") ; then
+                  LINEAGE_BUILD=$(echo -n $1 | sed -e 's/^lineage_//g')
+              else
+                  LINEAGE_BUILD=
+              fi
+              export LINEAGE_BUILD
+
+                  TARGET_PRODUCT=$1 \
+                  TARGET_RELEASE=$2 \
+                  TARGET_BUILD_VARIANT= \
+                  TARGET_BUILD_TYPE= \
+                  TARGET_BUILD_APPS= \
+                  _get_build_var_cached TARGET_DEVICE > /dev/null
+              # hide successful answers, but allow the errors to show
+          }
           EOF
           test -f vendor/lineage/build/envsetup.sh \
             || { echo "::error::stub vendor/lineage/build/envsetup.sh missing after creation"; exit 1; }
           echo "Stub vendor/lineage/build/envsetup.sh created."
+          # roomservice.py stub (run #6 fix): lunch() unconditionally calls
+          # vendor/lineage/build/tools/roomservice.py — with "$product true"
+          # on the check_product success path. The real script fetches
+          # missing device repos from LineageOS GitHub; this build-only
+          # product vendors its device files in the fork, so there is
+          # nothing to fetch — a no-op that exits 0 is the correct stub.
+          # (Without it, the call fails "No such file or directory" and
+          # set -e kills the step right after check_product succeeds.)
+          mkdir -p vendor/lineage/build/tools
+          cat > vendor/lineage/build/tools/roomservice.py <<'EOF'
+          #!/usr/bin/env python3
+          # Stub — see the "Stub vendor/lineage envsetup.sh" step in
+          # .github/workflows/build-lights-hal.yml (run #6 fix). lunch()
+          # calls roomservice.py unconditionally; the real script fetches
+          # missing device repos from LineageOS GitHub, which this
+          # build-only product never needs (device files are vendored in
+          # the fork). No-op, exits 0.
+          import sys
+          sys.exit(0)
+          EOF
+          chmod +x vendor/lineage/build/tools/roomservice.py
+          test -x vendor/lineage/build/tools/roomservice.py \
+            || { echo "::error::stub roomservice.py missing after creation"; exit 1; }
+          echo "Stub vendor/lineage/build/tools/roomservice.py created."
 
       - name: Build lights HAL
         working-directory: lights-build
@@ -223,7 +284,14 @@ jobs:
           # `set -e` + pipefail still fail the step loudly on real errors.
           set -eo pipefail
           source build/envsetup.sh
-          lunch yuzora_lights-userdebug
+          # Run #6 died here: `lunch yuzora_lights-userdebug` is a TWO-part
+          # combo, and LineageOS 22.2's lunch() (build/envsetup.sh) requires
+          # THREE parts, <product>-<release>-<variant> — with two parts the
+          # variant is empty and lunch fails "Invalid lunch combo" before
+          # compiling anything. trunk_staging is the default release (its
+          # configs live in build/release, added to the manifest by the
+          # same fix) and userdebug is the variant.
+          lunch yuzora_lights-trunk_staging-userdebug
           # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
           # dep must fail here, not be silently skipped.
           m -j"$(nproc)" android.hardware.light-service.samsung 2>&1 | tee build-lights.log
@@ -260,7 +328,7 @@ jobs:
           find out/target/product/yuzora_lights/vendor/etc -name "*light-service.samsung*" -print || true
           # Build info for the artifact.
           {
-            echo "product: yuzora_lights-userdebug"
+            echo "product: yuzora_lights-trunk_staging-userdebug"
             echo "module: android.hardware.light-service.samsung"
             echo "fork HEAD: $(git -C hardware/samsung rev-parse HEAD)"
             echo "fork log: $(git -C hardware/samsung log --oneline -1)"
