@@ -160,6 +160,22 @@
 
   <project path="external/googletest" name="platform/external/googletest" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
+  <!-- external/golang-protobuf: Go protobuf runtime (google.golang.org/protobuf).
+       REQUIRED. Soong's soong_ui binary (android/soong/ui/metrics) imports
+       google.golang.org/protobuf/proto, and Soong maps that import to
+       external/golang-protobuf/proto. Without this project the build dies in
+       "Build lights HAL" (5s) with "Failed to find deps of
+       android/soong/cmd/soong_ui: Error parsing directory
+       .../external/golang-protobuf/proto: no such file or directory" —
+       run #9 (45476367114) failed on exactly that. It is the ONLY external Go
+       module the soong+blueprint import closure needs (verified by grepping
+       every .go import in LineageOS android_build_soong and
+       android_build_blueprint at lineage-22.2: only github.com/google/blueprint
+       — already synced as build/blueprint — and google.golang.org/protobuf).
+       AOSP tag android-15.0.0_r32. -->
+
+  <project path="external/golang-protobuf" name="platform/external/golang-protobuf" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- libnativehelper: jni_headers (needed by libbinder_ndk and
        libandroid_runtime_lazy). AOSP tag android-15.0.0_r32. -->
 
