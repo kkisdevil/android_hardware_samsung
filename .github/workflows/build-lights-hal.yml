@@ -174,6 +174,44 @@ jobs:
             || { echo "::error::BoardConfig.mk does not set samsungVars/target_specific_header_path to device/yuzora/lights/include"; exit 1; }
           echo "Fork code + header verification passed."
 
+      - name: Stub vendor/lineage envsetup.sh
+        working-directory: lights-build
+        run: |
+          set -euo pipefail
+          # Run #4 died in "Build lights HAL" (0s) before lunch ever ran:
+          # LineageOS's build/envsetup.sh ends with an UNGUARDED
+          # `. $ANDROID_BUILD_TOP/vendor/lineage/build/envsetup.sh`
+          # (envsetup.sh line 1212 in the revision run #4 synced), and
+          # build_build_var_cache() also cats that file during lunch. The
+          # minimal manifest deliberately does NOT sync vendor/lineage —
+          # the full LineageOS vendor tree is gigabytes of prebuilts this
+          # build-only product never uses (yuzora_lights.mk inherits only
+          # aosp_arm64.mk) — so sourcing envsetup.sh failed with
+          # "vendor/lineage/build/envsetup.sh: No such file or directory"
+          # and the step exited 1. This is a manifest-closure gap, not a
+          # code or sync bug: every earlier step passed.
+          #
+          # Fix: create a stub with the real file's only top-level side
+          # effect — the CLANG_VERSION / LLVM_AOSP_PREBUILTS_VERSION
+          # export. get_clang_version.py lives in the synced build/soong
+          # and reads only build/soong/cc/config/global.go, so it works in
+          # the minimal tree. The rest of the real
+          # vendor/lineage/build/envsetup.sh is interactive helpers
+          # (brunch, breakfast, eat, ...) this workflow never calls.
+          mkdir -p vendor/lineage/build
+          cat > vendor/lineage/build/envsetup.sh <<'EOF'
+          # Stub — see the "Stub vendor/lineage envsetup.sh" step in
+          # .github/workflows/build-lights-hal.yml (run #4 fix). Provides the
+          # real vendor/lineage/build/envsetup.sh's only top-level side
+          # effect; its helper functions (brunch, breakfast, ...) are never
+          # used by this build-only workflow.
+          CLANG_VERSION=$(${ANDROID_BUILD_TOP}/build/soong/scripts/get_clang_version.py)
+          export LLVM_AOSP_PREBUILTS_VERSION="${CLANG_VERSION}"
+          EOF
+          test -f vendor/lineage/build/envsetup.sh \
+            || { echo "::error::stub vendor/lineage/build/envsetup.sh missing after creation"; exit 1; }
+          echo "Stub vendor/lineage/build/envsetup.sh created."
+
       - name: Build lights HAL
         working-directory: lights-build
         run: |
