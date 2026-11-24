@@ -103,7 +103,7 @@ jobs:
             prebuilts/clang/host/linux-x86 toolchain/pgo-profiles \
             bionic system/libbase system/logging system/core \
             frameworks/native hardware/interfaces system/tools/aidl \
-            external/fmtlib external/googletest external/golang-protobuf \
+            external/fmtlib external/googletest external/golang-protobuf external/starlark-go \
             libnativehelper \
             system/apex prebuilts/rust external/rust/android-crates-io \
             hardware/google/pixel hardware/google/interfaces \
@@ -117,7 +117,7 @@ jobs:
             echo "::error::sync incomplete — missing:$MISSING"
             exit 1
           fi
-          echo "All 25 manifest projects present."
+          echo "All 26 manifest projects present."
           # The two files the whole build hinges on:
           test -f build/make/core/config.mk || { echo "::error::build/make/core/config.mk missing"; exit 1; }
           grep -q "define soong_config_set" build/make/core/config.mk \
@@ -143,6 +143,12 @@ jobs:
           # directory" (run #9).
           test -d external/golang-protobuf/proto \
             || { echo "::error::external/golang-protobuf/proto missing — check the golang-protobuf pin"; exit 1; }
+            # Soong's rbcrun needs the Starlark-in-Go runtime: without
+            # external/starlark-go the build dies with "Failed to find deps
+            # of rbcrun/rbcrun ... external/starlark-go/starlark: no such
+            # file or directory" (run #12).
+            test -d external/starlark-go/starlark \
+            || { echo "::error::external/starlark-go/starlark missing — check the starlark-go pin"; exit 1; }
           echo "Sync verification passed."
 
       - name: Install device files from manifest repo
