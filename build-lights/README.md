@@ -163,6 +163,7 @@ at `repo init` until all four uploads land.**
 |---|---|---|
 | `repo init`: manifest not found | `build-lights/manifest.xml` not uploaded to the fork yet | Upload it (see table above) |
 | `repo sync` fails on one project | Flaky fetch / rate limit | Workflow retries 3×; if a project 404s, its pin (branch/tag) moved — re-verify with `git ls-remote` |
+| `Build lights HAL` fails in 0s: `vendor/lineage/build/envsetup.sh: No such file or directory` (run #4) | LineageOS `build/envsetup.sh` ends with an **unguarded** `. $ANDROID_BUILD_TOP/vendor/lineage/build/envsetup.sh`, and the minimal manifest deliberately does not sync `vendor/lineage` | The workflow's "Stub vendor/lineage envsetup.sh" step creates a stub with the real file's only top-level side effect (the `CLANG_VERSION` / `LLVM_AOSP_PREBUILTS_VERSION` export); do **not** sync the whole `vendor/lineage` tree for this |
 | `lunch` cannot find `yuzora_lights-userdebug` | device files not copied (manifest repo layout) | Check the "Install device files" step log; `device/*/AndroidProducts.mk` must exist before `lunch` |
 | Soong: `samsung_header_path_defaults` unknown / `target_specific_header_path` unset | BoardConfig `soong_config_set` call missing or misspelled | Compare with `device/yuzora/lights/BoardConfig.mk`; the namespace is `samsungVars`, the variable is `target_specific_header_path` |
 | Soong: clang version dir not found | prebuilts/clang pin drifted from soong's `ClangDefaultVersion` | Check `cc/config/global.go` in the synced soong; set `LLVM_PREBUILTS_VERSION` or re-pin prebuilts/clang |
