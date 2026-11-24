@@ -1,6 +1,6 @@
 # YuZora minimal lights-HAL build product.
 #
-# This is a build-only product: it exists so `lunch yuzora_lights-userdebug`
+# This is a build-only product: it exists so `lunch yuzora_lights-trunk_staging-userdebug`
 # can configure Soong for a single-module build of
 # android.hardware.light-service.samsung. It is NOT a device definition and
 # must never be used to build a system image — it inherits no device tree,
@@ -17,4 +17,4 @@ PRODUCT_MAKEFILES := \
     $(LOCAL_DIR)/yuzora_lights.mk
 
 COMMON_LUNCH_CHOICES := \
-    yuzora_lights-userdebug
+    yuzora_lights-trunk_staging-userdebug
