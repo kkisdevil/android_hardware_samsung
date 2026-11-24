@@ -175,6 +175,13 @@
        AOSP tag android-15.0.0_r32. -->
 
   <project path="external/golang-protobuf" name="platform/external/golang-protobuf" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+  <!-- external/starlark-go: Starlark in Go (go.starlark.net/starlark).
+  REQUIRED by Soong: build/soong/go.mod requires go.starlark.net
+  (used by rbcrun). Without this project the build dies with
+  "Failed to find deps of rbcrun/rbcrun: ... external/starlark-go/starlark:
+  no such file or directory" (run #12, 45487448662).
+  AOSP tag android-15.0.0_r32. -->
+  <project path="external/starlark-go" name="platform/external/starlark-go" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
   <!-- libnativehelper: jni_headers (needed by libbinder_ndk and
        libandroid_runtime_lazy). AOSP tag android-15.0.0_r32. -->
