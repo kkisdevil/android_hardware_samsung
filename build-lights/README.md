@@ -9,7 +9,7 @@ NOTIFICATIONS light commit `e7968ab`) on GitHub Actions, using a minimal
 
 A full LineageOS 22.2 sync is ~100 GB. A GitHub Actions runner has ~14 GB
 usable disk. The dependency closure of the one module, traced file-by-file
-from the real `.bp` files (2026-11-24), is **25 projects** — small enough
+from the real `.bp` files (2026-11-24), is **26 projects** — small enough
 to fit with headroom.
 
 ## The closure (how each project was found)
@@ -101,7 +101,7 @@ verification time; the workflow fails loudly if the synced code lacks
 
 ## Disk / time budget (estimated)
 
-- Sync (depth 1, no tags, 25 projects): **~5 GB** (largest: clang
+- Sync (depth 1, no tags, 26 projects): **~5 GB** (largest: clang
   prebuilt ~2 GB, frameworks/native + system/core + bionic ~1 GB
   combined, prebuilts/rust + crates-io ~0.8 GB).
 - Build output (`out/`): **~1–2 GB** (Soong bootstrap + compiled libs +
@@ -119,7 +119,7 @@ branch `lineage-22.2`:
 |---|---|
 | `manifest.xml` | `build-lights/manifest.xml` |
 | `build-lights-hal.yml` | `.github/workflows/build-lights-hal.yml` |
-| `device/yuzora/lights/*` | `build-lights/device/yuzora/lights/*` |
+| `device/yuzora/yuzora_lights/*` | `build-lights/device/yuzora/yuzora_lights/*` |
 | `README.md` (this file) | `build-lights/README.md` |
 
 The workflow's `repo init -u <fork> -m build-lights/manifest.xml`
@@ -129,16 +129,16 @@ at `repo init` until all four uploads land.**
 
 ## The device files (what they are)
 
-- `device/yuzora/lights/AndroidProducts.mk` — declares the
+- `device/yuzora/yuzora_lights/AndroidProducts.mk` — declares the
   `yuzora_lights-trunk_staging-userdebug` product.
-- `device/yuzora/lights/yuzora_lights.mk` — build-only product: inherits
+- `device/yuzora/yuzora_lights/yuzora_lights.mk` — build-only product: inherits
   only `aosp_arm64.mk`. No device tree, no vendor blobs, no kernel.
   Never use it to build a system image.
-- `device/yuzora/lights/BoardConfig.mk` — sets
+- `device/yuzora/yuzora_lights/BoardConfig.mk` — sets
   `samsungVars/target_specific_header_path` to
-  `device/yuzora/lights/include` (the `soong_config_set` call) and pins
+  `device/yuzora/yuzora_lights/include` (the `soong_config_set` call) and pins
   the board arch to arm64.
-- `device/yuzora/lights/include/samsung_lights.h` — verbatim copy of the
+- `device/yuzora/yuzora_lights/include/samsung_lights.h` — verbatim copy of the
   a71-common override header: `PANEL_BRIGHTNESS_NODE` +
   `PANEL_MAX_BRIGHTNESS_NODE` only. **No `LED_BLINK_NODE`, no
   `BUTTON_BRIGHTNESS_NODE`** — that absence is exactly why the fork's
@@ -146,7 +146,7 @@ at `repo init` until all four uploads land.**
 
 ## What the workflow verifies (in order)
 
-1. All 25 projects synced; `soong_config_set` defined; HAL `.bp` uses
+1. All 26 projects synced; `soong_config_set` defined; HAL `.bp` uses
    `samsung_header_path_defaults`; `clang-r536225` present.
 2. Device files copied from the manifest repo.
 3. Fork HEAD + `handleNotificationsNoOp` / `LightType::NOTIFICATIONS`
@@ -170,9 +170,10 @@ at `repo init` until all four uploads land.**
 | `Build lights HAL` fails: `Invalid lunch combo: yuzora_lights-userdebug` / `Valid combos must be of the form <product>-<release>-<variant>` (run #6) | LineageOS 22.2's `lunch()` (`build/envsetup.sh`) requires a **three-part** combo `<product>-<release>-<variant>`; the workflow used the old two-part `product-variant` form, so the variant parsed empty and lunch failed before compiling anything | Lunch `yuzora_lights-trunk_staging-userdebug` (workflow build step + `COMMON_LUNCH_CHOICES` in `AndroidProducts.mk`); `trunk_staging` is the default release |
 | `lunch` fails `check_product: command not found`, then `roomservice.py: No such file or directory` (run #6 latent — would have hit right after the combo fix) | Both live only in the real `vendor/lineage` tree, which the minimal manifest deliberately does not sync; the run #4 stub only covered the top-level export | The stub step now also defines `check_product` (verbatim from LineageOS `vendor/lineage/build/envsetup.sh`) and creates a no-op `vendor/lineage/build/tools/roomservice.py` (exits 0; the real script fetches missing device repos, which this build-only product never needs) |
 | `No release config found for TARGET_RELEASE: trunk_staging` (run #6 latent) | Release configs live in `build/release` (`LineageOS/android_build_release`), which was not in the manifest — with no map, `ALL_RELEASE_CONFIGS_FOR_PRODUCT` is empty | Manifest now syncs `build/release` (34 MB); the verify step checks the map + `trunk_staging.textproto` exist |
-| `Build lights HAL` fails in 5s: `Failed to find deps of android/soong/cmd/soong_ui: Error parsing directory .../external/golang-protobuf/proto: no such file or directory` (run #9) | Soong's `soong_ui` binary imports `google.golang.org/protobuf/proto` (`android/soong/ui/metrics`); the minimal manifest did not sync the Go protobuf runtime — and it is the only external Go module the soong+blueprint import closure needs (verified by grepping every `.go` import in `android_build_soong` + `android_build_blueprint` at `lineage-22.2`) | Manifest now syncs `external/golang-protobuf` (AOSP `platform/external/golang-protobuf`, tag `android-15.0.0_r32`); the verify step checks `external/golang-protobuf/proto` exists |
+| `Build lights HAL` fails in 5s: `Failed to find deps of android/soong/cmd/soong_ui: Error parsing directory .../external/golang-protobuf/proto: no such file or directory` (run #9) | Soong's `soong_ui` binary imports `google.golang.org/protobuf/proto` (`android/soong/ui/metrics`); the minimal manifest did not sync the Go protobuf runtime | Manifest now syncs `external/golang-protobuf` (AOSP `platform/external/golang-protobuf`, tag `android-15.0.0_r32`); the verify step checks `external/golang-protobuf/proto` exists. NOTE: the original row claimed protobuf was the only missing Go module — run #12 proved that wrong (starlark was missing too); `build/soong/go.mod` needs exactly three Go modules (blueprint, protobuf, starlark) and the manifest now syncs all three |
+| `Build lights HAL` fails: `No config file found for TARGET_DEVICE yuzora_lights` (run #15) | `build/make/core/board_config.mk` looks up the board config with a wildcard `device/*/$(TARGET_DEVICE)/BoardConfig.mk` — the leaf directory name MUST equal `TARGET_DEVICE`. The device files lived in `device/yuzora/lights/` while `PRODUCT_DEVICE` is `yuzora_lights`, so the lookup found nothing. (Runs #9/#12 never reached this: Soong's Go-module bootstrap failed first.) | Device directory renamed to `device/yuzora/yuzora_lights/` (BoardConfig `soong_config_set` path, workflow checks and README updated to match); the old `device/yuzora/lights/` directory was deleted |
 | `lunch` cannot find `yuzora_lights-trunk_staging-userdebug` | device files not copied (manifest repo layout) | Check the "Install device files" step log; `device/*/AndroidProducts.mk` must exist before `lunch` |
-| Soong: `samsung_header_path_defaults` unknown / `target_specific_header_path` unset | BoardConfig `soong_config_set` call missing or misspelled | Compare with `device/yuzora/lights/BoardConfig.mk`; the namespace is `samsungVars`, the variable is `target_specific_header_path` |
+| Soong: `samsung_header_path_defaults` unknown / `target_specific_header_path` unset | BoardConfig `soong_config_set` call missing or misspelled | Compare with `device/yuzora/yuzora_lights/BoardConfig.mk`; the namespace is `samsungVars`, the variable is `target_specific_header_path` |
 | Soong: clang version dir not found | prebuilts/clang pin drifted from soong's `ClangDefaultVersion` | Check `cc/config/global.go` in the synced soong; set `LLVM_PREBUILTS_VERSION` or re-pin prebuilts/clang |
 | `aidl` build fails on missing `libgtest_prod_headers` | `external/googletest` not synced | It is in the manifest — check the sync verification step |
 | Link error: `libapexsupport` / Rust crate missing | `prebuilts/rust` or `android-crates-io` not synced | Both are in the manifest; check sync step |
