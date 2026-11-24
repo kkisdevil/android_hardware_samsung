@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <!--
   Minimal repo manifest: build ONLY android.hardware.light-service.samsung
   (the forked Samsung lights HAL, with the no-op NOTIFICATIONS light for m51).
@@ -13,6 +14,7 @@
     repo init -u https://github.com/kkisdevil/android_hardware_samsung
               -b lineage-22.2 -m build-lights/manifest.xml
               (depth 1, no tags, current branch only, no repo verification)
+
     repo sync (current branch, jobs = nproc, no tags, force sync)
 
   All projects are shallow (clone-depth 1, no tags). LineageOS repos are
@@ -28,108 +30,171 @@
   is the no-op-light commit e7968ab68b15d9bda03c267195c2bfb0af986874.
   It is NOT upstream LineageOS. Do not point hardware/samsung at upstream.
 -->
+
 <manifest>
+
   <remote name="github" fetch="https://github.com/" review="https://github.com/" />
   <remote name="aosp" fetch="https://android.googlesource.com/" />
 
   <default revision="refs/heads/lineage-22.2" remote="github" sync-j="4" />
 
   <!-- Build system -->
+
   <!-- build/make: envsetup.sh, lunch, m, core/config.mk (defines
        soong_config_set, used by the device BoardConfig.mk).
        Verified HEAD (lineage-22.2): ab5acb1281035ebc9b0f190baf22ef3ea896106e -->
-  <project path="build/make" name="LineageOS/android_build" clone-depth="1" />
+
+  <project path="build/make" name="LineageOS/android_build" clone-depth="1">
+    <!-- Linkfiles copied verbatim from LineageOS default.xml: repo sync
+         creates build/envsetup.sh (plus build/core, build/target,
+         build/tools, build/CleanSpec.mk, build/buildspec.mk.default)
+         as links into build/make. Without them the synced tree has no
+         build/envsetup.sh at all, and the workflow's build step dies
+         before compiling anything — run #2 (45451816231) failed on
+         exactly that: "build/envsetup.sh: No such file or directory". -->
+    <linkfile src="CleanSpec.mk" dest="build/CleanSpec.mk" />
+    <linkfile src="buildspec.mk.default" dest="build/buildspec.mk.default" />
+    <linkfile src="core" dest="build/core" />
+    <linkfile src="envsetup.sh" dest="build/envsetup.sh" />
+    <linkfile src="target" dest="build/target" />
+    <linkfile src="tools" dest="build/tools" />
+  </project>
+
   <!-- build/soong: Soong build engine; expects clang-r536225.
        Verified HEAD (lineage-22.2): 7330e4ab3b8ec184ceff16a9537c2fe093ff3626 -->
+
   <project path="build/soong" name="LineageOS/android_build_soong" clone-depth="1" />
+
   <!-- build/blueprint: Soong's build-graph library.
        Verified HEAD (lineage-22.2): c7c63940d4be6a08a01a30ababca3abc0d1ac3da -->
+
   <project path="build/blueprint" name="LineageOS/android_build_blueprint" clone-depth="1" />
+
   <!-- prebuilts/build-tools: ninja, bison, flex, etc. (host tools Soong calls).
        AOSP tag android-15.0.0_r32. -->
+
   <project path="prebuilts/build-tools" name="platform/prebuilts/build-tools" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- prebuilts/go/linux-x86: Go toolchain (Soong itself is written in Go).
        AOSP tag android-15.0.0_r32. -->
+
   <project path="prebuilts/go/linux-x86" name="platform/prebuilts/go/linux-x86" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- prebuilts/clang/host/linux-x86: Clang r536225 (LLVM 19) plus the prebuilt
        libc++ used for device and host Soong builds (Android 15 builds
        libc++ as part of the Clang prebuilt; external/libcxx is only a
        38-line trusty stub and is NOT needed). Verified: the r32 tag
        contains clang-r536225, matching LineageOS 22.2 ClangDefaultVersion.
        AOSP tag android-15.0.0_r32. -->
+
   <project path="prebuilts/clang/host/linux-x86" name="platform/prebuilts/clang/host/linux-x86" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- toolchain/pgo-profiles: REQUIRED. build/soong soong_config.mk
        hard-includes toolchain/pgo-profiles/sampling/afdo_profiles.mk.
        AOSP tag android-15.0.0_r32. -->
+
   <project path="toolchain/pgo-profiles" name="toolchain/pgo-profiles" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
   <!-- Target platform libraries (the .bp closure) -->
+
   <!-- bionic: libc, libm, libdl (libdl_android), kernel uapi headers,
        libasync_safe (NOT in system/core; it lives in bionic).
        Verified HEAD (lineage-22.2): 30951077b29562f853a5b848414cd39639df719a -->
+
   <project path="bionic" name="LineageOS/android_bionic" clone-depth="1" />
+
   <!-- system/libbase: libbase (linked by the HAL, libbinder, libaidl-common).
        AOSP tag android-15.0.0_r32. (LineageOS has no android_system_libbase
        repo; it is an AOSP project.) -->
+
   <project path="system/libbase" name="platform/system/libbase" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- system/logging: liblog.
        Verified HEAD (lineage-22.2): 0a02c4d13e882ec9b67dcb2cb3b135f08656593a -->
+
   <project path="system/logging" name="LineageOS/android_system_logging" clone-depth="1" />
+
   <!-- system/core: libcutils, libutils, libvndksupport, libprocessgroup,
        libsystem. (libasync_safe and libapexsupport are NOT here; see
        bionic and system/apex.)
        Verified HEAD (lineage-22.2): bcb8623207cf6e7a51876a891d8b7ad3d04fd8c2 -->
+
   <project path="system/core" name="LineageOS/android_system_core" clone-depth="1" />
+
   <!-- frameworks/native: libbinder, libbinder_ndk, libandroid_runtime_lazy.
        Verified HEAD (lineage-22.2): 19863e8c37f3168899a2b2db6e191ce1df66b6d2 -->
+
   <project path="frameworks/native" name="LineageOS/android_frameworks_native" clone-depth="1" />
+
   <!-- hardware/interfaces: android.hardware.light AIDL (versions 1 and 2,
        backends java/rust; the V2-ndk target is auto-generated from it).
        Verified HEAD (lineage-22.2): 722793b7c3188e0debfa44c30948082a35dbbd0d -->
+
   <project path="hardware/interfaces" name="LineageOS/android_hardware_interfaces" clone-depth="1" />
+
   <!-- system/tools/aidl: the aidl compiler (host tool) plus libaidl-common.
        Its aidl_defaults need libbase, libgtest and libgtest_prod_headers.
        AOSP tag android-15.0.0_r32. -->
+
   <project path="system/tools/aidl" name="platform/system/tools/aidl" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
+
   <project path="external/fmtlib" name="platform/external/fmtlib" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- external/googletest: libgtest plus libgtest_prod_headers (aidl_defaults).
        AOSP tag android-15.0.0_r32. -->
+
   <project path="external/googletest" name="platform/external/googletest" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- libnativehelper: jni_headers (needed by libbinder_ndk and
        libandroid_runtime_lazy). AOSP tag android-15.0.0_r32. -->
+
   <project path="libnativehelper" name="platform/libnativehelper" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- system/apex: libapexsupport (needed by libbinder android target)
        plus libapex_manifest_rs (rust_protobuf in proto/Android.bp, same repo).
        AOSP tag android-15.0.0_r32. -->
+
   <project path="system/apex" name="platform/system/apex" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
   <!-- Rust (libapexsupport is part Rust) -->
+
   <!-- prebuilts/rust: rustc toolchain for the Rust crates.
        AOSP tag android-15.0.0_r32. -->
+
   <project path="prebuilts/rust" name="platform/prebuilts/rust" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- external/rust/android-crates-io: libprotobuf (plus libbytes,
        libonce_cell, libprotobuf_support, libthiserror; all in this one
        repo, under crates/). libapex_manifest_rs is NOT here; it is a
        rust_protobuf in system/apex/proto/Android.bp (same system/apex
        project above). AOSP tag android-15.0.0_r32. -->
+
   <project path="external/rust/android-crates-io" name="platform/external/rust/android-crates-io" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
   <!-- Soong namespace imports (hardware/samsung root .bp) -->
+
   <!-- hardware/google/pixel: imported by hardware/samsung root
        soong_namespace. Verified HEAD (lineage-22.2):
        1dee182b62095faf4225a7f01b56a5a11291b7ff -->
+
   <project path="hardware/google/pixel" name="LineageOS/android_hardware_google_pixel" clone-depth="1" />
+
   <!-- hardware/google/interfaces: also imported by hardware/samsung root
        soong_namespace. AOSP tag android-15.0.0_r32. -->
+
   <project path="hardware/google/interfaces" name="platform/hardware/google/interfaces" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
   <!-- The HAL itself (the fork) -->
+
   <!-- hardware/samsung: THE FORK, kkisdevil/android_hardware_samsung,
        lineage-22.2. Tip at verification time:
        e7968ab68b15d9bda03c267195c2bfb0af986874 (lights: add no-op
        NOTIFICATIONS light for m51 (no LED)). Never point this at
        upstream LineageOS; the no-op light lives only in the fork. -->
+
   <project path="hardware/samsung" name="kkisdevil/android_hardware_samsung" revision="refs/heads/lineage-22.2" clone-depth="1" />
+
 </manifest>
