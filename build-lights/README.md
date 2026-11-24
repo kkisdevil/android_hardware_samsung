@@ -9,7 +9,7 @@ NOTIFICATIONS light commit `e7968ab`) on GitHub Actions, using a minimal
 
 A full LineageOS 22.2 sync is ~100 GB. A GitHub Actions runner has ~14 GB
 usable disk. The dependency closure of the one module, traced file-by-file
-from the real `.bp` files (2026-11-24), is **24 projects** — small enough
+from the real `.bp` files (2026-11-24), is **25 projects** — small enough
 to fit with headroom.
 
 ## The closure (how each project was found)
@@ -47,6 +47,7 @@ Then the transitive `.bp` walk (each file read live at
 | `libapexsupport` (Rust) | rustlibs `libapex_manifest_rs` + `libprotobuf` | `system/apex` (the manifest rs is a `rust_protobuf` in `system/apex/proto/Android.bp` — same repo), `external/rust/android-crates-io` (`libprotobuf` + `libbytes`, `libonce_cell`, `libprotobuf_support`, `libthiserror`, all under `crates/`) |
 | Rust toolchain | `rustc` | `prebuilts/rust` |
 | Soong itself | Go toolchain, `ninja`/host tools, `afdo_profiles.mk` (hard include in `soong_config.mk`) | `prebuilts/go/linux-x86`, `prebuilts/build-tools`, `toolchain/pgo-profiles` |
+| Soong's `soong_ui` binary | Go protobuf runtime (`google.golang.org/protobuf/proto`, imported by `android/soong/ui/metrics`) — Soong maps the import to `external/golang-protobuf/proto`; missing it kills the build in 5s (run #9) | `external/golang-protobuf` |
 | Clang + libc++ | `clang-r536225` (LLVM 19) — **LineageOS 22.2's `ClangDefaultVersion`**, verified identical in AOSP r32 | `prebuilts/clang/host/linux-x86` |
 | Build engine | `envsetup.sh`, `lunch`, `m` | `build/make`, `build/soong`, `build/blueprint` |
 | Release configs | `trunk_staging` + the release map (`build/make/core/release_config.mk` reads `build/release/release_config_map.mk`; without it `ALL_RELEASE_CONFIGS_FOR_PRODUCT` is empty and lunch dies with `No release config found for TARGET_RELEASE`) | `build/release` (34 MB) |
@@ -99,7 +100,7 @@ verification time; the workflow fails loudly if the synced code lacks
 
 ## Disk / time budget (estimated)
 
-- Sync (depth 1, no tags, 24 projects): **~5 GB** (largest: clang
+- Sync (depth 1, no tags, 25 projects): **~5 GB** (largest: clang
   prebuilt ~2 GB, frameworks/native + system/core + bionic ~1 GB
   combined, prebuilts/rust + crates-io ~0.8 GB).
 - Build output (`out/`): **~1–2 GB** (Soong bootstrap + compiled libs +
@@ -144,7 +145,7 @@ at `repo init` until all four uploads land.**
 
 ## What the workflow verifies (in order)
 
-1. All 24 projects synced; `soong_config_set` defined; HAL `.bp` uses
+1. All 25 projects synced; `soong_config_set` defined; HAL `.bp` uses
    `samsung_header_path_defaults`; `clang-r536225` present.
 2. Device files copied from the manifest repo.
 3. Fork HEAD + `handleNotificationsNoOp` / `LightType::NOTIFICATIONS`
@@ -168,6 +169,7 @@ at `repo init` until all four uploads land.**
 | `Build lights HAL` fails: `Invalid lunch combo: yuzora_lights-userdebug` / `Valid combos must be of the form <product>-<release>-<variant>` (run #6) | LineageOS 22.2's `lunch()` (`build/envsetup.sh`) requires a **three-part** combo `<product>-<release>-<variant>`; the workflow used the old two-part `product-variant` form, so the variant parsed empty and lunch failed before compiling anything | Lunch `yuzora_lights-trunk_staging-userdebug` (workflow build step + `COMMON_LUNCH_CHOICES` in `AndroidProducts.mk`); `trunk_staging` is the default release |
 | `lunch` fails `check_product: command not found`, then `roomservice.py: No such file or directory` (run #6 latent — would have hit right after the combo fix) | Both live only in the real `vendor/lineage` tree, which the minimal manifest deliberately does not sync; the run #4 stub only covered the top-level export | The stub step now also defines `check_product` (verbatim from LineageOS `vendor/lineage/build/envsetup.sh`) and creates a no-op `vendor/lineage/build/tools/roomservice.py` (exits 0; the real script fetches missing device repos, which this build-only product never needs) |
 | `No release config found for TARGET_RELEASE: trunk_staging` (run #6 latent) | Release configs live in `build/release` (`LineageOS/android_build_release`), which was not in the manifest — with no map, `ALL_RELEASE_CONFIGS_FOR_PRODUCT` is empty | Manifest now syncs `build/release` (34 MB); the verify step checks the map + `trunk_staging.textproto` exist |
+| `Build lights HAL` fails in 5s: `Failed to find deps of android/soong/cmd/soong_ui: Error parsing directory .../external/golang-protobuf/proto: no such file or directory` (run #9) | Soong's `soong_ui` binary imports `google.golang.org/protobuf/proto` (`android/soong/ui/metrics`); the minimal manifest did not sync the Go protobuf runtime — and it is the only external Go module the soong+blueprint import closure needs (verified by grepping every `.go` import in `android_build_soong` + `android_build_blueprint` at `lineage-22.2`) | Manifest now syncs `external/golang-protobuf` (AOSP `platform/external/golang-protobuf`, tag `android-15.0.0_r32`); the verify step checks `external/golang-protobuf/proto` exists |
 | `lunch` cannot find `yuzora_lights-trunk_staging-userdebug` | device files not copied (manifest repo layout) | Check the "Install device files" step log; `device/*/AndroidProducts.mk` must exist before `lunch` |
 | Soong: `samsung_header_path_defaults` unknown / `target_specific_header_path` unset | BoardConfig `soong_config_set` call missing or misspelled | Compare with `device/yuzora/lights/BoardConfig.mk`; the namespace is `samsungVars`, the variable is `target_specific_header_path` |
 | Soong: clang version dir not found | prebuilts/clang pin drifted from soong's `ClangDefaultVersion` | Check `cc/config/global.go` in the synced soong; set `LLVM_PREBUILTS_VERSION` or re-pin prebuilts/clang |
