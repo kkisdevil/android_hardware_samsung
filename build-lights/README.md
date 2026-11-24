@@ -48,6 +48,7 @@ Then the transitive `.bp` walk (each file read live at
 | Rust toolchain | `rustc` | `prebuilts/rust` |
 | Soong itself | Go toolchain, `ninja`/host tools, `afdo_profiles.mk` (hard include in `soong_config.mk`) | `prebuilts/go/linux-x86`, `prebuilts/build-tools`, `toolchain/pgo-profiles` |
 | Soong's `soong_ui` binary | Go protobuf runtime (`google.golang.org/protobuf/proto`, imported by `android/soong/ui/metrics`) — Soong maps the import to `external/golang-protobuf/proto`; missing it kills the build in 5s (run #9) | `external/golang-protobuf` |
+| Soong's `rbcrun` | Starlark-in-Go runtime (`go.starlark.net/starlark`, required by `build/soong/go.mod`) — without `external/starlark-go/starlark` the build dies with "Failed to find deps of rbcrun/rbcrun" (run #12); AOSP `platform/external/starlark-go`, tag `android-15.0.0_r32` | `external/starlark-go` |
 | Clang + libc++ | `clang-r536225` (LLVM 19) — **LineageOS 22.2's `ClangDefaultVersion`**, verified identical in AOSP r32 | `prebuilts/clang/host/linux-x86` |
 | Build engine | `envsetup.sh`, `lunch`, `m` | `build/make`, `build/soong`, `build/blueprint` |
 | Release configs | `trunk_staging` + the release map (`build/make/core/release_config.mk` reads `build/release/release_config_map.mk`; without it `ALL_RELEASE_CONFIGS_FOR_PRODUCT` is empty and lunch dies with `No release config found for TARGET_RELEASE`) | `build/release` (34 MB) |
