@@ -103,7 +103,8 @@ jobs:
             prebuilts/clang/host/linux-x86 toolchain/pgo-profiles \
             bionic system/libbase system/logging system/core \
             frameworks/native hardware/interfaces system/tools/aidl \
-            external/fmtlib external/googletest libnativehelper \
+            external/fmtlib external/googletest external/golang-protobuf \
+            libnativehelper \
             system/apex prebuilts/rust external/rust/android-crates-io \
             hardware/google/pixel hardware/google/interfaces \
             hardware/samsung ; do
@@ -116,7 +117,7 @@ jobs:
             echo "::error::sync incomplete — missing:$MISSING"
             exit 1
           fi
-          echo "All 24 manifest projects present."
+          echo "All 25 manifest projects present."
           # The two files the whole build hinges on:
           test -f build/make/core/config.mk || { echo "::error::build/make/core/config.mk missing"; exit 1; }
           grep -q "define soong_config_set" build/make/core/config.mk \
@@ -136,6 +137,12 @@ jobs:
             || { echo "::error::build/release release map missing — check the build/release pin"; exit 1; }
           test -f build/release/release_configs/trunk_staging.textproto \
             || { echo "::error::trunk_staging release config missing from build/release"; exit 1; }
+          # Soong's soong_ui needs the Go protobuf runtime: without
+          # external/golang-protobuf the build dies in 5s with "Failed to
+          # find deps of android/soong/cmd/soong_ui ... no such file or
+          # directory" (run #9).
+          test -d external/golang-protobuf/proto \
+            || { echo "::error::external/golang-protobuf/proto missing — check the golang-protobuf pin"; exit 1; }
           echo "Sync verification passed."
 
       - name: Install device files from manifest repo
