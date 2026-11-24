@@ -2,6 +2,16 @@
  * Copyright (C) 2021 The LineageOS Project
  *
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * YuZora fork note (2026-11-24, kkisdevil/android_hardware_samsung,
+ * fork point LineageOS/android_hardware_samsung lineage-22.2
+ * 0365e8bd547af2644c6c06d903e212ce141587ca):
+ * Declares handleNotificationsNoOp — the no-op NOTIFICATIONS handler
+ * for the Galaxy M51 (no notification LED). Design: docs/re-lights.md
+ * §5.2a + §6.1. The declaration is UNCONDITIONAL on purpose: the
+ * a71-common override header defines no LED_BLINK_NODE, so a
+ * declaration inside #ifdef LED_BLINK_NODE would never compile for
+ * this tree (see the matching note in Lights.cpp).
  */
 
 #pragma once
@@ -29,6 +39,12 @@ public:
 
 private:
     void handleBacklight(const HwLightState& state);
+
+    // YuZora fork: no-op NOTIFICATIONS handler (m51 has no LED).
+    // Unconditional — must NOT sit inside #ifdef LED_BLINK_NODE, which
+    // the a71-common override header never defines for this tree.
+    void handleNotificationsNoOp(const HwLightState& state);
+
 #ifdef BUTTON_BRIGHTNESS_NODE
     void handleButtons(const HwLightState& state);
 #endif /* BUTTON_BRIGHTNESS_NODE */

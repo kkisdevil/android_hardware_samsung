@@ -2,6 +2,33 @@
  * Copyright (C) 2021 The LineageOS Project
  *
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * YuZora fork note (2026-11-24, kkisdevil/android_hardware_samsung,
+ * fork point LineageOS/android_hardware_samsung lineage-22.2
+ * 0365e8bd547af2644c6c06d903e212ce141587ca):
+ * Adds a no-op NOTIFICATIONS light for the Galaxy M51, which has no
+ * notification LED. Design: docs/re-lights.md §5.2a + §6.1.
+ *
+ * !!! READ THIS BEFORE MOVING THE NEW CODE — the #ifdef LED_BLINK_NODE
+ * trap: docs/re-lights.md §6.1 says the handler is a "drop-in addition
+ * to Lights.cpp, inside the #ifdef LED_BLINK_NODE block's registration
+ * (or as its own handler ...)". That primary wording is AMBIGUOUS and,
+ * followed literally, is WRONG for this tree: the a71-common override
+ * header (include/samsung_lights.h) defines ONLY PANEL_BRIGHTNESS_NODE
+ * and PANEL_MAX_BRIGHTNESS_NODE — it defines NO LED_BLINK_NODE and NO
+ * BUTTON_BRIGHTNESS_NODE (verified live 2026-11-24). Anything placed
+ * inside #ifdef LED_BLINK_NODE — registration, handler, or declaration
+ * — is never compiled for m51, and getLights() would still not report
+ * NOTIFICATIONS, i.e. the exact bug this fix exists to solve, silently.
+ * This change therefore follows §6.1's parenthetical "(or as its own
+ * handler)": the handler, its registration, and its declaration are all
+ * UNCONDITIONAL, placed next to the always-compiled BACKLIGHT code.
+ *
+ * Portability caveat: on a device tree where LED_BLINK_NODE IS defined,
+ * this unconditional emplace runs first and std::unordered_map::emplace
+ * ignores the later duplicate key, so the no-op would shadow the real
+ * handleNotifications. This fork is for the m51/a71 tree only; do not
+ * reuse it on an LED device without removing the unconditional block.
  */
 
 #define LOG_TAG "android.hardware.lights-service.samsung"
@@ -40,6 +67,15 @@ static T get(const std::string& path, const T& def) {
 Lights::Lights() {
     mLights.emplace(LightType::BACKLIGHT,
                     std::bind(&Lights::handleBacklight, this, std::placeholders::_1));
+
+    // YuZora fork: unconditional NOTIFICATIONS registration (see the fork
+    // note at the top of this file). The m51 has no LED, so the handler
+    // discards the state. Must NOT live inside #ifdef LED_BLINK_NODE:
+    // the a71-common override header defines no LED_BLINK_NODE, so a
+    // guarded registration would never compile for this tree.
+    mLights.emplace(LightType::NOTIFICATIONS,
+                    std::bind(&Lights::handleNotificationsNoOp, this, std::placeholders::_1));
+
 #ifdef BUTTON_BRIGHTNESS_NODE
     mLights.emplace(LightType::BUTTONS, std::bind(&Lights::handleButtons, this, std::placeholders::_1));
 #endif /* BUTTON_BRIGHTNESS_NODE */
@@ -79,6 +115,19 @@ void Lights::handleBacklight(const HwLightState& state) {
     }
 
     set(PANEL_BRIGHTNESS_NODE, brightness);
+}
+
+// Clean-room reconstruction (YuZora, 2026-11-24) — NOT original source.
+// The m51 has no notification LED, so there is no sysfs node to write.
+// This handler exists only so getLights() reports a NOTIFICATIONS light
+// and MiuiLightsService's lookup never returns null. It accepts the state
+// and discards it. Defined UNCONDITIONALLY on purpose: the a71-common
+// override header defines no LED_BLINK_NODE, so a handler inside the
+// #ifdef LED_BLINK_NODE block (where upstream's handleNotifications
+// lives) would never compile for this tree. See the fork note at the
+// top of this file.
+void Lights::handleNotificationsNoOp(const HwLightState& /*state*/) {
+    // Intentionally empty: no LED hardware on this device.
 }
 
 #ifdef BUTTON_BRIGHTNESS_NODE
