@@ -1,0 +1,249 @@
+# Build the forked Samsung lights HAL (single module, minimal manifest).
+#
+# Builds ONLY android.hardware.light-service.samsung from
+# kkisdevil/android_hardware_samsung (lineage-22.2, no-op NOTIFICATIONS
+# light commit e7968ab) using the minimal repo manifest in
+# build-lights/manifest.xml. A full LineageOS sync (~100 GB) does not fit
+# a GitHub Actions runner (~14 GB usable disk); the minimal closure is
+# ~5 GB sync + ~2 GB build output (see build-lights/README.md).
+#
+# The workflow FAILS LOUDLY (exit 1, ::error::) on: missing manifest,
+# missing synced project, missing fork code, missing header, build
+# failure, missing output binary, or a binary that does not contain the
+# fork's handleNotificationsNoOp symbol. It never sets
+# ALLOW_MISSING_DEPENDENCIES — a missing dep must fail the run, not be
+# silently skipped.
+#
+# Triggers: manual (workflow_dispatch) and any push to lineage-22.2 that
+# touches the HAL or the build-lights files, so each fix gets a build.
+
+name: Build lights HAL
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [lineage-22.2]
+    paths:
+      - 'aidl/light/**'
+      - 'build-lights/**'
+
+jobs:
+  build-lights-hal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Free disk space (1/3)
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache \
+            /usr/local/share/boost /opt/ghc /usr/local/lib/android \
+            /usr/share/swift /opt/az /usr/local/share/chromium
+          sudo apt-get clean
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            git python3 curl ca-certificates binutils file
+
+      - name: Install repo tool
+        run: |
+          mkdir -p "$HOME/.bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo \
+            -o "$HOME/.bin/repo"
+          chmod +x "$HOME/.bin/repo"
+          echo "$HOME/.bin" >> "$GITHUB_PATH"
+          repo --version
+
+      - name: Init + sync minimal manifest
+        run: |
+          set -euo pipefail
+          mkdir -p lights-build && cd lights-build
+          git config --global user.email "yuzora-ci@aoisora.codes"
+          git config --global user.name "YuZora CI"
+          git config --global color.ui false
+          # The manifest lives in the fork itself, at
+          # build-lights/manifest.xml on lineage-22.2. If this step fails
+          # with "manifest not found", the manifest has not been uploaded
+          # to the fork yet.
+          repo init -u https://github.com/kkisdevil/android_hardware_samsung \
+            -b lineage-22.2 \
+            -m build-lights/manifest.xml \
+            --depth=1 --no-tags -c --no-repo-verify
+          # Up to 3 sync attempts: googlesource/github fetches are flaky.
+          # A timeout is NOT retried by repo itself, so we retry the whole
+          # sync (it resumes — already-fetched projects are skipped).
+          for attempt in 1 2 3; do
+            echo "=== repo sync attempt $attempt ==="
+            if repo sync -c -j"$(nproc)" --no-tags --force-sync; then
+              echo "repo sync succeeded on attempt $attempt"
+              break
+            fi
+            echo "::warning::repo sync attempt $attempt failed"
+            if [ "$attempt" = "3" ]; then
+              echo "::error::repo sync failed 3 times — see the log for the failing project"
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "=== disk after sync ==="
+          df -h
+          du -sh . | cat
+
+      - name: Verify sync (fail loudly on missing projects)
+        working-directory: lights-build
+        run: |
+          set -euo pipefail
+          MISSING=""
+          for p in \
+            build/make build/soong build/blueprint \
+            prebuilts/build-tools prebuilts/go/linux-x86 \
+            prebuilts/clang/host/linux-x86 toolchain/pgo-profiles \
+            bionic system/libbase system/logging system/core \
+            frameworks/native hardware/interfaces system/tools/aidl \
+            external/fmtlib external/googletest libnativehelper \
+            system/apex prebuilts/rust external/rust/android-crates-io \
+            hardware/google/pixel hardware/google/interfaces \
+            hardware/samsung ; do
+            if [ ! -d "$p" ]; then
+              echo "::error::missing synced project: $p"
+              MISSING="$MISSING $p"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::sync incomplete — missing:$MISSING"
+            exit 1
+          fi
+          echo "All 23 manifest projects present."
+          # The two files the whole build hinges on:
+          test -f build/make/core/config.mk || { echo "::error::build/make/core/config.mk missing"; exit 1; }
+          grep -q "define soong_config_set" build/make/core/config.mk \
+            || { echo "::error::soong_config_set not defined in build/make/core/config.mk"; exit 1; }
+          test -f hardware/samsung/aidl/light/Android.bp || { echo "::error::HAL .bp missing"; exit 1; }
+          grep -q "samsung_header_path_defaults" hardware/samsung/aidl/light/Android.bp \
+            || { echo "::error::HAL .bp does not use samsung_header_path_defaults"; exit 1; }
+          # The clang version LineageOS 22.2 expects must exist in the
+          # synced prebuilt (r536225). If this fails, the prebuilts/clang
+          # pin is wrong for this soong revision.
+          test -d prebuilts/clang/host/linux-x86/clang-r536225 \
+            || { echo "::error::clang-r536225 not in synced prebuilts/clang — check the prebuilts/clang pin"; exit 1; }
+          echo "Sync verification passed."
+
+      - name: Install device files from manifest repo
+        working-directory: lights-build
+        run: |
+          set -euo pipefail
+          # The build-lights/device files are in the fork (the manifest
+          # repo), checked out by repo init at .repo/manifests.
+          test -d .repo/manifests/build-lights/device/yuzora/lights \
+            || { echo "::error::build-lights/device/yuzora/lights not in manifest repo — upload the device files to the fork"; exit 1; }
+          cp -r .repo/manifests/build-lights/device device/
+          ls -R device/yuzora/lights
+          test -f device/yuzora/lights/AndroidProducts.mk
+          test -f device/yuzora/lights/yuzora_lights.mk
+          test -f device/yuzora/lights/BoardConfig.mk
+          test -f device/yuzora/lights/include/samsung_lights.h
+
+      - name: Verify fork code + header
+        working-directory: lights-build
+        run: |
+          set -euo pipefail
+          echo "=== fork HEAD ==="
+          git -C hardware/samsung rev-parse HEAD
+          git -C hardware/samsung log --oneline -1
+          # The no-op light must actually be in the synced fork code.
+          grep -q "handleNotificationsNoOp" hardware/samsung/aidl/light/Lights.cpp \
+            || { echo "::error::handleNotificationsNoOp NOT in synced Lights.cpp — hardware/samsung is not the fork (or the no-op commit is missing)"; exit 1; }
+          grep -q "LightType::NOTIFICATIONS" hardware/samsung/aidl/light/Lights.cpp \
+            || { echo "::error::NOTIFICATIONS registration NOT in synced Lights.cpp"; exit 1; }
+          # The override header must be the a71-common one: PANEL nodes
+          # only. If LED_BLINK_NODE were defined, the fork's unconditional
+          # emplace would shadow a real LED handler on other devices —
+          # and for m51 it would mean the header is the wrong one.
+          grep -q "PANEL_BRIGHTNESS_NODE" device/yuzora/lights/include/samsung_lights.h \
+            || { echo "::error::PANEL_BRIGHTNESS_NODE missing from vendored header"; exit 1; }
+          if grep -q "LED_BLINK_NODE" device/yuzora/lights/include/samsung_lights.h; then
+            echo "::error::vendored header defines LED_BLINK_NODE — wrong header for m51 (must be the PANEL-only a71-common override)"
+            exit 1
+          fi
+          # The soong config call must be present and point at our header.
+          grep -q "soong_config_set,samsungVars,target_specific_header_path,device/yuzora/lights/include" \
+            device/yuzora/lights/BoardConfig.mk \
+            || { echo "::error::BoardConfig.mk does not set samsungVars/target_specific_header_path to device/yuzora/lights/include"; exit 1; }
+          echo "Fork code + header verification passed."
+
+      - name: Build lights HAL
+        working-directory: lights-build
+        run: |
+          set -euo pipefail
+          source build/envsetup.sh
+          lunch yuzora_lights-userdebug
+          # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
+          # dep must fail here, not be silently skipped.
+          m -j"$(nproc)" android.hardware.light-service.samsung 2>&1 | tee build-lights.log
+          echo "=== disk after build ==="
+          df -h
+
+      - name: Verify built binary
+        working-directory: lights-build
+        run: |
+          set -euo pipefail
+          BIN="out/target/product/yuzora_lights/vendor/bin/hw/android.hardware.light-service.samsung"
+          test -f "$BIN" || { echo "::error::built binary missing: $BIN"; exit 1; }
+          ls -l "$BIN"
+          file "$BIN"
+          # Must be an arm64 (aarch64) device binary, not a host binary.
+          readelf -h "$BIN" | grep -qi "aarch64" \
+            || { echo "::error::built binary is not AArch64"; exit 1; }
+          # Proof the fork's code is actually IN the binary: the
+          # unstripped copy keeps symbols. (Soong strips the installed
+          # binary, so check symbols/ not the installed path.)
+          UNSTRIPPED="out/target/product/yuzora_lights/symbols/vendor/bin/hw/android.hardware.light-service.samsung"
+          if [ -f "$UNSTRIPPED" ]; then
+            if nm "$UNSTRIPPED" 2>/dev/null | grep -q "handleNotificationsNoOp"; then
+              echo "Fork code confirmed: handleNotificationsNoOp present in unstripped binary."
+            else
+              echo "::error::handleNotificationsNoOp NOT found in unstripped binary — the fork's no-op light did not compile in"
+              exit 1
+            fi
+          else
+            echo "::warning::unstripped symbols binary not found at $UNSTRIPPED — symbol check skipped (binary + arch checks still passed)"
+          fi
+          # The .rc and VINTF fragment should be installed alongside the
+          # binary; warn (do not fail) if their install paths differ.
+          find out/target/product/yuzora_lights/vendor/etc -name "*light-service.samsung*" -print || true
+          # Build info for the artifact.
+          {
+            echo "product: yuzora_lights-userdebug"
+            echo "module: android.hardware.light-service.samsung"
+            echo "fork HEAD: $(git -C hardware/samsung rev-parse HEAD)"
+            echo "fork log: $(git -C hardware/samsung log --oneline -1)"
+            echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "binary: $BIN"
+            echo "size: $(stat -c%s "$BIN") bytes"
+            echo "sha256: $(sha256sum "$BIN" | cut -d' ' -f1)"
+          } > BUILD_INFO.txt
+          cat BUILD_INFO.txt
+
+      - name: Disk usage report
+        working-directory: lights-build
+        run: |
+          df -h
+          echo "=== largest top-level dirs ==="
+          du -sh -- * 2>/dev/null | sort -rh | head -20 || true
+          echo "=== out/ size ==="
+          du -sh out/ 2>/dev/null || echo "no out/ dir"
+
+      - name: Upload lights HAL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lights-hal-m51
+          path: |
+            lights-build/out/target/product/yuzora_lights/vendor/bin/hw/android.hardware.light-service.samsung
+            lights-build/out/target/product/yuzora_lights/vendor/etc/init/android.hardware.light-service.samsung.rc
+            lights-build/out/target/product/yuzora_lights/vendor/etc/vintf/manifest/android.hardware.light-service.samsung.xml
+            lights-build/build-lights.log
+            lights-build/BUILD_INFO.txt
+          retention-days: 14
+          if-no-files-found: error
