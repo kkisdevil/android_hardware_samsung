@@ -157,14 +157,14 @@ jobs:
           set -euo pipefail
           # The build-lights/device files are in the fork (the manifest
           # repo), checked out by repo init at .repo/manifests.
-          test -d .repo/manifests/build-lights/device/yuzora/lights \
-            || { echo "::error::build-lights/device/yuzora/lights not in manifest repo — upload the device files to the fork"; exit 1; }
+          test -d .repo/manifests/build-lights/device/yuzora/yuzora_lights \
+            || { echo "::error::build-lights/device/yuzora/yuzora_lights not in manifest repo — upload the device files to the fork"; exit 1; }
           cp -r .repo/manifests/build-lights/device device/
-          ls -R device/yuzora/lights
-          test -f device/yuzora/lights/AndroidProducts.mk
-          test -f device/yuzora/lights/yuzora_lights.mk
-          test -f device/yuzora/lights/BoardConfig.mk
-          test -f device/yuzora/lights/include/samsung_lights.h
+          ls -R device/yuzora/yuzora_lights
+          test -f device/yuzora/yuzora_lights/AndroidProducts.mk
+          test -f device/yuzora/yuzora_lights/yuzora_lights.mk
+          test -f device/yuzora/yuzora_lights/BoardConfig.mk
+          test -f device/yuzora/yuzora_lights/include/samsung_lights.h
 
       - name: Verify fork code + header
         working-directory: lights-build
@@ -182,16 +182,16 @@ jobs:
           # only. If LED_BLINK_NODE were defined, the fork's unconditional
           # emplace would shadow a real LED handler on other devices —
           # and for m51 it would mean the header is the wrong one.
-          grep -q "PANEL_BRIGHTNESS_NODE" device/yuzora/lights/include/samsung_lights.h \
+          grep -q "PANEL_BRIGHTNESS_NODE" device/yuzora/yuzora_lights/include/samsung_lights.h \
             || { echo "::error::PANEL_BRIGHTNESS_NODE missing from vendored header"; exit 1; }
-          if grep -q "LED_BLINK_NODE" device/yuzora/lights/include/samsung_lights.h; then
+          if grep -q "LED_BLINK_NODE" device/yuzora/yuzora_lights/include/samsung_lights.h; then
             echo "::error::vendored header defines LED_BLINK_NODE — wrong header for m51 (must be the PANEL-only a71-common override)"
             exit 1
           fi
           # The soong config call must be present and point at our header.
-          grep -q "soong_config_set,samsungVars,target_specific_header_path,device/yuzora/lights/include" \
-            device/yuzora/lights/BoardConfig.mk \
-            || { echo "::error::BoardConfig.mk does not set samsungVars/target_specific_header_path to device/yuzora/lights/include"; exit 1; }
+          grep -q "soong_config_set,samsungVars,target_specific_header_path,device/yuzora/yuzora_lights/include" \
+            device/yuzora/yuzora_lights/BoardConfig.mk \
+            || { echo "::error::BoardConfig.mk does not set samsungVars/target_specific_header_path to device/yuzora/yuzora_lights/include"; exit 1; }
           echo "Fork code + header verification passed."
 
       - name: Stub vendor/lineage envsetup.sh
