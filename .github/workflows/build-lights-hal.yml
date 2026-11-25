@@ -683,6 +683,58 @@ jobs:
           # static_libs), so the static_libs dep would surface on the
           # next run. The prune-step stub check and the pre-build guard
           # both verify the new stubs.
+          # Run #58 (45650805099, 15m35s) — FAILED at Soong ninja-file
+          # generation, 40s into the build step, with 2 "depends on
+          # undefined module" errors, both in
+          # system/apex/apexd/apexd_testdata/Android.bp:
+          # "test_framework-apexd" depends on undefined module
+          # "framework-module-defaults" (line 597) and
+          # "test_service-apexd" depends on undefined module
+          # "framework-system-server-module-defaults" (line 613). The
+          # #51/#52/#53 fix HELD completely (no skia_renderengine_deps
+          # errors) and the #48/#49/#50 fix HELD (no power/graphics
+          # -ndk_* or hintmanager errors). The new errors are one layer
+          # further out, in system/apex — same failure shape, same
+          # cause: Soong validates every `defaults:` reference in every
+          # parsed .bp file, and these two modules have no definition
+          # in the synced tree:
+          # - "framework-module-defaults" (used in `defaults:` by the
+          #   java_sdk_library test_framework-apexd) and
+          #   "framework-system-server-module-defaults" (used in
+          #   `defaults:` by the java_sdk_library test_service-apexd)
+          #   are java_defaults in frameworks/base — the unsynced
+          #   framework project (not among the 32 manifest projects;
+          #   verified live at LineageOS lineage-22.2: the only
+          #   referencers in the synced tree are the two test
+          #   java_sdk_library modules in this one file, and neither
+          #   name occurs in frameworks/base/Android.bp at the root —
+          #   the definitions live in a frameworks/base subdir .bp).
+          # - Do NOT prune system/apex/apexd/apexd_testdata: the KEPT
+          #   system/apex/apexd/Android.bp references its modules —
+          #   eight java_genrule `srcs: [":apex.apexd_test..."]`
+          #   entries (gen_manifest_mismatch_apex,
+          #   gen_corrupt_superblock_apex, gen_corrupt_apex,
+          #   apex.apexd_test_digest, apex.apexd_test_f2fs_digest,
+          #   apex.apexd_test_erofs_digest, two
+          #   :apex.apexd_test_no_inst_key users) plus the
+          #   ApexTestCases + ApexServiceTestCases cc_test `data:`
+          #   lists (13 + 12 testdata modules) — verified live at
+          #   LineageOS lineage-22.2. Pruning the dir would CREATE
+          #   new undefined-module errors instead of fixing these two.
+          #   The testdata dir is prebuilt apexd TEST data (the file's
+          #   own header: "The modules are disabled so as not to
+          #   pollute the build") — the HAL never needs it, but its
+          #   modules must keep parsing, so the fix is STUBS, not prune.
+          # Fix, same established pattern as #36/#39/#46 (stub, don't
+          # sync; NO new projects, still 32): BOTH are STUBBED below as
+          # empty java_defaults (public visibility — the referencers
+          # are java_sdk_library modules, so the stubs are java_defaults,
+          # NOT cc_defaults; an empty java_defaults contributes
+          # nothing to a module that is never built). The test
+          # java_sdk_library modules are never built for this HAL-only
+          # target, so only the NAMES have to exist for Soong's parse.
+          # The prune-step stub check and the pre-build guard both
+          # verify the new stubs.
           #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
@@ -1060,6 +1112,33 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Run #58 fix: `framework-module-defaults` +
+          // `framework-system-server-module-defaults` (used in
+          // `defaults:` by the java_sdk_library test modules
+          // test_framework-apexd + test_service-apexd in
+          // system/apex/apexd/apexd_testdata/Android.bp). Both are
+          // java_defaults in frameworks/base (unsynced — see the
+          // comment block at the top of this step). The referencers
+          // are java_sdk_library modules, so the stubs are
+          // java_defaults, NOT cc_defaults. The test modules are
+          // never built here (not in the HAL closure), so only the
+          // NAMES have to exist for Soong's parse. Public visibility
+          // on purpose (see the VTS helper stub above): the known
+          // users are the two test modules, but an unknown user
+          // elsewhere must not turn into a visibility error.
+          java_defaults {
+              name: "framework-module-defaults",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          java_defaults {
+              name: "framework-system-server-module-defaults",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -1069,7 +1148,7 @@ jobs:
           test -f yuzora-stubs/empty.c \
             || { echo "::error::stub source missing after creation: yuzora-stubs/empty.c"; exit 1; }
 
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
@@ -1080,6 +1159,7 @@ jobs:
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
           echo "runs #51/#52/#53 stubs created: skia_renderengine_deps + libskia_renderengine (+ empty.c)."
+          echo "run #58 stubs created: framework-module-defaults + framework-system-server-module-defaults (empty java_defaults)."
 
       - name: Build lights HAL
         working-directory: lights-build
@@ -1152,7 +1232,7 @@ jobs:
           fi
           test -f yuzora-stubs/empty.c \
             || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.c"; exit 1; }
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
