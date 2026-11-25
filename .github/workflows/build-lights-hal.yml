@@ -354,6 +354,120 @@ jobs:
             || { echo "::error::stub roomservice.py missing after creation"; exit 1; }
           echo "Stub vendor/lineage/build/tools/roomservice.py created."
 
+      - name: Prune unneeded subtrees + stub apex-lowest-min-sdk-version
+        working-directory: lights-build
+        run: |
+          set -euo pipefail
+          # Run #36 died in "Build lights HAL" (47s) at Soong's Android.bp
+          # analysis with 11 "depends on undefined module" errors for five
+          # modules — same failure shape as runs #24/#27 (blueprint-level
+          # deps), one layer deeper. The xsdc fix WORKED (bootstrap compiled
+          # all 114 steps, no xsd_config errors); the failure is now in
+          # whole-tree analysis of modules the lights HAL never needs.
+          #
+          # Four of the five modules are defined in projects FAR outside the
+          # minimal closure, and every referencing module is unrelated to
+          # the lights HAL — so they are PRUNED from the synced tree after
+          # sync (a repo manifest cannot exclude subdirectories of a synced
+          # project), instead of syncing gigabytes of new projects:
+          #
+          # - "SettingsLibDefaults" (used by hardware/samsung/doze
+          #   SamsungDoze + hardware/samsung/dap SamsungDAP) is a
+          #   java_defaults in frameworks/base/packages/SettingsLib/Android.bp
+          #   (LineageOS android_frameworks_base, lineage-22.2). Syncing
+          #   frameworks/base (~GBs, whose own .bp surface references
+          #   hundreds more unsynced modules) for two unrelated apps is
+          #   absurd. Doze (ambient display) + DAP have nothing to do with
+          #   the lights HAL.
+          # - "libcodec2-hidl-defaults" + "libcodec2-aidl-defaults" (used by
+          #   hardware/samsung/aidl/codec2 android.software.media.c2-service.samsung)
+          #   are cc_defaults in frameworks/av (media/codec2/hal/hidl/1.2/utils/Android.bp
+          #   + media/codec2/hal/aidl/Android.bp, lineage-22.2). Same reason:
+          #   frameworks/av is gigabytes; the codec2 media service is
+          #   unrelated to the lights HAL.
+          # - "use_libaidlvintf_gtest_helper_static" (used by five Bluetooth
+          #   VTS target tests under hardware/google/interfaces/bluetooth/*/aidl/vts)
+          #   is a cc_defaults in system/libvintf/libaidlvintf_test_helper/Android.bp
+          #   (AOSP platform/system/libvintf, r32). Syncing system/libvintf
+          #   alone would NOT close the chain: the defaults' static_libs
+          #   need libz (external/zlib) + libselinux (external/selinux),
+          #   neither synced — it would cascade into more missing modules.
+          #   VTS tests are test-only and unrelated to the HAL.
+          #
+          # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
+          # is used by system/core/libutils (libutils_headers +
+          # libutils_impl_defaults), and libutils IS in the HAL closure
+          # (libbinder_ndk -> libbinder -> libutils). It is defined in
+          # packages/modules/common/sdk/Android.bp (LineageOS
+          # android_packages_modules_common, lineage-22.2, lines 575-601) as
+          # library_linking_strategy_cc_defaults with min_sdk_version "30".
+          # Syncing that whole project would drag in its java/ + javatests/
+          # concrete modules (which reference unsynced framework libs), so
+          # instead the definition is STUBBED verbatim below — same module
+          # type (imported from system/apex/Android.bp, which IS synced),
+          # same name, same min_sdk_version "30", same defaults_visibility
+          # (//system/core/libutils:__subpackages__ — libutils is the only
+          # user in this tree, proven by run #36 reporting only libutils
+          # errors for it), same soong_config_variables block. The stub
+          # lives in yuzora-stubs/ at the tree root, next to the other
+          # build-only stubs.
+          rm -rf hardware/samsung/doze hardware/samsung/dap
+          rm -rf hardware/samsung/aidl/codec2
+          rm -rf hardware/google/interfaces/bluetooth/*/aidl/vts
+          for d in hardware/samsung/doze hardware/samsung/dap \
+            hardware/samsung/aidl/codec2; do
+            if [ -e "$d" ]; then
+              echo "::error::prune failed — still present: $d"
+              exit 1
+            fi
+          done
+          if ls -d hardware/google/interfaces/bluetooth/*/aidl/vts >/dev/null 2>&1; then
+            echo "::error::prune failed — a bluetooth VTS dir survived"
+            exit 1
+          fi
+          echo "Unneeded subtrees pruned."
+          mkdir -p yuzora-stubs
+          cat > yuzora-stubs/Android.bp <<'EOF'
+          // Stub — see the "Prune unneeded subtrees + stub
+          // apex-lowest-min-sdk-version" step in
+          // .github/workflows/build-lights-hal.yml (run #36 fix).
+          // Verbatim replica of the "apex-lowest-min-sdk-version"
+          // definition from packages/modules/common/sdk/Android.bp
+          // (LineageOS android_packages_modules_common, lineage-22.2,
+          // lines 575-601; APEX_LOWEST_MIN_SDK_VERSION = "30", line 333).
+          // The real project is NOT synced: its java/ + javatests/
+          // concrete modules reference unsynced framework libs, so syncing
+          // it would trade one undefined module for more. This stub gives
+          // system/core/libutils (the only user in this tree) exactly what
+          // the real definition gives it: min_sdk_version "30" by default.
+          soong_config_module_type_import {
+              from: "system/apex/Android.bp",
+              module_types: [
+                  "library_linking_strategy_cc_defaults",
+              ],
+          }
+
+          library_linking_strategy_cc_defaults {
+              name: "apex-lowest-min-sdk-version",
+              defaults_visibility: [
+                  "//system/core/libutils:__subpackages__",
+              ],
+              min_sdk_version: "30",
+              soong_config_variables: {
+                  library_linking_strategy: {
+                      prefer_static: {
+                          min_sdk_version: "apex_inherit",
+                      },
+                  },
+              },
+          }
+          EOF
+          grep -q "apex-lowest-min-sdk-version" yuzora-stubs/Android.bp \
+            || { echo "::error::apex-lowest-min-sdk-version stub missing after creation"; exit 1; }
+          grep -q "library_linking_strategy_cc_defaults" yuzora-stubs/Android.bp \
+            || { echo "::error::stub does not use library_linking_strategy_cc_defaults"; exit 1; }
+          echo "apex-lowest-min-sdk-version stub created."
+
       - name: Build lights HAL
         working-directory: lights-build
         run: |
