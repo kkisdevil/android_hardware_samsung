@@ -291,7 +291,7 @@ jobs:
                   LINEAGE_BUILD=
               fi
               export LINEAGE_BUILD
-
+          
                   TARGET_PRODUCT=$1 \
                   TARGET_RELEASE=$2 \
                   TARGET_BUILD_VARIANT= \
@@ -354,7 +354,7 @@ jobs:
             || { echo "::error::stub roomservice.py missing after creation"; exit 1; }
           echo "Stub vendor/lineage/build/tools/roomservice.py created."
 
-      - name: Prune unneeded subtrees + stub apex-lowest-min-sdk-version
+      - name: Prune unneeded subtrees + stub missing defaults
         working-directory: lights-build
         run: |
           set -euo pipefail
@@ -364,6 +364,25 @@ jobs:
           # deps), one layer deeper. The xsdc fix WORKED (bootstrap compiled
           # all 114 steps, no xsd_config errors); the failure is now in
           # whole-tree analysis of modules the lights HAL never needs.
+          #
+          # Runs #38/#39 (same commit 1e987f7, one minute apart) proved the
+          # undefined-module surface is MUCH larger than run #36's 11, and
+          # that Soong reports a DIFFERENT SUBSET every run: #38 failed with
+          # 5 errors, all in hardware/interfaces, NONE of which appear in
+          # #39's 6 errors (and vice versa). Chasing the reported subset one
+          # run at a time is whack-a-mole — so this step now fixes whole
+          # CLASSES at once: stub a shared defaults module once instead of
+          # pruning each referencing dir, and prune whole unrelated
+          # subtrees instead of single dirs.
+          #
+          # ANOMALY (run #39): run #39 still failed on doze/dap/bluetooth-
+          # VTS/libutils_headers errors although THIS step verified those
+          # paths deleted and printed both success lines. Either the files
+          # re-appeared between this step and `m`, or Soong read them from
+          # elsewhere. The build step re-verifies immediately before `m`
+          # (pre-build guard) to discriminate the two; if the guard passes
+          # and Soong still errors on those paths, the prune itself is not
+          # the problem.
           #
           # Four of the five modules are defined in projects FAR outside the
           # minimal closure, and every referencing module is unrelated to
@@ -385,14 +404,34 @@ jobs:
           #   + media/codec2/hal/aidl/Android.bp, lineage-22.2). Same reason:
           #   frameworks/av is gigabytes; the codec2 media service is
           #   unrelated to the lights HAL.
-          # - "use_libaidlvintf_gtest_helper_static" (used by five Bluetooth
-          #   VTS target tests under hardware/google/interfaces/bluetooth/*/aidl/vts)
+          # - "use_libaidlvintf_gtest_helper_static" (used by VTS target
+          #   tests under hardware/google/interfaces/bluetooth/*/aidl/vts
+          #   AND hardware/interfaces/automotive/ivn_android_device/vts)
           #   is a cc_defaults in system/libvintf/libaidlvintf_test_helper/Android.bp
           #   (AOSP platform/system/libvintf, r32). Syncing system/libvintf
           #   alone would NOT close the chain: the defaults' static_libs
           #   need libz (external/zlib) + libselinux (external/selinux),
           #   neither synced — it would cascade into more missing modules.
-          #   VTS tests are test-only and unrelated to the HAL.
+          #   VTS tests are test-only and unrelated to the HAL. Run #38
+          #   proved the run #36 bluetooth-only prune was too narrow (the
+          #   ivn VTS test references the same module), so the module is
+          #   now STUBBED once below (empty cc_defaults — VTS tests are
+          #   never built, so only the NAME has to exist) AND every
+          #   remaining `vts` dir under hardware/interfaces +
+          #   hardware/google/interfaces is pruned as well.
+          # - "neuralnetworks_utils_defaults" (used by
+          #   hardware/interfaces/neuralnetworks/utils/{common,adapter/hidl})
+          #   is a cc_defaults defined outside the synced tree. The NN utils
+          #   are unrelated to the lights HAL, so it is STUBBED below
+          #   (empty cc_defaults — same reasoning as the VTS helper).
+          # - "latest_android_media_audio_common_types_import_interface"
+          #   + "latest_android_media_soundtrigger_types_import_interface"
+          #   (used in `defaults:` of the aidl_interface modules in
+          #   hardware/interfaces/audio/aidl + soundtrigger/aidl) are
+          #   defined in frameworks/av (unsynced, gigabytes). The audio +
+          #   soundtrigger AIDL trees are unrelated to the lights HAL, so
+          #   both subtrees are PRUNED whole (pruning only the aidl dirs
+          #   would leave sibling dirs referencing the same modules).
           #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
@@ -411,11 +450,20 @@ jobs:
           # errors for it), same soong_config_variables block. The stub
           # lives in yuzora-stubs/ at the tree root, next to the other
           # build-only stubs.
+          echo "=== prune targets present before rm ==="
+          ls -d hardware/samsung/doze hardware/samsung/dap \
+            hardware/samsung/aidl/codec2 hardware/interfaces/audio \
+            hardware/interfaces/soundtrigger \
+            hardware/google/interfaces/bluetooth/*/aidl/vts 2>/dev/null || true
+          find hardware/interfaces hardware/google/interfaces -type d -name vts 2>/dev/null || true
           rm -rf hardware/samsung/doze hardware/samsung/dap
           rm -rf hardware/samsung/aidl/codec2
           rm -rf hardware/google/interfaces/bluetooth/*/aidl/vts
+          rm -rf hardware/interfaces/audio hardware/interfaces/soundtrigger
+          find hardware/interfaces hardware/google/interfaces -type d -name vts -exec rm -rf {} + 2>/dev/null || true
           for d in hardware/samsung/doze hardware/samsung/dap \
-            hardware/samsung/aidl/codec2; do
+            hardware/samsung/aidl/codec2 hardware/interfaces/audio \
+            hardware/interfaces/soundtrigger; do
             if [ -e "$d" ]; then
               echo "::error::prune failed — still present: $d"
               exit 1
@@ -425,11 +473,15 @@ jobs:
             echo "::error::prune failed — a bluetooth VTS dir survived"
             exit 1
           fi
+          if find hardware/interfaces hardware/google/interfaces -type d -name vts 2>/dev/null | grep -q .; then
+            echo "::error::prune failed — a VTS dir survived"
+            exit 1
+          fi
           echo "Unneeded subtrees pruned."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
-          // Stub — see the "Prune unneeded subtrees + stub
-          // apex-lowest-min-sdk-version" step in
+          // Stub — see the "Prune unneeded subtrees + stub missing
+          // defaults" step in
           // .github/workflows/build-lights-hal.yml (run #36 fix).
           // Verbatim replica of the "apex-lowest-min-sdk-version"
           // definition from packages/modules/common/sdk/Android.bp
@@ -461,12 +513,48 @@ jobs:
                   },
               },
           }
+
+          // use_libaidlvintf_gtest_helper_static (runs #38/#39 fix):
+          // empty cc_defaults stub for the VTS-test helper defined in
+          // system/libvintf/libaidlvintf_test_helper/Android.bp (AOSP r32,
+          // unsynced — its static_libs chain needs libz + libselinux).
+          // Referenced by VTS target tests across hardware/interfaces and
+          // hardware/google/interfaces (bluetooth + automotive/ivn in runs
+          // #36/#38/#39). VTS tests are never built for this HAL-only
+          // target, so only the NAME has to exist for Soong's parse.
+          cc_defaults {
+              name: "use_libaidlvintf_gtest_helper_static",
+              // Public on purpose: VTS tests referencing this helper live
+              // all over hardware/interfaces + hardware/google/interfaces,
+              // and more may surface on later runs — a restricted list
+              // would turn an unknown user into a visibility error.
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          // neuralnetworks_utils_defaults (run #38 fix): empty cc_defaults
+          // stub. Referenced by hardware/interfaces/neuralnetworks/utils/
+          // {common,adapter/hidl}; NN utils are unrelated to the lights HAL
+          // and never built here, so only the NAME has to exist.
+          cc_defaults {
+              name: "neuralnetworks_utils_defaults",
+              // Public on purpose (see the VTS helper stub above): the
+              // known users are the NN utils dirs, but an unknown user
+              // elsewhere must not turn into a visibility error.
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
-          grep -q "apex-lowest-min-sdk-version" yuzora-stubs/Android.bp \
-            || { echo "::error::apex-lowest-min-sdk-version stub missing after creation"; exit 1; }
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults; do
+            grep -q "$stub" yuzora-stubs/Android.bp \
+              || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
           grep -q "library_linking_strategy_cc_defaults" yuzora-stubs/Android.bp \
             || { echo "::error::stub does not use library_linking_strategy_cc_defaults"; exit 1; }
           echo "apex-lowest-min-sdk-version stub created."
+          echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
 
       - name: Build lights HAL
         working-directory: lights-build
@@ -487,6 +575,32 @@ jobs:
           # configs live in build/release, added to the manifest by the
           # same fix) and userdebug is the variant.
           lunch yuzora_lights-trunk_staging-userdebug
+          # Pre-build guard (run #39 anomaly): run #39 failed on doze/dap/
+          # VTS/libutils errors although the prune step verified those paths
+          # deleted. Re-verify immediately before `m`: if THIS fails, the
+          # files re-appeared between steps. If this passes and Soong still
+          # errors on those paths, Soong is not reading the live tree.
+          for d in hardware/samsung/doze hardware/samsung/dap \
+            hardware/samsung/aidl/codec2 hardware/interfaces/audio \
+            hardware/interfaces/soundtrigger; do
+            if [ -e "$d" ]; then
+              echo "::error::pre-build guard: pruned path present at build time: $d"
+              exit 1
+            fi
+          done
+          if ls -d hardware/google/interfaces/bluetooth/*/aidl/vts >/dev/null 2>&1; then
+            echo "::error::pre-build guard: bluetooth VTS dir present at build time"
+            exit 1
+          fi
+          if find hardware/interfaces hardware/google/interfaces -type d -name vts 2>/dev/null | grep -q .; then
+            echo "::error::pre-build guard: VTS dir present at build time"
+            exit 1
+          fi
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults; do
+            grep -q "$stub" yuzora-stubs/Android.bp \
+              || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          echo "Pre-build guard passed: pruned paths absent, stubs present."
           # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
           # dep must fail here, not be silently skipped.
           m -j"$(nproc)" android.hardware.light-service.samsung 2>&1 | tee build-lights.log
