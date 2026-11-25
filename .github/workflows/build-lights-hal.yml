@@ -646,6 +646,43 @@ jobs:
           # is PRUNED. The prune-step stub check and the pre-build guard
           # both verify the new stubs (and the dummy source) and the
           # absence of libnativehelper/tests_mts.
+      # Runs #51 (45618322499, 14m28s) / #52 (45618463477, 14m11s) /
+      # #53 (45619867686, 14m02s) — all three FAILED at Soong
+      # ninja-file generation, 31s (#51) / 33s (#52) / 41s (#53) into
+      # the build step, with the SAME single error:
+      # "frameworks/native/libs/renderengine/Android.bp:118:1:
+      # "librenderengine_deps" depends on undefined module
+      # "skia_renderengine_deps"". The #48/#49/#50 fix HELD
+      # completely (no power/graphics -ndk_* or hintmanager errors
+      # in any of the three runs). The new error is one layer
+      # further out, in frameworks/native/libs/renderengine — same
+      # failure shape, same cause: Soong validates every `defaults:`
+      # and `static_libs:` reference in every parsed .bp file, and
+      # these two modules have no definition in the synced tree:
+      # - "skia_renderengine_deps" (used in `defaults:` by
+      #   librenderengine_deps, a cc_defaults in
+      #   frameworks/native/libs/renderengine/Android.bp) is a
+      #   cc_defaults in external/skia/Android.bp (lines 4129-4193,
+      #   LineageOS lineage-22.2).
+      # - "libskia_renderengine" (used in `static_libs:` by the same
+      #   librenderengine_deps) is a cc_library_static in
+      #   external/skia/Android.bp (lines 280-288). external/skia is
+      #   NOT synced: syncing it would cascade (libpng, libz,
+      #   libarect, libperfetto, EGL/GLESv2/vulkan, the whole Skia
+      #   tree) for a RenderEngine the HAL never needs.
+      # Fix, same established pattern as #36/#39/#46 (stub, don't
+      # sync; NO new projects, still 32): BOTH are STUBBED below —
+      # skia_renderengine_deps as an empty cc_defaults (used in
+      # `defaults:`) and libskia_renderengine as an empty
+      # cc_library_static with the dummy source (used in
+      # `static_libs:`, same form as the hintmanager stub).
+      # librenderengine is never built here (not in the HAL
+      # closure), so the empty lib never links into anything.
+      # Stub BOTH, not just the reported one: Soong reports the
+      # first undefined dep per module (defaults before
+      # static_libs), so the static_libs dep would surface on the
+      # next run. The prune-step stub check and the pre-build guard
+      # both verify the new stubs.
           #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
@@ -988,15 +1025,51 @@ jobs:
                   "//visibility:public",
               ],
           }
+
+          // Runs #51/#52/#53 fix: `librenderengine_deps` (cc_defaults in
+          // frameworks/native/libs/renderengine/Android.bp) has
+          // `defaults: ["skia_renderengine_deps"]` and
+          // `static_libs: ["libskia_renderengine"]`. Both are defined in
+          // external/skia/Android.bp (LineageOS lineage-22.2:
+          // skia_renderengine_deps = cc_defaults, lines 4129-4193;
+          // libskia_renderengine = cc_library_static, lines 280-288) —
+          // an unsynced project. Syncing external/skia would cascade
+          // (libpng, libz, libarect, libperfetto, EGL/GLESv2/vulkan,
+          // the whole Skia tree) for a RenderEngine the HAL never
+          // needs, so stub both. skia_renderengine_deps is used in
+          // `defaults:`, so it is a cc_defaults; libskia_renderengine
+          // is used in `static_libs:`, so it is an (empty)
+          // cc_library_static with the dummy source created below —
+          // same form as the hintmanager stub. librenderengine is
+          // never built here (not in the HAL closure), so the empty
+          // lib never links into anything. Stub BOTH, not just the
+          // reported one: Soong reports the first undefined dep per
+          // module (defaults before static_libs), so the static_libs
+          // dep would surface on the next run.
+          cc_defaults {
+              name: "skia_renderengine_deps",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_library_static {
+              name: "libskia_renderengine",
+              srcs: ["empty.c"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
-          # Dummy source for the android.os.hintmanager_aidl-ndk stub
-          # above: a cc_library_static needs at least one source file.
+          # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
+          # libskia_renderengine stub (runs #51/#52/#53 fix): a cc_library_static
+          # needs at least one source file.
           printf '/* Stub source — see the runs #48/#49/#50 comment above. */\nint yuzora_stub_empty;\n' > yuzora-stubs/empty.c
           test -f yuzora-stubs/empty.c \
             || { echo "::error::stub source missing after creation: yuzora-stubs/empty.c"; exit 1; }
 
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
@@ -1006,6 +1079,7 @@ jobs:
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
+      echo "runs #51/#52/#53 stubs created: skia_renderengine_deps + libskia_renderengine (+ empty.c)."
 
       - name: Build lights HAL
         working-directory: lights-build
@@ -1078,7 +1152,7 @@ jobs:
           fi
           test -f yuzora-stubs/empty.c \
             || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.c"; exit 1; }
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
