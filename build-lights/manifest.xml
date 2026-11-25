@@ -375,7 +375,32 @@ reports the first undefined dep per module (defaults before
 static_libs), so the static_libs dep would surface on the next
 run. NO new projects: project count stays 32. -->
 
-  <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
+  <!-- Run #58 (45650805099, 15m35s) — FAILED at Soong ninja-file
+generation, 40s into the build step, with 2 "depends on undefined
+module" errors, both in system/apex/apexd/apexd_testdata/Android.bp:
+"test_framework-apexd" depends on undefined module
+"framework-module-defaults" (line 597) and "test_service-apexd"
+depends on undefined module "framework-system-server-module-defaults"
+(line 613). The #51/#52/#53 fix HELD completely (no
+skia_renderengine_deps errors) and the #48/#49/#50 fix HELD. The new
+errors are one layer further out, in system/apex — same failure shape,
+same cause: Soong validates every `defaults:` reference in every parsed
+.bp file, and these two modules have no definition in the synced tree.
+test_framework-apexd + test_service-apexd are java_sdk_library test
+modules in system/apex/apexd/apexd_testdata/Android.bp (prebuilt apexd
+test data); framework-module-defaults +
+framework-system-server-module-defaults are java_defaults in
+frameworks/base (unsynced, not among the 32 manifest projects). Do NOT
+prune the testdata dir: the KEPT system/apex/apexd/Android.bp
+references its modules (eight java_genrule `srcs:
+[":apex.apexd_test..."]` entries + the ApexTestCases +
+ApexServiceTestCases cc_test `data:` lists), so pruning would CREATE new
+undefined-module errors. Fix, same established pattern as #36/#39/#46
+(stub, don't sync): the workflow STUBS both as empty java_defaults in
+yuzora-stubs/Android.bp (public visibility — the referencers are
+java_sdk_library modules, so java_defaults, NOT cc_defaults). NO new
+projects: project count stays 32. -->
+<!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
   <project path="external/fmtlib" name="platform/external/fmtlib" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
