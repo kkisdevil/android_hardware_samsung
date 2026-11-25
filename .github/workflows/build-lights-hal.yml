@@ -989,10 +989,7 @@ jobs:
           # static_libs: / libs: (and now aidl imports: / headers:). Do
           # not chase them unless a run reports one (same standing rule as
           # sensorservice, dumpstate, healthd). NO new projects, still 32.
-          
-          
           echo "=== trees before prune (for forensics) ==="
-        
           ls -d hardware/interfaces/*/ 2>/dev/null | sort
           ls -d hardware/google/interfaces/*/ 2>/dev/null | sort
           ls -d hardware/google/pixel/*/ 2>/dev/null | sort
@@ -1160,7 +1157,7 @@ jobs:
           fi
           echo "Unneeded subtrees pruned."
           echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
-          echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats.": hardware/interfaces/common/aidl + input/common/aidl."
+          echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
