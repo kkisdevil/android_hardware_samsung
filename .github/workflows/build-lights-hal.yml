@@ -102,7 +102,7 @@ jobs:
             prebuilts/build-tools prebuilts/go/linux-x86 \
             prebuilts/clang/host/linux-x86 toolchain/pgo-profiles \
             bionic system/libbase system/logging system/core \
-            frameworks/native hardware/interfaces system/tools/aidl system/tools/hidl \
+            frameworks/native hardware/interfaces system/tools/aidl system/tools/hidl system/tools/xsdc \
             external/fmtlib external/googletest external/golang-protobuf external/starlark-go external/go-cmp \
             libnativehelper \
             system/apex prebuilts/rust external/rust/android-crates-io \
@@ -118,7 +118,7 @@ jobs:
             echo "::error::sync incomplete — missing:$MISSING"
             exit 1
           fi
-          echo "All 31 manifest projects present."
+          echo "All 32 manifest projects present."
           # The two files the whole build hinges on:
           test -f build/make/core/config.mk || { echo "::error::build/make/core/config.mk missing"; exit 1; }
           grep -q "define soong_config_set" build/make/core/config.mk \
@@ -173,7 +173,7 @@ jobs:
             || { echo "::error::external/spdx-tools/json/Android.bp missing — check the spdx-tools pin"; exit 1; }
           test -f external/spdx-tools/spdxlib/Android.bp \
             || { echo "::error::external/spdx-tools/spdxlib/Android.bp missing — check the spdx-tools pin"; exit 1; }
-                    # Soong needs the HIDL plugin: without system/tools/hidl the
+          # Soong needs the HIDL plugin: without system/tools/hidl the
           # ninja-file generation dies with 'unrecognized module type
           # "hidl_interface"' (and "hidl_package_root") (run #30,
           # 45546989363) — the hidl_interface/hidl_package_root types are
@@ -183,6 +183,15 @@ jobs:
             || { echo "::error::hidl-soong-rules not in system/tools/hidl/build/Android.bp — check the system/tools/hidl pin"; exit 1; }
           grep -q "hidl_interface" system/tools/hidl/build/hidl_interface.go \
             || { echo "::error::hidl_interface not registered in system/tools/hidl/build/hidl_interface.go — check the system/tools/hidl pin"; exit 1; }
+          # Soong needs the xsdc plugin: without system/tools/xsdc the
+          # ninja-file generation dies with 'unrecognized module type
+          # "xsd_config"' (run #33, 45555113229) — the xsd_config type is
+          # registered only by the xsdc-soong-rules plugin in
+          # system/tools/xsdc/build/.
+          grep -q "xsdc-soong-rules" system/tools/xsdc/build/Android.bp \
+            || { echo "::error::xsdc-soong-rules not in system/tools/xsdc/build/Android.bp — check the system/tools/xsdc pin"; exit 1; }
+          grep -q "xsd_config" system/tools/xsdc/build/xsdc.go \
+            || { echo "::error::xsd_config not registered in system/tools/xsdc/build/xsdc.go — check the system/tools/xsdc pin"; exit 1; }
           echo "Sync verification passed."
 
       - name: Install device files from manifest repo
