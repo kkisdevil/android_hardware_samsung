@@ -772,6 +772,98 @@ jobs:
           # satisfy Soong's parse. The prune-step check and the
           # pre-build guard both verify the two new files.
           #
+          # Runs #62 (45679873126, 14m12s) / #63 (45680352968, 10m54s) /
+          # #64 (45680503436, 15m26s) — all three FAILED at Soong
+          # ninja-file generation, 32-34s into the build step, with
+          # "depends on undefined module" errors ALL in
+          # build/soong/java/core-libraries/Android.bp — one layer
+          # further out, in Soong's own core-libraries definitions.
+          # The #61 fix HELD completely in all three runs: the prune
+          # step copied test-current.txt + test-removed.txt (checks
+          # passed), the pre-build guard passed, and NO test-current
+          # errors appeared. #62/#63 reported the same 6 errors;
+          # #64 reported those 6 PLUS 2 more for
+          # "core-lambda-stubs-for-system-modules" (stable/legacy
+          # system-modules) — same subset-reporting lesson as
+          # #38/#39/#48/#49/#50, so the stubs below cover the
+          # COMPLETE layer, not the reported subset: every `libs:`
+          # entry of every java_system_modules module in that file
+          # whose definition is not in the synced tree.
+          # The 8 errors (7 distinct modules), all of the form
+          # "X depends on undefined module Y" where X is a
+          # java_system_modules in
+          # build/soong/java/core-libraries/Android.bp:
+          # - "art-module-public-api-stubs-system-modules" (line 428)
+          #   -> "art.module.public.api.stubs",
+          #   "core-module-lib-stubs-for-system-modules",
+          #   "art.module.api.annotations.for.system.modules"
+          # - "art-module-lib-api-stubs-system-modules" (line 453)
+          #   -> "art.module.public.api.stubs.module_lib"
+          # - "art-module-intra-core-api-stubs-system-modules"
+          #   (line 466) -> "art.module.intra.core.api.stubs",
+          #   "art-module-intra-core-api-stubs-system-modules-lib"
+          # - "legacy-core-platform-api-stubs-system-modules"
+          #   (line 399) + "stable-core-platform-api-stubs-system-modules"
+          #   (line 410) -> "core-lambda-stubs-for-system-modules"
+          # (line numbers are Soong's, from the run logs.)
+          # Root cause: the seven modules are the ART core-library
+          # stub libraries (java_library) defined in the unsynced
+          # core-library projects (libcore / art) — verified live at
+          # LineageOS lineage-22.2: "core-lambda-stubs-for-system-modules"
+          # and "art.module.api.annotations.for.system.modules" are
+          # java_library in libcore/JavaLibrary.bp, and
+          # "core-module-lib-stubs-for-system-modules" is java_library
+          # in build/soong/java/core-libraries/Android.bp itself at
+          # the lineage-22.2 tip and at AOSP android-15.0.0_r32.
+          # Syncing libcore (or art) is wrong: libcore alone is
+          # hundreds of MB whose own .bp files reference
+          # frameworks/base, external/conscrypt, external/icu and
+          # more unsynced projects — it would cascade, for stub jars
+          # the C++-only HAL never builds. The five
+          # java_system_modules above are the system-modules
+          # definitions the Java toolchain uses to compile against
+          # the core libraries; the HAL never builds them, so only
+          # the NAMES have to exist for Soong's parse.
+          # Fix, same established pattern as #36/#39/#46 (stub, don't
+          # sync; NO new projects, still 32): all seven are STUBBED
+          # below as empty java_library (public visibility — the
+          # referencers live in build/soong/java/core-libraries, a
+          # different package from yuzora-stubs; the stubs are
+          # java_library, NOT cc_defaults/java_defaults, because the
+          # referencers use them in `libs:` of java_system_modules).
+          # Each stub carries a dummy source (Empty.java, created
+          # below) and hermetic sdk_version "none" + system_modules
+          # "none", so it can never drag in an SDK dep if built.
+          # NOTE — "core-module-lib-stubs-for-system-modules" is
+          # stubbed CONDITIONALLY (see the block after the heredoc):
+          # it IS defined in build/soong/java/core-libraries/Android.bp
+          # at the lineage-22.2 tip and at AOSP r32, yet runs
+          # #62/#63/#64 all report it undefined — so the tree the
+          # runners sync evidently does not carry that definition
+          # (an older revision of the file, in which the
+          # art-module-public-api-stubs-system-modules libs list
+          # names it instead of core-lambda-stubs-for-system-modules).
+          # An unconditional stub would be a DUPLICATE module
+          # definition on a tree that DOES define it, so the stub is
+          # created only if the synced file has no
+          # `name: "core-module-lib-stubs-for-system-modules"` line,
+          # and the stub check + pre-build guard accept the module
+          # from EITHER place.
+          # NOTE — the same file also references conscrypt/i18n
+          # public + exportable + platform stubs, stub-annotations
+          # and *.source.*.api.contribution modules (all in unsynced
+          # libcore / external/conscrypt / external/icu) — but those
+          # are deps of java_library / java_api_library /
+          # java_defaults modules (core.current.stubs, the
+          # *.exportable stubs, core.current.stubs.from-text) that
+          # are never built for this HAL-only target, and NONE of
+          # them surfaced in any of the three runs, while the
+          # java_system_modules deps surfaced consistently. They
+          # are NOT stubbed here; if a later run reports one, stub
+          # it then (api_contributions need java_api_contribution
+          # stubs, not java_library — do NOT stub those as
+          # java_library).
+          #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
           # libutils_impl_defaults), and libutils IS in the HAL closure
@@ -1175,6 +1267,81 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #62/#63/#64 fix: the ART core-library stub
+          // libraries (see the comment block at the top of this
+          // step). All seven are used in `libs:` by the
+          // java_system_modules in
+          // build/soong/java/core-libraries/Android.bp, so the
+          // stubs are empty java_library with a dummy source
+          // (Empty.java, created below) — NOT cc_defaults or
+          // java_defaults. The system-modules targets are never
+          // built for this HAL-only target, so only the NAMES
+          // have to exist for Soong's parse. Public visibility
+          // on purpose: the referencers live in
+          // build/soong/java/core-libraries, a different package
+          // from yuzora-stubs. (The seventh module is handled by
+          // the conditional block after the heredoc — it is NOT
+          // in this list, so the stub check below stays meaningful.)
+
+          java_library {
+              name: "art.module.public.api.stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          java_library {
+              name: "art.module.public.api.stubs.module_lib",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          java_library {
+              name: "art.module.intra.core.api.stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          java_library {
+              name: "art-module-intra-core-api-stubs-system-modules-lib",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          java_library {
+              name: "art.module.api.annotations.for.system.modules",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          java_library {
+              name: "core-lambda-stubs-for-system-modules",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -1183,8 +1350,42 @@ jobs:
           printf '/* Stub source — see the runs #48/#49/#50 comment above. */\nint yuzora_stub_empty;\n' > yuzora-stubs/empty.c
           test -f yuzora-stubs/empty.c \
             || { echo "::error::stub source missing after creation: yuzora-stubs/empty.c"; exit 1; }
+          # Dummy source for the runs #62/#63/#64 java_library stubs
+          # above: a java_library stub needs at least one source file.
+          # (The cc stubs above use empty.c for the same reason.)
+          # The file must be named Empty.java: javac requires a public
+          # class to live in a file of the same name.
+          printf '// Stub source — see the runs #62/#63/#64 comment above.\npackage yuzora.stubs;\npublic class Empty {\n}\n' > yuzora-stubs/Empty.java
+          test -f yuzora-stubs/Empty.java \
+            || { echo "::error::stub source missing after creation: yuzora-stubs/Empty.java"; exit 1; }
+          # Runs #62/#63/#64 fix, conditional part: see the comment
+          # block at the top of this step. The synced
+          # build/soong/java/core-libraries/Android.bp is checked
+          # for a `name: "core-module-lib-stubs-for-system-modules"`
+          # definition line — a bare-name grep would also match
+          # the `libs:` reference, so the `name:` prefix is required.
+          # If the definition exists, no stub is created (an
+          # unconditional stub would be a duplicate module). If it
+          # does not exist, the stub is appended to the file the
+          # heredoc above just created.
+          if grep -q 'name: "core-module-lib-stubs-for-system-modules"' build/soong/java/core-libraries/Android.bp; then
+            echo "core-module-lib-stubs-for-system-modules already defined in synced build/soong — no stub needed."
+          else
+            cat >> yuzora-stubs/Android.bp <<'EOF'
+          java_library {
+              name: "core-module-lib-stubs-for-system-modules",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          EOF
+            echo "core-module-lib-stubs-for-system-modules stub created (not defined in synced build/soong)."
+          fi
 
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
@@ -1196,6 +1397,20 @@ jobs:
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
           echo "runs #51/#52/#53 stubs created: skia_renderengine_deps + libskia_renderengine (+ empty.c)."
           echo "run #58 stubs created: framework-module-defaults + framework-system-server-module-defaults (empty java_defaults)."
+          echo "runs #62/#63/#64 stubs created: art.module.public.api.stubs (+.module_lib), art.module.intra.core.api.stubs (+ -lib), art.module.api.annotations.for.system.modules, core-lambda-stubs-for-system-modules (empty java_library + Empty.java)."
+          # core-module-lib-stubs-for-system-modules (runs #62/#63/#64):
+          # the stub is created conditionally above, so it must exist
+          # in EITHER yuzora-stubs/Android.bp (stub created) OR the
+          # synced build/soong/java/core-libraries/Android.bp
+          # (defined upstream). Anything else is a real failure.
+          if grep -q "core-module-lib-stubs-for-system-modules" yuzora-stubs/Android.bp; then
+            echo "core-module-lib-stubs-for-system-modules stub created in yuzora-stubs."
+          elif grep -q 'name: "core-module-lib-stubs-for-system-modules"' build/soong/java/core-libraries/Android.bp; then
+            echo "core-module-lib-stubs-for-system-modules already defined in synced build/soong — no stub needed."
+          else
+            echo "::error::core-module-lib-stubs-for-system-modules defined nowhere (neither yuzora-stubs nor synced build/soong)"
+            exit 1
+          fi
           # Run #61 fix: the two "test"-scope API files (see the run #61
           # comment above) — copied from the existing scope files, which
           # carry exactly the API update-api would generate for them.
@@ -1280,10 +1495,23 @@ jobs:
           fi
           test -f yuzora-stubs/empty.c \
             || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.c"; exit 1; }
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults; do
+          test -f yuzora-stubs/Empty.java \
+            || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/Empty.java"; exit 1; }
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
+          # core-module-lib-stubs-for-system-modules (runs #62/#63/#64):
+          # created conditionally in the prune step — it must exist in
+          # EITHER place at build time (see the prune-step comment).
+          if grep -q "core-module-lib-stubs-for-system-modules" yuzora-stubs/Android.bp; then
+            echo "pre-build guard: core-module-lib-stubs-for-system-modules stub present."
+          elif grep -q 'name: "core-module-lib-stubs-for-system-modules"' build/soong/java/core-libraries/Android.bp; then
+            echo "pre-build guard: core-module-lib-stubs-for-system-modules defined in synced build/soong."
+          else
+            echo "::error::pre-build guard: core-module-lib-stubs-for-system-modules defined nowhere"
+            exit 1
+          fi
           # Run #61 fix: the two apexs test API files (see the run #61
           # comment in the prune step) must still exist at build time.
           for api in system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt system/apex/apexd/apexd_testdata/apis_for_tests/test-removed.txt; do
