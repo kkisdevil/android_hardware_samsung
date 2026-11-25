@@ -257,6 +257,31 @@ jobs:
                   _get_build_var_cached TARGET_DEVICE > /dev/null
               # hide successful answers, but allow the errors to show
           }
+          
+          # fixup_common_out_dir (verbatim from LineageOS vendor/lineage/build/envsetup.sh;
+          # run #23 fix): _lunch_meat() calls fixup_common_out_dir (build/envsetup.sh
+          # line 559) and it is defined ONLY in the real vendor envsetup.sh — without
+          # it lunch dies with "fixup_common_out_dir: command not found" (exit 127),
+          # 7s into the build step. It (re)creates out/target/common;
+          # LINEAGE_FIXUP_COMMON_OUT is unset here, so it takes the plain mkdir branch.
+          function fixup_common_out_dir() {
+              common_out_dir=$(_get_build_var_cached OUT_DIR)/target/common
+              target_device=$(_get_build_var_cached TARGET_DEVICE)
+              common_target_out=common-${target_device}
+              if [ ! -z $LINEAGE_FIXUP_COMMON_OUT ]; then
+                  if [ -d ${common_out_dir} ] && [ ! -L ${common_out_dir} ]; then
+                      mv ${common_out_dir} ${common_out_dir}-${target_device}
+                      ln -s ${common_target_out} ${common_out_dir}
+                  else
+                      [ -L ${common_out_dir} ] && rm ${common_out_dir}
+                      mkdir -p ${common_out_dir}-${target_device}
+                      ln -s ${common_target_out} ${common_out_dir}
+                  fi
+              else
+                  [ -L ${common_out_dir} ] && rm ${common_out_dir}
+                  mkdir -p ${common_out_dir}
+              fi
+          }
           EOF
           test -f vendor/lineage/build/envsetup.sh \
             || { echo "::error::stub vendor/lineage/build/envsetup.sh missing after creation"; exit 1; }
