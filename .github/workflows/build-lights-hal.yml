@@ -291,7 +291,7 @@ jobs:
                   LINEAGE_BUILD=
               fi
               export LINEAGE_BUILD
-          
+
                   TARGET_PRODUCT=$1 \
                   TARGET_RELEASE=$2 \
                   TARGET_BUILD_VARIANT= \
@@ -433,6 +433,62 @@ jobs:
           #   both subtrees are PRUNED whole (pruning only the aidl dirs
           #   would leave sibling dirs referencing the same modules).
           #
+          # Run #42 (45575623402, 12m22s, build step 26s) + run #41
+          # (45575497369, 18m36s, same code ec2a379, also FAILED) proved the
+          # class-level fix above was still too narrow: 4 NEW undefined-module
+          # errors, all in hardware/interfaces, none of them in the
+          # #36/#38/#39 sets — "latest_android_hardware_audio_common_import_interface"
+          # (hardware/interfaces/bluetooth/audio/aidl + automotive/audiocontrol/aidl),
+          # "vhalclient_defaults" (hardware/interfaces/automotive/remoteaccess/hal/default)
+          # and "latest_android_media_audio_common_types_import_interface"
+          # (hardware/interfaces/automotive/audiocontrol/aidl). The #38/#39
+          # fix itself HELD: the pre-build guard passed and Soong reported
+          # NONE of the #36/#38/#39 errors again — so the run #39 anomaly is
+          # RESOLVED (Soong reads the live tree; the files did not re-appear
+          # and the prune is not the problem). The errors are genuinely new
+          # dirs, one layer further out: Soong parses EVERY .bp file in the
+          # synced tree, and hardware/interfaces is FULL of .bp files
+          # referencing modules defined in unsynced frameworks/av and
+          # frameworks/hardware/interfaces. Pruning one subtree per run is
+          # the same whack-a-mole at a coarser grain — so this step now
+          # prunes by CLOSURE, not by error list: the HAL needs exactly ONE
+          # dir from each hardware tree, and everything else goes.
+          #
+          # What the HAL actually needs (traced file by file, README.md):
+          # - hardware/interfaces/light/aidl ONLY: the aidl_interface
+          #   android.hardware.light (versions 1+2, both with empty imports,
+          #   no `defaults:` — verified live at LineageOS lineage-22.2), whose
+          #   V2-ndk target the HAL links. Its 2.0/ HIDL dir and utils/
+          #   (blank_screen) are NOT in the closure, so they are pruned too.
+          #   The root hardware/interfaces/Android.bp STAYS: it defines
+          #   hidl_package_root "android.hardware" and the
+          #   hardware_interfaces_license module that light/aidl's
+          #   default_applicable_licenses needs.
+          # - hardware/interfaces/compatibility_matrices whole: it registers
+          #   the vintf-compatibility-matrix-soong-rules plugin (run #27 —
+          #   its deps kernel-config-soong-rules + soong-selinux + spdx-tools
+          #   are synced). Pruning it would un-register a module type other
+          #   .bp files may use; it is data + a plugin, so it stays.
+          # - hardware/google/interfaces + hardware/google/pixel: NOTHING
+          #   except their root Android.bp files. The fork's root .bp only
+          #   imports their NAMESPACES (soong_namespace); no module in the
+          #   closure references anything under them. All subdirs pruned.
+          # - hardware/samsung/aidl/light ONLY: the HAL itself. The other
+          #   aidl/* dirs (camera, fingerprint, health, memtrack, powershare,
+          #   sensors, touch, usb, vibrator — verified live at lineage-22.2)
+          #   reference android.hardware.*-ndk modules from
+          #   hardware/interfaces/*, so pruning hardware/interfaces WITHOUT
+          #   pruning them would CREATE new undefined-module errors. Same for
+          #   the top-level fork dirs (AdvancedDisplay, fingerprint, hidl,
+          #   interfaces, ril, sensors, vintf, dtbhtool, loki_tool,
+          #   rebalance_interrupts): all unrelated to the lights HAL, all
+          #   referencing pruned interface modules. They all go. Kept from
+          #   the fork: aidl/light, the root Android.bp (+ mkbootimg.mk etc.)
+          #   and build-lights/ (no .bp files in it — inert for Soong).
+          # The stubs below (apex-lowest-min-sdk-version + the two empty
+          # cc_defaults) stay: libutils still needs the apex stub, and the
+          # VTS/NN stubs cost nothing now that their users are pruned.
+          #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
           # libutils_impl_defaults), and libutils IS in the HAL closure
@@ -450,31 +506,80 @@ jobs:
           # errors for it), same soong_config_variables block. The stub
           # lives in yuzora-stubs/ at the tree root, next to the other
           # build-only stubs.
-          echo "=== prune targets present before rm ==="
-          ls -d hardware/samsung/doze hardware/samsung/dap \
-            hardware/samsung/aidl/codec2 hardware/interfaces/audio \
-            hardware/interfaces/soundtrigger \
-            hardware/google/interfaces/bluetooth/*/aidl/vts 2>/dev/null || true
-          find hardware/interfaces hardware/google/interfaces -type d -name vts 2>/dev/null || true
-          rm -rf hardware/samsung/doze hardware/samsung/dap
-          rm -rf hardware/samsung/aidl/codec2
-          rm -rf hardware/google/interfaces/bluetooth/*/aidl/vts
-          rm -rf hardware/interfaces/audio hardware/interfaces/soundtrigger
-          find hardware/interfaces hardware/google/interfaces -type d -name vts -exec rm -rf {} + 2>/dev/null || true
-          for d in hardware/samsung/doze hardware/samsung/dap \
-            hardware/samsung/aidl/codec2 hardware/interfaces/audio \
-            hardware/interfaces/soundtrigger; do
-            if [ -e "$d" ]; then
-              echo "::error::prune failed — still present: $d"
+          echo "=== trees before prune (for forensics) ==="
+          ls -d hardware/interfaces/*/ 2>/dev/null | sort
+          ls -d hardware/google/interfaces/*/ 2>/dev/null | sort
+          ls -d hardware/google/pixel/*/ 2>/dev/null | sort
+          ls -d hardware/samsung/*/ 2>/dev/null | sort
+          ls -d hardware/samsung/aidl/*/ 2>/dev/null | sort
+          # hardware/interfaces: keep ONLY light/aidl (the HAL's AIDL
+          # interface) + compatibility_matrices (the vintf plugin, run #27).
+          # light/2.0 + light/utils are pruned too — not in the closure.
+          # The root Android.bp (hidl_package_root + license) stays: the
+          # loop below touches directories only, never files.
+          for d in hardware/interfaces/*/; do
+            case "$d" in
+              hardware/interfaces/light/|hardware/interfaces/compatibility_matrices/) ;;
+              *) rm -rf "$d" ;;
+            esac
+          done
+          rm -rf hardware/interfaces/light/2.0 hardware/interfaces/light/utils
+          # hardware/google/interfaces + hardware/google/pixel: keep only
+          # the root Android.bp files (namespace imports); prune all subdirs.
+          for d in hardware/google/interfaces/*/ hardware/google/pixel/*/; do
+            rm -rf "$d"
+          done
+          # hardware/samsung: keep ONLY aidl/light. build-lights/ stays
+          # (no .bp files in it — inert for Soong); everything else goes,
+          # including the previously pruned doze/dap/codec2 (no-op if gone).
+          for d in hardware/samsung/*/; do
+            case "$d" in
+              hardware/samsung/aidl/|hardware/samsung/build-lights/) ;;
+              *) rm -rf "$d" ;;
+            esac
+          done
+          for d in hardware/samsung/aidl/*/; do
+            case "$d" in
+              hardware/samsung/aidl/light/) ;;
+              *) rm -rf "$d" ;;
+            esac
+          done
+          # Kept paths must still exist (the prune must not have eaten them).
+          for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
+            hardware/interfaces/compatibility_matrices \
+            hardware/interfaces/compatibility_matrices/build/Android.bp \
+            hardware/interfaces/Android.bp \
+            hardware/google/interfaces/Android.bp \
+            hardware/google/pixel/Android.bp \
+            hardware/samsung/aidl/light/Android.bp; do
+            if [ ! -e "$d" ]; then
+              echo "::error::prune removed a needed path: $d"
               exit 1
             fi
           done
-          if ls -d hardware/google/interfaces/bluetooth/*/aidl/vts >/dev/null 2>&1; then
-            echo "::error::prune failed — a bluetooth VTS dir survived"
+          # No other subdir may survive in any of the four trees.
+          LEFTOVER="$(find hardware/interfaces -mindepth 1 -maxdepth 1 -type d ! -name light ! -name compatibility_matrices)"
+          if [ -n "$LEFTOVER" ]; then
+            echo "::error::prune failed — hardware/interfaces leftovers:$LEFTOVER"
             exit 1
           fi
-          if find hardware/interfaces hardware/google/interfaces -type d -name vts 2>/dev/null | grep -q .; then
-            echo "::error::prune failed — a VTS dir survived"
+          if [ -n "$(find hardware/interfaces/light -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
+            echo "::error::prune failed — hardware/interfaces/light leftovers (only aidl may remain)"
+            exit 1
+          fi
+          LEFTOVER="$(find hardware/google/interfaces hardware/google/pixel -mindepth 1 -maxdepth 1 -type d)"
+          if [ -n "$LEFTOVER" ]; then
+            echo "::error::prune failed — hardware/google leftovers:$LEFTOVER"
+            exit 1
+          fi
+          LEFTOVER="$(find hardware/samsung -mindepth 1 -maxdepth 1 -type d ! -name aidl ! -name build-lights)"
+          if [ -n "$LEFTOVER" ]; then
+            echo "::error::prune failed — hardware/samsung leftovers:$LEFTOVER"
+            exit 1
+          fi
+          LEFTOVER="$(find hardware/samsung/aidl -mindepth 1 -maxdepth 1 -type d ! -name light)"
+          if [ -n "$LEFTOVER" ]; then
+            echo "::error::prune failed — hardware/samsung/aidl leftovers:$LEFTOVER"
             exit 1
           fi
           echo "Unneeded subtrees pruned."
@@ -575,25 +680,46 @@ jobs:
           # configs live in build/release, added to the manifest by the
           # same fix) and userdebug is the variant.
           lunch yuzora_lights-trunk_staging-userdebug
-          # Pre-build guard (run #39 anomaly): run #39 failed on doze/dap/
-          # VTS/libutils errors although the prune step verified those paths
-          # deleted. Re-verify immediately before `m`: if THIS fails, the
-          # files re-appeared between steps. If this passes and Soong still
-          # errors on those paths, Soong is not reading the live tree.
-          for d in hardware/samsung/doze hardware/samsung/dap \
-            hardware/samsung/aidl/codec2 hardware/interfaces/audio \
-            hardware/interfaces/soundtrigger; do
-            if [ -e "$d" ]; then
-              echo "::error::pre-build guard: pruned path present at build time: $d"
+          # Pre-build guard (run #39 anomaly, RESOLVED by run #42): run #39
+          # failed on doze/dap/VTS/libutils errors although the prune step
+          # verified those paths deleted. Run #42's guard passed and Soong
+          # reported NONE of those errors again — Soong reads the live tree,
+          # so the anomaly was new dirs, not re-appearing files. Re-verify
+          # immediately before `m` anyway: if THIS fails, something
+          # re-appeared between steps; if this passes and Soong still errors
+          # on a pruned path, the prune itself is not the problem.
+          # Kept paths must be present, and nothing else may survive in the
+          # four pruned trees (same checks as the prune step).
+          for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
+            hardware/interfaces/compatibility_matrices \
+            hardware/interfaces/compatibility_matrices/build/Android.bp \
+            hardware/interfaces/Android.bp \
+            hardware/google/interfaces/Android.bp \
+            hardware/google/pixel/Android.bp \
+            hardware/samsung/aidl/light/Android.bp; do
+            if [ ! -e "$d" ]; then
+              echo "::error::pre-build guard: kept path missing at build time: $d"
               exit 1
             fi
           done
-          if ls -d hardware/google/interfaces/bluetooth/*/aidl/vts >/dev/null 2>&1; then
-            echo "::error::pre-build guard: bluetooth VTS dir present at build time"
+          if [ -n "$(find hardware/interfaces -mindepth 1 -maxdepth 1 -type d ! -name light ! -name compatibility_matrices)" ]; then
+            echo "::error::pre-build guard: hardware/interfaces subdir present at build time (only light + compatibility_matrices may remain)"
             exit 1
           fi
-          if find hardware/interfaces hardware/google/interfaces -type d -name vts 2>/dev/null | grep -q .; then
-            echo "::error::pre-build guard: VTS dir present at build time"
+          if [ -n "$(find hardware/interfaces/light -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
+            echo "::error::pre-build guard: hardware/interfaces/light subdir present at build time (only aidl may remain)"
+            exit 1
+          fi
+          if [ -n "$(find hardware/google/interfaces hardware/google/pixel -mindepth 1 -maxdepth 1 -type d)" ]; then
+            echo "::error::pre-build guard: hardware/google subdir present at build time"
+            exit 1
+          fi
+          if [ -n "$(find hardware/samsung -mindepth 1 -maxdepth 1 -type d ! -name aidl ! -name build-lights)" ]; then
+            echo "::error::pre-build guard: hardware/samsung subdir present at build time (only aidl + build-lights may remain)"
+            exit 1
+          fi
+          if [ -n "$(find hardware/samsung/aidl -mindepth 1 -maxdepth 1 -type d ! -name light)" ]; then
+            echo "::error::pre-build guard: hardware/samsung/aidl subdir present at build time (only light may remain)"
             exit 1
           fi
           for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults; do
