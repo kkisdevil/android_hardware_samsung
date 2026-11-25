@@ -103,7 +103,7 @@ jobs:
             prebuilts/clang/host/linux-x86 toolchain/pgo-profiles \
             bionic system/libbase system/logging system/core \
             frameworks/native hardware/interfaces system/tools/aidl \
-            external/fmtlib external/googletest external/golang-protobuf external/starlark-go \
+            external/fmtlib external/googletest external/golang-protobuf external/starlark-go external/go-cmp \
             libnativehelper \
             system/apex prebuilts/rust external/rust/android-crates-io \
             hardware/google/pixel hardware/google/interfaces \
@@ -117,7 +117,7 @@ jobs:
             echo "::error::sync incomplete — missing:$MISSING"
             exit 1
           fi
-          echo "All 26 manifest projects present."
+          echo "All 27 manifest projects present."
           # The two files the whole build hinges on:
           test -f build/make/core/config.mk || { echo "::error::build/make/core/config.mk missing"; exit 1; }
           grep -q "define soong_config_set" build/make/core/config.mk \
@@ -149,6 +149,12 @@ jobs:
             # file or directory" (run #12).
             test -d external/starlark-go/starlark \
             || { echo "::error::external/starlark-go/starlark missing — check the starlark-go pin"; exit 1; }
+          # golang-protobuf's own .bp needs the go-cmp Go module: without
+          # external/go-cmp Soong bootstrap dies with
+          # "golang-protobuf-internal-order depends on undefined module
+          # \"go-cmp\"" (run #24, 45537619332).
+          test -d external/go-cmp/cmp \
+            || { echo "::error::external/go-cmp/cmp missing — check the go-cmp pin"; exit 1; }
           echo "Sync verification passed."
 
       - name: Install device files from manifest repo
