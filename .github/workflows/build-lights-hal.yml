@@ -489,6 +489,20 @@ jobs:
           # cc_defaults) stay: libutils still needs the apex stub, and the
           # VTS/NN stubs cost nothing now that their users are pruned.
           #
+          # Runs #43 (45581180606, 9m50s) / #44 (45581337665, 12m42s) /
+          # #45 (45581473427, 13m47s) — all three FAILED in 1s in THIS step,
+          # before the build ever ran: "prune failed — hardware/samsung
+          # leftovers: hardware/samsung/.github". The closure prune itself
+          # is therefore STILL UNTESTED by Soong. Cause: bash globs
+          # (`hardware/samsung/*/`) never match dot-directories, so the
+          # prune loops skipped hardware/samsung/.github — the fork repo
+          # itself, synced by `repo`, carries its .github dir (workflow
+          # YAML, no .bp files, inert for Soong) — while the `find`-based
+          # leftover checks below DO list hidden dirs, so they flagged it
+          # and killed the step. Fix: hidden top-level dirs are deleted
+          # explicitly below (before the leftover checks), in all four
+          # pruned trees.
+          #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
           # libutils_impl_defaults), and libutils IS in the HAL closure
@@ -544,6 +558,18 @@ jobs:
               *) rm -rf "$d" ;;
             esac
           done
+          # Hidden dirs (runs #43/#44/#45 fix — see the comment block
+          # above): the glob loops skip dot-directories, so delete
+          # top-level hidden dirs in all four pruned trees explicitly.
+          # `.git` is excluded: repo sync keeps it as a gitfile, and the
+          # "Verify built binary" step reads HEAD from it later. Nothing
+          # hidden is in the HAL closure — the kept paths are enumerated
+          # below — so deleting a hidden dir cannot eat a needed file.
+          echo "=== hidden top-level dirs (invisible to the glob loops) ==="
+          find hardware/interfaces hardware/google/interfaces hardware/google/pixel hardware/samsung hardware/samsung/aidl \
+            -mindepth 1 -maxdepth 1 -type d -name '.*' ! -name '.git' | sort
+          find hardware/interfaces hardware/google/interfaces hardware/google/pixel hardware/samsung hardware/samsung/aidl \
+            -mindepth 1 -maxdepth 1 -type d -name '.*' ! -name '.git' -exec rm -rf {} +
           # Kept paths must still exist (the prune must not have eaten them).
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
             hardware/interfaces/compatibility_matrices \
