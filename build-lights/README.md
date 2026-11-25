@@ -171,7 +171,7 @@ at `repo init` until all four uploads land.**
    `-ndk_static` / `-ndk_export_shared` / `cts_defaults` `cc_defaults`
    stubs and the `android.os.hintmanager_aidl-ndk` empty
    `cc_library_static` stub (runs #48/#49/#50 fix — without these the
-   build dies on undefined modules), plus the `skia_renderengine_deps` empty `cc_defaults` stub and the `libskia_renderengine_deps` empty `cc_library_static` stub (`empty.c`; runs #51/#52/#53 fix — same undefined-module failure, one layer further out in `frameworks/native/libs/renderengine`); every `vts` dir under `kernel/configs` is also
+   build dies on undefined modules), plus the `skia_renderengine_deps` empty `cc_defaults` stub and the `libskia_renderengine` empty `cc_library_static` stub (`empty.c`; runs #51/#52/#53 fix — same undefined-module failure, one layer further out in `frameworks/native/libs/renderengine`); every `vts` dir under `kernel/configs` is also
    pruned (runs #46/#47 fix), as is `libnativehelper/tests_mts` (runs #48/#49/#50 fix). The build step re-verifies
    the kept paths are present, the pruned paths absent and the stubs present
    immediately before `m` (pre-build guard; run #39 anomaly RESOLVED by
