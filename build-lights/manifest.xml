@@ -296,6 +296,51 @@
          (its chain needs libz + libselinux), same reason as #36.
        Project count stays 32. -->
 
+  <!-- Runs #48 (45597960313, 12m41s) / #49 (45598120384, 13m46s) /
+       #50 (45598208863, 13m52s) — all three FAILED at Soong ninja-file
+       generation, 21-33s into the build step, with the SAME class of
+       "depends on undefined module" errors for the AIDL `-ndk_shared` /
+       `-ndk_static` / `-ndk_export_shared` forwarding defaults that
+       frameworks/native modules use in `defaults:`, plus `cts_defaults`
+       (libnativehelper/tests_mts). The #46/#47 fix HELD completely and
+       the #42 closure prune HELD (zero hardware/interfaces errors) —
+       the new errors are one layer further out, in frameworks/native +
+       libnativehelper. Fix, same established pattern as #36/#39/#46
+       (stub, don't sync): the workflow STUBS nine empty cc_defaults in
+       yuzora-stubs/Android.bp (public visibility — the users are never
+       built, so only the NAME has to exist for Soong's parse):
+       android.hardware.power-ndk_shared,
+       android.hardware.power-ndk_export_shared,
+       android.hardware.power-ndk_static,
+       android.hardware.graphics.common-ndk_shared,
+       android.hardware.graphics.common-ndk_static,
+       android.hardware.graphics.composer3-ndk_shared,
+       android.hardware.graphics.composer3-ndk_static,
+       android.hardware.graphics.allocator-ndk_shared, cts_defaults;
+       stubs android.os.hintmanager_aidl-ndk as an empty
+       cc_library_static (it is used in whole_static_libs by
+       libpowermanager, so it must be a static library, not a defaults
+       module); and PRUNES libnativehelper/tests_mts (the only
+       referencer of cts_defaults; MTS tests are never built here).
+       The stubs cover the COMPLETE layer, not the reported subset
+       (#48: 11 errors, #49: 7, #50: 9 — different subsets of the same
+       layer, same lesson as #38/#39): all 331 Android.bp files in the
+       synced frameworks/native (208) + system/core (123) trees were
+       scanned live at LineageOS lineage-22.2 — exactly 4 `-ndk_shared`,
+       1 `-ndk_export_shared`, 3 `-ndk_static` and 1 `-ndk` reference
+       exist in them. Keeping the real AIDL dirs instead would cascade:
+       the four aidl_interface modules import android.hardware.common-V2,
+       android.hardware.common.fmq-V1 and android.hardware.drm.common-V1
+       (dirs the closure prune deletes) and composer/allocator use
+       `defaults: ["android.hardware.graphics.common-latest"]`.
+       Verified live at LineageOS lineage-22.2: power/aidl defines the
+       three power forwarding defaults (lines 79/86/96); all four
+       `-ndk_shared` names are used in `defaults:` by the referencing
+       modules (hence cc_defaults stubs, not libraries); the HAL links
+       only libbase + libbinder_ndk + android.hardware.light-V2-ndk, so
+       no stubbed module is in its closure. NO new projects:
+       project count stays 32. -->
+
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
