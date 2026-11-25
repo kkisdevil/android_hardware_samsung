@@ -149,12 +149,13 @@
        AOSP tag android-15.0.0_r32. -->
 
   <project path="system/tools/aidl" name="platform/system/tools/aidl" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- system/tools/hidl: the HIDL Soong plugin (run #30 fix).
        REQUIRED. system/tools/hidl/build/Android.bp defines
        "hidl-soong-rules" (bootstrap_go_package, pkgPath
-       android/soong/hidl, pluginFor: ["soong_build"]); its
-       hidl_interface.go init() registers the "hidl_interface" and
-       "hidl_package_root" module types. hardware/interfaces/Android.bp
+       android/soong/hidl, pluginFor: ["soong_build"]); its init()
+       registers the "hidl_interface" and "hidl_package_root" module
+       types (hidl_interface.go). hardware/interfaces/Android.bp
        and hardware/google/interfaces/Android.bp declare
        hidl_package_root modules, and every hardware/*/interfaces/*/*.bp
        declares hidl_interface modules — without this project Soong
@@ -169,8 +170,31 @@
        hidl-gen host tool (system/tools/hidl/hidl-gen), which the plugin
        invokes to generate the HIDL C++/Java sources.
        AOSP tag android-15.0.0_r32. -->
+
   <project path="system/tools/hidl" name="platform/system/tools/hidl" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
-  
+
+  <!-- system/tools/xsdc: the xsdc Soong plugin (run #33 fix).
+       REQUIRED. system/tools/xsdc/build/Android.bp defines
+       "xsdc-soong-rules" (bootstrap_go_package, pkgPath
+       android/soong/xsdc, pluginFor: ["soong_build"]); its init()
+       registers the "xsd_config" module type (build/xsdc.go).
+       kernel/configs/xsd/*/Android.bp, hardware/interfaces/tv/tuner/config/Android.bp,
+       hardware/interfaces/audio/*/Android.bp, hardware/interfaces/bluetooth/audio/utils/Android.bp
+       and system/apex/apexd/Android.bp declare xsd_config modules — without this
+       project Soong bootstrap compiles all 113 steps, then the ninja-file
+       generation dies with 'error: ...: unrecognized module type "xsd_config"'
+       (run #33, 45555113229, 13m32s, 22s into the build step). Same failure
+       shape as run #30 (hidl), one layer deeper: the closure is only
+       proven by a green build, not by grepping .go imports.
+       xsdc-soong-rules deps are blueprint, soong, soong-android,
+       soong-java — all in build/soong, already synced — so no further
+       project is needed. NOTE: the xsdc host tool (java_binary_host in
+       the repo root Android.bp) is only built if an xsd_config module is
+       in the build closure; it is not, so no Java deps (commons-cli,
+       junit) are needed.
+       AOSP tag android-15.0.0_r32. -->
+
+  <project path="system/tools/xsdc" name="platform/system/tools/xsdc" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
