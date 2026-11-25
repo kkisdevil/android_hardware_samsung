@@ -400,6 +400,29 @@ undefined-module errors. Fix, same established pattern as #36/#39/#46
 yuzora-stubs/Android.bp (public visibility — the referencers are
 java_sdk_library modules, so java_defaults, NOT cc_defaults). NO new
 projects: project count stays 32. -->
+  <!-- Run #61 (45665120535, 13m55s) — FAILED at Soong ninja-file
+generation, 47s into the build step, with NO "depends on undefined
+module" errors (the #58 fix HELD completely; runs #59/#60 failed
+identically on the same code). New failure, same file:
+system/apex/apexd/apexd_testdata/Android.bp:597:1: module
+"test_framework-apexd": Current api file
+"system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt"
+doesn't exist (same for test-removed.txt, and for
+"test_service-apexd" at line 613). Root cause: the two
+java_sdk_library modules now PARSE (their defaults exist), so Soong's
+java_sdk_library check demands their "test"-scope current API files —
+but test-current.txt + test-removed.txt exist NOWHERE upstream: not in
+AOSP android-15.0.0_r32 (the exact revision the manifest syncs for
+system/apex) and not at AOSP main either (both list only the other 8
+scope files), verified live 2026-11-25. Fix, same established pattern
+(create, don't sync): the workflow's prune step COPIES the existing
+scope files into place — current.txt -> test-current.txt and removed.txt
+-> test-removed.txt. That content is exactly what `m update-api` would
+generate (the test scope is a superset of the public scope; the only
+class is com.android.apex.test.Test with a public no-arg ctor, so the
+test API is the public API and nothing was ever removed). The modules
+are never built for this HAL-only target, so only the files' EXISTENCE
+has to satisfy Soong's parse. NO new projects: project count stays 32. -->
 <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
