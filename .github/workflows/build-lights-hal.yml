@@ -930,7 +930,69 @@ jobs:
           # kept-path + leftover checks below and the pre-build guard both
           # verify the two kept dirs (and that nothing else survives under
           # common/ or input/).
+          # Runs #68 (15m44s) / #69 (13m16s) / #70 (15m0s) / #71
+          # (45705814593, 15m25s, manual dispatch 03:05 IST on commit
+          # 4f71f03) — all four FAILED at Soong ninja-file generation,
+          # 22s into the build step, with exactly TWO errors (verbatim
+          # from the #71 log, build-step lines 288/290):
+          #   error: frameworks/native/libs/bufferstreams/aidl/Android.bp:15:1:
+          #   "android.graphics.bufferstreams_interface" depends on undefined
+          #   module "HardwareBuffer_aidl".
+          #   error: system/core/trusty/stats/aidl/Android.bp:26:12:
+          #   module "android.trusty.stats.nw.setter_interface": imports:
+          #   Import does not exist: android.frameworks.stats
+          # The #65/#66/#67 fix HELD completely in all four runs (the
+          # prune step + pre-build guard passed, zero
+          # "android.hardware.common" errors — the string occurs only in
+          # workflow-script comments). Both new errors are the SAME stage
+          # and the SAME shape as before — modules defined in projects
+          # the minimal manifest never synced — one layer further out.
+          # Root cause 1, verified live at LineageOS lineage-22.2: the
+          # aidl_interface "android.graphics.bufferstreams" (rust backend
+          # only) has `headers: ["HardwareBuffer_aidl"]`, and
+          # "HardwareBuffer_aidl" is an aidl_library defined in
+          # frameworks/base core/java/Android.bp (hdrs:
+          # ["android/hardware/HardwareBuffer.aidl"]) — frameworks/base
+          # is gigabytes and is NOT synced, so the module does not exist
+          # in the tree. Fix: PRUNE frameworks/native/libs/bufferstreams/aidl.
+          # It is the ONLY synced consumer of HardwareBuffer_aidl (the
+          # other in-tree consumers, media/c2/aidl + media/bufferpool/aidl,
+          # live in hardware/interfaces dirs the #42 closure prune already
+          # deletes; graphicbuffersource-aidl is in unsynced frameworks/av),
+          # and NOTHING references android.graphics.bufferstreams as a
+          # library — the parent libs/bufferstreams/Android.bp is aconfig
+          # declarations only (no aidl reference) and libs/bufferstreams/rust
+          # uses only libbufferstreams_defaults (libanyhow,
+          # libnativewindow_rs). So pruning the aidl dir creates no cascade
+          # — unlike inputflinger/aidl in the #65/#66/#67 fix, whose
+          # generated rust outputs ARE referenced.
+          # Root cause 2, verified live at LineageOS lineage-22.2 + AOSP
+          # android-15.0.0_r32: the aidl_interface
+          # "android.trusty.stats.nw.setter" imports
+          # "android.frameworks.stats-V1", and "android.frameworks.stats"
+          # is defined in frameworks/hardware/interfaces stats/aidl
+          # (AOSP r32: versions 1+2, empty imports, all backends enabled;
+          # LineageOS dropped the lineage-22.2 branch of that repo, so
+          # the AOSP tag is the reference). Fix: PRUNE the whole
+          # system/core/trusty/stats/ subtree (aidl/ + test/). It holds
+          # ONLY those two dirs — no daemon, no Android.bp at that level —
+          # and the ONLY other referencer of either module anywhere in
+          # LineageOS is trusty/stats/test (cc_test trusty_stats_test,
+          # shared_libs android.frameworks.stats-V1-cpp +
+          # android.trusty.stats.nw.setter-cpp), so pruning aidl/ alone
+          # would leave the test referencing the generated -cpp lib.
+          # NOT touched: frameworks/native/services/stats (cc_library_shared
+          # libstatshidl, shared_libs android.frameworks.stats@1.0 +
+          # android.frameworks.stats-V2-ndk). Shared_libs references to
+          # android.hardware.*-ndk / @1.0 HIDL libs have NEVER surfaced as
+          # errors in any run — all surfaced errors so far are defaults: /
+          # static_libs: / libs: (and now aidl imports: / headers:). Do
+          # not chase them unless a run reports one (same standing rule as
+          # sensorservice, dumpstate, healthd). NO new projects, still 32.
+          
+          
           echo "=== trees before prune (for forensics) ==="
+        
           ls -d hardware/interfaces/*/ 2>/dev/null | sort
           ls -d hardware/google/interfaces/*/ 2>/dev/null | sort
           ls -d hardware/google/pixel/*/ 2>/dev/null | sort
@@ -1025,6 +1087,16 @@ jobs:
           # use only in-repo defaults, so tests_mts is the only
           # problematic dir there.)
           rm -rf libnativehelper/tests_mts
+          # frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats
+          # (runs #68/#69/#70/#71 fix — see the comment block above).
+          # bufferstreams/aidl is the only synced consumer of
+          # HardwareBuffer_aidl (aidl_library in unsynced frameworks/base);
+          # trusty/stats holds only aidl/ + test/ and is the only synced
+          # consumer chain of android.frameworks.stats (aidl_interface in
+          # unsynced frameworks/hardware/interfaces). Neither dir is in the
+          # HAL closure; both go whole.
+          rm -rf frameworks/native/libs/bufferstreams/aidl
+          rm -rf system/core/trusty/stats
 
           # Kept paths must still exist (the prune must not have eaten them).
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
@@ -1078,8 +1150,17 @@ jobs:
             echo "::error::prune failed — hardware/samsung/aidl leftovers:$LEFTOVER"
             exit 1
           fi
+          if [ -d frameworks/native/libs/bufferstreams/aidl ]; then
+            echo "::error::prune failed — frameworks/native/libs/bufferstreams/aidl present"
+            exit 1
+          fi
+          if [ -d system/core/trusty/stats ]; then
+            echo "::error::prune failed — system/core/trusty/stats present"
+            exit 1
+          fi
           echo "Unneeded subtrees pruned."
           echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
+          echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats.": hardware/interfaces/common/aidl + input/common/aidl."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
@@ -1594,6 +1675,14 @@ jobs:
           fi
           if [ -d libnativehelper/tests_mts ]; then
             echo "::error::pre-build guard: libnativehelper/tests_mts present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/bufferstreams/aidl ]; then
+            echo "::error::pre-build guard: frameworks/native/libs/bufferstreams/aidl present at build time"
+            exit 1
+          fi
+          if [ -d system/core/trusty/stats ]; then
+            echo "::error::pre-build guard: system/core/trusty/stats present at build time"
             exit 1
           fi
           test -f yuzora-stubs/empty.c \
