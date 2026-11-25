@@ -167,11 +167,13 @@
        "Build lights HAL" (5s) with "Failed to find deps of
        android/soong/cmd/soong_ui: Error parsing directory
        .../external/golang-protobuf/proto: no such file or directory" —
-       run #9 (45476367114) failed on exactly that. It is the ONLY external Go
-       module the soong+blueprint import closure needs (verified by grepping
-       every .go import in LineageOS android_build_soong and
-       android_build_blueprint at lineage-22.2: only github.com/google/blueprint
-       — already synced as build/blueprint — and google.golang.org/protobuf).
+       run #9 (45476367114) failed on exactly that. NOTE: the original
+       comment claimed this was the ONLY external Go module the
+       soong+blueprint import closure needs (verified by grepping every
+       .go import) — run #24 proved that wrong in a different dimension:
+       golang-protobuf's own Android.gen.bp has a BLUEPRINT-level dep on
+       the "go-cmp" module, which no .go-import grep can see (see
+       external/go-cmp below).
        AOSP tag android-15.0.0_r32. -->
 
   <project path="external/golang-protobuf" name="platform/external/golang-protobuf" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
@@ -182,6 +184,21 @@
   no such file or directory" (run #12, 45487448662).
   AOSP tag android-15.0.0_r32. -->
   <project path="external/starlark-go" name="platform/external/starlark-go" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+  <!-- external/go-cmp: Go value-comparison package (github.com/google/go-cmp/cmp).
+       REQUIRED. external/golang-protobuf/Android.gen.bp defines
+       "golang-protobuf-internal-order" with a blueprint dep on module
+       "go-cmp" — without this project Soong bootstrap dies with
+       'error: external/golang-protobuf/Android.gen.bp:559:1:
+       "golang-protobuf-internal-order" depends on undefined module
+       "go-cmp"' (run #24, 45537619332, 12m33s, 18s into the build step).
+       The dep is blueprint-level, not a Go import, so the earlier
+       .go-import grep (which claimed protobuf was the only Go module
+       needed) could not see it. The "go-cmp" module is defined by this
+       repo's own Android.gen.bp (bootstrap_go_package "go-cmp", pkgPath
+       github.com/google/go-cmp/cmp); all of its deps are internal to
+       the repo (go-cmp-internal-*), so no further project is needed.
+       AOSP tag android-15.0.0_r32. -->
+  <project path="external/go-cmp" name="platform/external/go-cmp" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
   <!-- libnativehelper: jni_headers (needed by libbinder_ndk and
        libandroid_runtime_lazy). AOSP tag android-15.0.0_r32. -->
