@@ -9,7 +9,7 @@ NOTIFICATIONS light commit `e7968ab`) on GitHub Actions, using a minimal
 
 A full LineageOS 22.2 sync is ~100 GB. A GitHub Actions runner has ~14 GB
 usable disk. The dependency closure of the one module, traced file-by-file
-from the real `.bp` files (2026-11-24), is **27 projects** — small enough
+from the real `.bp` files (2026-11-24), is **30 projects** — small enough
 to fit with headroom.
 
 ## The closure (how each project was found)
@@ -50,6 +50,7 @@ Then the transitive `.bp` walk (each file read live at
 | Soong's `soong_ui` binary | Go protobuf runtime (`google.golang.org/protobuf/proto`, imported by `android/soong/ui/metrics`) — Soong maps the import to `external/golang-protobuf/proto`; missing it kills the build in 5s (run #9) | `external/golang-protobuf` |
 | Soong's `rbcrun` | Starlark-in-Go runtime (`go.starlark.net/starlark`, required by `build/soong/go.mod`) — without `external/starlark-go/starlark` the build dies with "Failed to find deps of rbcrun/rbcrun" (run #12); AOSP `platform/external/starlark-go`, tag `android-15.0.0_r32` | `external/starlark-go` |
 | Soong bootstrap (`bootstrap blueprint`) | `external/golang-protobuf/Android.gen.bp` defines `golang-protobuf-internal-order` with a blueprint dep on module `go-cmp` — a blueprint-level dep, not a Go import, so the earlier `.go`-import grep (which claimed protobuf was the only Go module needed) could not see it; without it bootstrap dies with `"golang-protobuf-internal-order" depends on undefined module "go-cmp"` (run #24); AOSP `platform/external/go-cmp`, tag `android-15.0.0_r32` | `external/go-cmp` |
+| Soong bootstrap (`bootstrap blueprint`) | `hardware/interfaces/compatibility_matrices/build/Android.bp` defines `vintf-compatibility-matrix-soong-rules` with blueprint deps on `kernel-config-soong-rules` + `soong-selinux`; `build/make/tools/compliance/Android.bp` defines `compliance_sbom` with blueprint deps on five spdx-tools Go modules (`spdx-tools-spdxv2_2`, `spdx-tools-builder2v2`, `spdx-tools-spdxcommon`, `spdx-tools-spdx-json`, `spdx-tools-spdxlib`) — without them bootstrap dies with `"depends on undefined module"` (run #27). The kernel-config repo is top-level `kernel/configs`, NOT `platform/kernel/config` (that path 404s) | `kernel/configs`, `system/sepolicy`, `external/spdx-tools` |
 | Clang + libc++ | `clang-r536225` (LLVM 19) — **LineageOS 22.2's `ClangDefaultVersion`**, verified identical in AOSP r32 | `prebuilts/clang/host/linux-x86` |
 | Build engine | `envsetup.sh`, `lunch`, `m` | `build/make`, `build/soong`, `build/blueprint` |
 | Release configs | `trunk_staging` + the release map (`build/make/core/release_config.mk` reads `build/release/release_config_map.mk`; without it `ALL_RELEASE_CONFIGS_FOR_PRODUCT` is empty and lunch dies with `No release config found for TARGET_RELEASE`) | `build/release` (34 MB) |
@@ -102,7 +103,7 @@ verification time; the workflow fails loudly if the synced code lacks
 
 ## Disk / time budget (estimated)
 
-- Sync (depth 1, no tags, 27 projects): **~5 GB** (largest: clang
+- Sync (depth 1, no tags, 30 projects): **~5 GB** (largest: clang
   prebuilt ~2 GB, frameworks/native + system/core + bionic ~1 GB
   combined, prebuilts/rust + crates-io ~0.8 GB).
 - Build output (`out/`): **~1–2 GB** (Soong bootstrap + compiled libs +
@@ -147,7 +148,7 @@ at `repo init` until all four uploads land.**
 
 ## What the workflow verifies (in order)
 
-1. All 27 projects synced; `soong_config_set` defined; HAL `.bp` uses
+1. All 30 projects synced; `soong_config_set` defined; HAL `.bp` uses
    `samsung_header_path_defaults`; `clang-r536225` present.
 2. Device files copied from the manifest repo.
 3. Fork HEAD + `handleNotificationsNoOp` / `LightType::NOTIFICATIONS`
@@ -175,6 +176,7 @@ at `repo init` until all four uploads land.**
 | `Build lights HAL` fails: `No config file found for TARGET_DEVICE yuzora_lights` (run #15) | `build/make/core/board_config.mk` looks up the board config with a wildcard `device/*/$(TARGET_DEVICE)/BoardConfig.mk` — the leaf directory name MUST equal `TARGET_DEVICE`. The device files lived in `device/yuzora/lights/` while `PRODUCT_DEVICE` is `yuzora_lights`, so the lookup found nothing. (Runs #9/#12 never reached this: Soong's Go-module bootstrap failed first.) | Device directory renamed to `device/yuzora/yuzora_lights/` (BoardConfig `soong_config_set` path, workflow checks and README updated to match); the old `device/yuzora/lights/` directory was deleted |
 | `Build lights HAL` fails 7s in: `fixup_common_out_dir: command not found` (run #23) | `_lunch_meat()` (`build/envsetup.sh` line 559) calls `fixup_common_out_dir`, which is defined ONLY in the real `vendor/lineage/build/envsetup.sh` — the minimal manifest deliberately does not sync `vendor/lineage`, and the run #4 stub did not define it | The stub step now also defines `fixup_common_out_dir` verbatim from LineageOS `vendor/lineage/build/envsetup.sh` (it (re)creates `out/target/common`; `LINEAGE_FIXUP_COMMON_OUT` is unset here, so it takes the plain `mkdir` branch) |
 | `Build lights HAL` fails 18s in: `error: external/golang-protobuf/Android.gen.bp:559:1: "golang-protobuf-internal-order" depends on undefined module "go-cmp"` (run #24, 12m33s) | `external/golang-protobuf/Android.gen.bp` defines `golang-protobuf-internal-order` with a blueprint dep on the `go-cmp` Go module (`github.com/google/go-cmp/cmp`); the minimal manifest synced `external/golang-protobuf` but not `external/go-cmp`. The dep is blueprint-level, not a Go import — the earlier `.go`-import grep that claimed protobuf was the only Go module needed could not see it | Manifest now syncs `external/go-cmp` (AOSP `platform/external/go-cmp`, tag `android-15.0.0_r32`); the verify step checks `external/go-cmp/cmp` exists. The module is defined by `external/go-cmp/Android.gen.bp` itself (`bootstrap_go_package "go-cmp"`); all of its deps are internal to the repo, so no further project is needed |
+| `Build lights HAL` fails 13s in: `error: hardware/interfaces/compatibility_matrices/build/Android.bp:24:1: `"vintf-compatibility-matrix-soong-rules" depends on undefined module "kernel-config-soong-rules"` (+ `soong-selinux`, + five `spdx-tools-*` modules for `compliance_sbom`) (run #27, 12m0s; runs #25/#26 failed the same way) | Soong bootstrap parses every synced `.bp` file, and `hardware/interfaces/compatibility_matrices/build/Android.bp` + `build/make/tools/compliance/Android.bp` reference Soong plugin modules from projects the minimal manifest never synced. Blueprint-level deps again — no `.go`-import grep can see them | Manifest now syncs `kernel/configs` (top-level repo; defines `kernel-config-soong-rules` in `build/Android.bp`), `system/sepolicy` (defines `soong-selinux` in `build/soong/Android.bp`) and `external/spdx-tools` (defines all five `spdx-tools-*` modules; every spdx-tools `.bp` dep is another spdx-tools module in the same repo or `go-cmp`, already synced); the verify step checks all three. The closure is only proven by a green bootstrap |
 | `lunch` cannot find `yuzora_lights-trunk_staging-userdebug` | device files not copied (manifest repo layout) | Check the "Install device files" step log; `device/*/AndroidProducts.mk` must exist before `lunch` |
 | Soong: `samsung_header_path_defaults` unknown / `target_specific_header_path` unset | BoardConfig `soong_config_set` call missing or misspelled | Compare with `device/yuzora/yuzora_lights/BoardConfig.mk`; the namespace is `samsungVars`, the variable is `target_specific_header_path` |
 | Soong: clang version dir not found | prebuilts/clang pin drifted from soong's `ClangDefaultVersion` | Check `cc/config/global.go` in the synced soong; set `LLVM_PREBUILTS_VERSION` or re-pin prebuilts/clang |
