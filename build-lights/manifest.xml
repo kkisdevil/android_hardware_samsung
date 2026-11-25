@@ -423,7 +423,43 @@ class is com.android.apex.test.Test with a public no-arg ctor, so the
 test API is the public API and nothing was ever removed). The modules
 are never built for this HAL-only target, so only the files' EXISTENCE
 has to satisfy Soong's parse. NO new projects: project count stays 32. -->
-<!-- external/fmtlib: fmtlib (whole-static dep of libbase).
+<!-- Runs #62 (45679873126, 14m12s) / #63 (45680352968, 10m54s) /
+       #64 (45680503436, 15m26s) — all three FAILED at Soong
+       ninja-file generation, 32-34s into the build step, with
+       "depends on undefined module" errors ALL in
+       build/soong/java/core-libraries/Android.bp (Soong bootstrap
+       compiled all 114 steps, then the ninja file failed). The
+       #61 fix HELD completely in all three runs (prune copy +
+       pre-build guard passed, no test-current.txt errors). The
+       new errors are one layer further out, in Soong's own
+       core-libraries definitions: the five java_system_modules
+       modules in that file reference seven ART core-library stub
+       libraries with no definition in the synced tree —
+       art.module.public.api.stubs, art.module.public.api.stubs.module_lib,
+       art.module.intra.core.api.stubs,
+       art-module-intra-core-api-stubs-system-modules-lib,
+       art.module.api.annotations.for.system.modules,
+       core-lambda-stubs-for-system-modules (java_library in the
+       unsynced libcore / art projects; core-lambda + the
+       annotations lib verified live at LineageOS lineage-22.2 in
+       libcore/JavaLibrary.bp) and core-module-lib-stubs-for-system-modules
+       (java_library; defined in build/soong/java/core-libraries/Android.bp
+       itself at the lineage-22.2 tip and at AOSP r32, yet all three
+       runs report it undefined — so it is stubbed ONLY if the
+       synced file does not define it, to avoid a duplicate-module
+       error). Fix, same established pattern as #36/#39/#46 (stub,
+       don't sync): the workflow STUBS all seven as empty
+       java_library in yuzora-stubs/Android.bp (public visibility;
+       the referencers use them in `libs:` of java_system_modules).
+       The stubs cover the COMPLETE layer (every `libs:` entry of
+       every java_system_modules module in that file), not the
+       reported subset — #64 surfaced 2 more errors than #62/#63
+       (core-lambda, stable/legacy system-modules), same lesson as
+       #38/#39. Syncing libcore/art would cascade (their .bp files
+       reference frameworks/base, external/conscrypt, external/icu
+       and more unsynced projects) for stub jars the C++ HAL never
+       builds. NO new projects: project count stays 32. -->
+  <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
   <project path="external/fmtlib" name="platform/external/fmtlib" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
