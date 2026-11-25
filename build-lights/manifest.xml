@@ -265,6 +265,37 @@
        errors; same for the top-level fork dirs). The stubs stay.
        Project count stays 32. -->
 
+  <!-- Runs #46 (45589519170, 13m4s) / #47 (45589667704, 12m50s) —
+       both FAILED at Soong ninja-file generation with the SAME 4
+       "depends on undefined module" errors for three modules, none in
+       the lights HAL: keymint_use_latest_hal_aidl_ndk_shared
+       (system/core/gatekeeperd gatekeeperd_defaults +
+       system/core/trusty/confirmationui
+       android.hardware.confirmationui-lib.trusty),
+       avf_build_flags_cc (system/core/init libinit.microdroid),
+       libvintf_static_user_defaults
+       (kernel/configs/xsd/kernelLifetimes/vts
+       vts_kernelLifetimes_validate_test). The #43/#44/#45 hidden-dir
+       fix WORKED (both pre-build guards passed) and the #42 closure
+       prune HELD (zero hardware/interfaces errors) — the closure prune
+       is now TESTED by Soong for the first time. The new errors are one
+       layer further out, in system/core + kernel/configs: Soong validates
+       every `defaults:` reference in every parsed .bp file. Fix, same
+       established pattern as #36/#39 (stub, don't sync): the workflow
+       STUBS all three as empty cc_defaults in yuzora-stubs/Android.bp
+       and prunes every `vts` dir under kernel/configs. NO new projects:
+       - keymint_use_latest_hal_aidl_ndk_shared -> cc_defaults in
+         hardware/interfaces/security/keymint/aidl (a dir the closure
+         prune deletes; the KeyMint HAL is unrelated to the lights HAL).
+       - avf_build_flags_cc -> cc_defaults in
+         packages/modules/Virtualization (unsynced; the whole AVF /
+         Microdroid stack is unrelated to the lights HAL).
+       - libvintf_static_user_defaults -> cc_defaults in
+         system/libvintf/Android.bp (AOSP r32; static_libs
+         libvintf_private_deps): syncing system/libvintf would cascade
+         (its chain needs libz + libselinux), same reason as #36.
+       Project count stays 32. -->
+
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
