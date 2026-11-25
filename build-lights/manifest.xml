@@ -482,6 +482,29 @@ has to satisfy Soong's parse. NO new projects: project count stays 32. -->
        Pruning the two aidl dirs instead would cascade (services/inputflinger/
        rust references the generated -rust outputs). NO new projects:
        project count stays 32. -->
+  <!-- Runs #68 (15m44s) / #69 (13m16s) / #70 (15m0s) / #71 (45705814593,
+       15m25s) — all four FAILED at Soong ninja-file generation, 22s into
+       the build step, with exactly TWO errors (verbatim from #71):
+       `error: frameworks/native/libs/bufferstreams/aidl/Android.bp:15:1:
+       "android.graphics.bufferstreams_interface" depends on undefined
+       module "HardwareBuffer_aidl"` and `error:
+       system/core/trusty/stats/aidl/Android.bp:26:12: module
+       "android.trusty.stats.nw.setter_interface": imports: Import does
+       not exist: android.frameworks.stats`. The #65/#66/#67 fix HELD
+       completely (prune + pre-build guard passed, no
+       android.hardware.common error). Root causes: "HardwareBuffer_aidl"
+       is an aidl_library in frameworks/base core/java/Android.bp
+       (unsynced), and bufferstreams/aidl is its only synced consumer;
+       "android.frameworks.stats" is an aidl_interface in
+       frameworks/hardware/interfaces stats/aidl (unsynced; AOSP r32
+       versions 1+2, empty imports), imported by the trusty stats setter.
+       Fix: the workflow now PRUNES frameworks/native/libs/bufferstreams/
+       aidl and the whole system/core/trusty/stats/ subtree (aidl + test —
+       the test is the only other referencer of either module). Neither
+       is in the HAL closure. NOT touched: frameworks/native/services/stats
+       (libstatshidl shared_libs android.frameworks.stats@1.0 + -V2-ndk —
+       shared_libs *-ndk/@1.0 references have never surfaced as errors).
+       NO new projects: project count stays 32. -->
 <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
