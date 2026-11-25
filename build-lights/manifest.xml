@@ -200,6 +200,42 @@
        AOSP tag android-15.0.0_r32. -->
   <project path="external/go-cmp" name="platform/external/go-cmp" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
+  <!-- Soong bootstrap plugin deps (run #27 fix).
+       hardware/interfaces/compatibility_matrices/build/Android.bp defines
+       "vintf-compatibility-matrix-soong-rules" with blueprint deps on
+       "kernel-config-soong-rules" and "soong-selinux"; build/make/tools/compliance/Android.bp
+       defines "compliance_sbom" with blueprint deps on five spdx-tools Go
+       modules. Without these three projects Soong bootstrap dies with
+       "depends on undefined module" (run #27, 45542381216, 12m0s, 13s into
+       the build step) — same failure shape as run #24 (go-cmp), one layer
+       deeper: every .bp file Soong parses can add bootstrap deps, so the
+       closure is only proven by a green bootstrap, not by grepping .go imports.
+
+       kernel/configs: "kernel-config-soong-rules" is defined in
+       kernel/configs/build/Android.bp (bootstrap_go_package, pkgPath
+       android/soong/kernel/configs; deps are soong-internal only). TRAP: the
+       repo is TOP-LEVEL kernel/configs — platform/kernel/config does NOT
+       exist (404 / "repository not found"); do not "fix" the path to
+       platform/kernel/config.
+
+       system/sepolicy: "soong-selinux" is defined in
+       system/sepolicy/build/soong/Android.bp (bootstrap_go_package, pkgPath
+       android/soong/selinux; deps are soong-internal only). It is the ONLY
+       bootstrap_go_package in the repo.
+
+       external/spdx-tools: the five missing modules are
+       spdx-tools-spdxv2_2 (spdx/v2_2/Android.bp), spdx-tools-builder2v2
+       (builder/builder2v2/Android.bp), spdx-tools-spdxcommon
+       (spdx/common/Android.bp), spdx-tools-spdx-json (json/Android.bp) and
+       spdx-tools-spdxlib (spdxlib/Android.bp). Every spdx-tools .bp dep is
+       either another spdx-tools-* module in the same repo or "go-cmp"
+       (already synced) — no further project is needed.
+
+       AOSP tag android-15.0.0_r32 for all three. -->
+  <project path="kernel/configs" name="kernel/configs" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+  <project path="system/sepolicy" name="platform/system/sepolicy" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+  <project path="external/spdx-tools" name="platform/external/spdx-tools" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
+
   <!-- libnativehelper: jni_headers (needed by libbinder_ndk and
        libandroid_runtime_lazy). AOSP tag android-15.0.0_r32. -->
 
