@@ -241,6 +241,28 @@
        (pre-build guard — run #39 still reported doze/dap/VTS/libutils
        errors although the prune step verified those paths deleted;
        unexplained, see the workflow comment).
+       Run #42 (45575623402, 12m22s, build step 26s) + run #41
+       (45575497369, 18m36s, same code ec2a379, also FAILED) proved the
+       class-level fix above was still too narrow: 4 NEW undefined-module
+       errors, all in hardware/interfaces, none in the #36/#38/#39 sets
+       (latest_android_hardware_audio_common_import_interface in
+       bluetooth/audio/aidl + automotive/audiocontrol/aidl,
+       vhalclient_defaults in automotive/remoteaccess/hal/default,
+       latest_android_media_audio_common_types_import_interface in
+       automotive/audiocontrol/aidl). The #38/#39 fix HELD — the
+       pre-build guard passed and none of those errors re-appeared — so
+       the run #39 anomaly is RESOLVED (Soong reads the live tree; the
+       errors are genuinely new dirs). The workflow now prunes by CLOSURE:
+       it keeps only hardware/interfaces/light/aidl (the
+       android.hardware.light aidl_interface; its 2.0/ + utils/ are not
+       in the closure) + hardware/interfaces/compatibility_matrices (the
+       vintf plugin, run #27) from hardware/interfaces, only the root
+       Android.bp files from hardware/google/interfaces +
+       hardware/google/pixel (namespace imports only), and only
+       aidl/light from hardware/samsung (the other aidl/* dirs reference
+       android.hardware.*-ndk modules from hardware/interfaces/*, so
+       pruning hardware/interfaces without pruning them would CREATE new
+       errors; same for the top-level fork dirs). The stubs stay.
        Project count stays 32. -->
 
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
