@@ -160,7 +160,7 @@ at `repo init` until all four uploads land.**
    config path.
 4. Unneeded subtrees pruned by CLOSURE, not by error list (run #42 fix):
    from `hardware/interfaces` only `light/aidl` (the HAL's AIDL interface)
-   + `compatibility_matrices` \(the vintf plugin, run #27\) remain; plus `common/aidl` + `input/common/aidl` (the two AIDL dirs whose modules two synced `aidl_interface` modules import — runs #65/#66/#67 fix); from
+   + `compatibility_matrices` (the vintf plugin, run #27) remain; plus `common/aidl` + `input/common/aidl` (the two AIDL dirs whose modules two synced `aidl_interface` modules import — runs #65/#66/#67 fix); from
    `hardware/google/interfaces` + `hardware/google/pixel` only the root
    `Android.bp` files (namespace imports) remain; from `hardware/samsung`
    only `aidl/light` (the HAL itself) remains — plus the `apex-lowest-min-sdk-version`,
