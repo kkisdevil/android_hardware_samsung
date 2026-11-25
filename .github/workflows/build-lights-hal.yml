@@ -107,6 +107,7 @@ jobs:
             libnativehelper \
             system/apex prebuilts/rust external/rust/android-crates-io \
             hardware/google/pixel hardware/google/interfaces \
+            kernel/configs system/sepolicy external/spdx-tools \
             hardware/samsung ; do
             if [ ! -d "$p" ]; then
               echo "::error::missing synced project: $p"
@@ -117,7 +118,7 @@ jobs:
             echo "::error::sync incomplete — missing:$MISSING"
             exit 1
           fi
-          echo "All 27 manifest projects present."
+          echo "All 30 manifest projects present."
           # The two files the whole build hinges on:
           test -f build/make/core/config.mk || { echo "::error::build/make/core/config.mk missing"; exit 1; }
           grep -q "define soong_config_set" build/make/core/config.mk \
@@ -155,6 +156,23 @@ jobs:
           # \"go-cmp\"" (run #24, 45537619332).
           test -d external/go-cmp/cmp \
             || { echo "::error::external/go-cmp/cmp missing — check the go-cmp pin"; exit 1; }
+          # Soong bootstrap needs kernel-config-soong-rules, soong-selinux
+          # and the spdx-tools Go modules: without them bootstrap dies with
+          # "depends on undefined module" (run #27, 45542381216).
+          grep -q "kernel-config-soong-rules" kernel/configs/build/Android.bp \
+            || { echo "::error::kernel-config-soong-rules not in kernel/configs/build/Android.bp — check the kernel/configs pin"; exit 1; }
+          grep -q "soong-selinux" system/sepolicy/build/soong/Android.bp \
+            || { echo "::error::soong-selinux not in system/sepolicy/build/soong/Android.bp — check the system/sepolicy pin"; exit 1; }
+          test -f external/spdx-tools/spdx/v2_2/Android.bp \
+            || { echo "::error::external/spdx-tools/spdx/v2_2/Android.bp missing — check the spdx-tools pin"; exit 1; }
+          test -f external/spdx-tools/builder/builder2v2/Android.bp \
+            || { echo "::error::external/spdx-tools/builder/builder2v2/Android.bp missing — check the spdx-tools pin"; exit 1; }
+          test -f external/spdx-tools/spdx/common/Android.bp \
+            || { echo "::error::external/spdx-tools/spdx/common/Android.bp missing — check the spdx-tools pin"; exit 1; }
+          test -f external/spdx-tools/json/Android.bp \
+            || { echo "::error::external/spdx-tools/json/Android.bp missing — check the spdx-tools pin"; exit 1; }
+          test -f external/spdx-tools/spdxlib/Android.bp \
+            || { echo "::error::external/spdx-tools/spdxlib/Android.bp missing — check the spdx-tools pin"; exit 1; }
           echo "Sync verification passed."
 
       - name: Install device files from manifest repo
