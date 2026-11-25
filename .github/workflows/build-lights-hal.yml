@@ -736,6 +736,42 @@ jobs:
           # The prune-step stub check and the pre-build guard both
           # verify the new stubs.
           #
+          # Run #61 (45665120535, 13m55s) — FAILED at Soong ninja-file
+          # generation, 47s into the build step, with NO "depends on
+          # undefined module" errors at all (the #58 fix HELD completely:
+          # the two java_defaults stubs resolved; runs #59 (45664316757)
+          # and #60 (45664937469) failed identically on the same code).
+          # New failure, same file:
+          # error: system/apex/apexd/apexd_testdata/Android.bp:597:1:
+          # module "test_framework-apexd": Current api file
+          # "system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt"
+          # doesn't exist (same for test-removed.txt, and for
+          # "test_service-apexd" at line 613). Root cause: the two
+          # java_sdk_library modules now PARSE (their defaults exist),
+          # so Soong's java_sdk_library check demands their "test"-scope
+          # current API files — but apis_for_tests/test-current.txt +
+          # test-removed.txt exist NOWHERE upstream: not in AOSP
+          # android-15.0.0_r32 (the exact revision the manifest syncs
+          # for system/apex) and not at AOSP main either — both list
+          # only the other 8 scope files (current, removed, system-*,
+          # system-server-*, module-lib-*), verified live 2026-11-25.
+          # Soong itself suggests generating them
+          # (gen-java-current-api-files.sh + m update-api), but that
+          # runs AFTER Soong parses, so the files must exist first.
+          # Fix, same established pattern (create, don't sync; NO new
+          # projects, still 32): the prune step COPIES the existing
+          # scope files into place below — current.txt ->
+          # test-current.txt and removed.txt -> test-removed.txt.
+          # That content is exactly what update-api would generate:
+          # the test scope is a superset of the public scope, and the
+          # only class is com.android.apex.test.Test with a public
+          # no-arg ctor (src/com/android/apex/test/Test.java; see
+          # current.txt), so the test API is the public API and
+          # nothing was ever removed. The modules are never built for
+          # this HAL-only target, so only the files' EXISTENCE has to
+          # satisfy Soong's parse. The prune-step check and the
+          # pre-build guard both verify the two new files.
+          #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
           # libutils_impl_defaults), and libutils IS in the HAL closure
@@ -1160,6 +1196,18 @@ jobs:
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
           echo "runs #51/#52/#53 stubs created: skia_renderengine_deps + libskia_renderengine (+ empty.c)."
           echo "run #58 stubs created: framework-module-defaults + framework-system-server-module-defaults (empty java_defaults)."
+          # Run #61 fix: the two "test"-scope API files (see the run #61
+          # comment above) — copied from the existing scope files, which
+          # carry exactly the API update-api would generate for them.
+          cp system/apex/apexd/apexd_testdata/apis_for_tests/current.txt system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt
+          cp system/apex/apexd/apexd_testdata/apis_for_tests/removed.txt system/apex/apexd/apexd_testdata/apis_for_tests/test-removed.txt
+          test -s system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt \
+            || { echo "::error::apexs test api file missing after creation: test-current.txt"; exit 1; }
+          test -s system/apex/apexd/apexd_testdata/apis_for_tests/test-removed.txt \
+            || { echo "::error::apexs test api file missing after creation: test-removed.txt"; exit 1; }
+          grep -q "public class Test" system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt \
+            || { echo "::error::apexs test api file has wrong content: test-current.txt"; exit 1; }
+          echo "run #61 api files created: apexs test-current.txt + test-removed.txt (copied from current.txt + removed.txt)."
 
       - name: Build lights HAL
         working-directory: lights-build
@@ -1235,6 +1283,12 @@ jobs:
           for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Run #61 fix: the two apexs test API files (see the run #61
+          # comment in the prune step) must still exist at build time.
+          for api in system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt system/apex/apexd/apexd_testdata/apis_for_tests/test-removed.txt; do
+          test -f "$api" \
+            || { echo "::error::pre-build guard: apexs test api file missing at build time: $api"; exit 1; }
           done
           echo "Pre-build guard passed: pruned paths absent, stubs present."
           # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
