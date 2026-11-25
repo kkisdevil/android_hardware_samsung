@@ -485,9 +485,10 @@ jobs:
           #   referencing pruned interface modules. They all go. Kept from
           #   the fork: aidl/light, the root Android.bp (+ mkbootimg.mk etc.)
           #   and build-lights/ (no .bp files in it — inert for Soong).
-          # The stubs below (apex-lowest-min-sdk-version + the two empty
+          # The stubs below (apex-lowest-min-sdk-version + the five empty
           # cc_defaults) stay: libutils still needs the apex stub, and the
-          # VTS/NN stubs cost nothing now that their users are pruned.
+          # VTS/NN/keymint/AVF/libvintf stubs cost nothing now that their
+          # users are pruned or never built.
           #
           # Runs #43 (45581180606, 9m50s) / #44 (45581337665, 12m42s) /
           # #45 (45581473427, 13m47s) — all three FAILED in 1s in THIS step,
@@ -502,6 +503,58 @@ jobs:
           # and killed the step. Fix: hidden top-level dirs are deleted
           # explicitly below (before the leftover checks), in all four
           # pruned trees.
+          #
+          # Runs #46 (45589519170, 13m4s) / #47 (45589667704, 12m50s) —
+          # both FAILED at Soong ninja-file generation, 22s (#47) / 31s
+          # (#46) into the build step, with the SAME 4 "depends on
+          # undefined module" errors for three modules — none of them in
+          # the lights HAL, and none of them in the #36/#38/#39/#42 sets.
+          # The #43/#44/#45 hidden-dir fix WORKED: both pre-build guards
+          # passed, no .github errors — and the closure prune is now
+          # TESTED by Soong for the first time (zero
+          # hardware/interfaces errors in either run). The #42 closure
+          # prune HELD completely. The new errors are one layer further
+          # out, in system/core + kernel/configs — same failure shape,
+          # same cause: Soong validates every `defaults:` reference in
+          # every parsed .bp file, and these three modules have no
+          # definition in the synced tree:
+          #
+          # - "keymint_use_latest_hal_aidl_ndk_shared" (used in
+          #   `defaults:` by system/core/gatekeeperd gatekeeperd_defaults
+          #   and system/core/trusty/confirmationui
+          #   android.hardware.confirmationui-lib.trusty) is a cc_defaults
+          #   in hardware/interfaces/security/keymint/aidl — a dir the
+          #   closure prune deletes (the KeyMint HAL is unrelated to the
+          #   lights HAL). Verified live at LineageOS lineage-22.2: it is
+          #   the only `defaults:` entry of both referencing modules.
+          # - "avf_build_flags_cc" (used in `defaults:` by
+          #   system/core/init libinit.microdroid,
+          #   init_second_stage.microdroid and
+          #   init_first_stage.microdroid) is a cc_defaults in
+          #   packages/modules/Virtualization (unsynced — the whole AVF /
+          #   Microdroid stack is unrelated to the lights HAL). Verified
+          #   live: it is the only `defaults:` entry in
+          #   system/core/init/Android.bp (all 1331 lines read) with no
+          #   definition in the synced tree.
+          # - "libvintf_static_user_defaults" (used in `defaults:` by
+          #   kernel/configs/xsd/kernelLifetimes/vts
+          #   vts_kernelLifetimes_validate_test) is a cc_defaults in
+          #   system/libvintf/Android.bp (static_libs
+          #   libvintf_private_deps; AOSP r32, confirmed via Code Search).
+          #   system/libvintf is unsynced, and syncing it would cascade
+          #   (its chain needs libz + libselinux) — same reason as #36.
+          #
+          # Fix, same established pattern as #36/#39 (stub, don't sync;
+          # NO new projects, still 32): all three are STUBBED below as
+          # empty cc_defaults (public visibility, like the VTS/NN stubs —
+          # the users are never built, so only the NAME has to exist for
+          # Soong's parse), and every `vts` dir under kernel/configs is
+          # PRUNED (extends the #39 "prune every remaining vts dir" rule
+          # from hardware/interfaces + hardware/google/interfaces to
+          # kernel/configs — VTS tests are never built for this HAL-only
+          # target; kernel/configs/build, which holds
+          # kernel-config-soong-rules (run #27), is not a vts dir and is
+          # untouched). One stub covers all three init microdroid users.
           #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
@@ -570,6 +623,13 @@ jobs:
             -mindepth 1 -maxdepth 1 -type d -name '.*' ! -name '.git' | sort
           find hardware/interfaces hardware/google/interfaces hardware/google/pixel hardware/samsung hardware/samsung/aidl \
             -mindepth 1 -maxdepth 1 -type d -name '.*' ! -name '.git' -exec rm -rf {} +
+          # kernel/configs: prune every `vts` dir (runs #46/#47 fix — see
+          # the comment block above). kernel/configs/xsd/kernelLifetimes/vts
+          # holds a VTS test referencing libvintf_static_user_defaults
+          # (system/libvintf, unsynced); VTS tests are never built for this
+          # HAL-only target. kernel/configs/build (kernel-config-soong-rules,
+          # run #27) is not a vts dir and is untouched.
+          find kernel/configs -type d -name vts -exec rm -rf {} +
           # Kept paths must still exist (the prune must not have eaten them).
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
             hardware/interfaces/compatibility_matrices \
@@ -677,8 +737,57 @@ jobs:
                   "//visibility:public",
               ],
           }
+
+          // keymint_use_latest_hal_aidl_ndk_shared (runs #46/#47 fix):
+          // empty cc_defaults stub. Referenced in `defaults:` by
+          // system/core/gatekeeperd gatekeeperd_defaults and
+          // system/core/trusty/confirmationui
+          // android.hardware.confirmationui-lib.trusty; defined as a
+          // cc_defaults in hardware/interfaces/security/keymint/aidl —
+          // a dir the closure prune deletes. Gatekeeperd /
+          // ConfirmationUI are unrelated to the lights HAL and never
+          // built here, so only the NAME has to exist.
+          cc_defaults {
+              name: "keymint_use_latest_hal_aidl_ndk_shared",
+              // Public on purpose (see the VTS helper stub above).
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          // avf_build_flags_cc (runs #46/#47 fix): empty cc_defaults
+          // stub. Referenced in `defaults:` by system/core/init
+          // libinit.microdroid, init_second_stage.microdroid and
+          // init_first_stage.microdroid; defined as a cc_defaults in
+          // packages/modules/Virtualization (unsynced). The Microdroid
+          // init variants are never built for this HAL-only target, so
+          // only the NAME has to exist.
+          cc_defaults {
+              name: "avf_build_flags_cc",
+              // Public on purpose (see the VTS helper stub above).
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          // libvintf_static_user_defaults (runs #46/#47 fix): empty
+          // cc_defaults stub. Referenced in `defaults:` by
+          // kernel/configs/xsd/kernelLifetimes/vts
+          // vts_kernelLifetimes_validate_test (that dir is also pruned
+          // above, so this stub is belt-and-braces for any other
+          // referencer); defined as a cc_defaults in
+          // system/libvintf/Android.bp (unsynced — syncing it would
+          // cascade via libz + libselinux). VTS tests are never built
+          // here, so only the NAME has to exist.
+          cc_defaults {
+              name: "libvintf_static_user_defaults",
+              // Public on purpose (see the VTS helper stub above).
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
@@ -686,6 +795,7 @@ jobs:
             || { echo "::error::stub does not use library_linking_strategy_cc_defaults"; exit 1; }
           echo "apex-lowest-min-sdk-version stub created."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
+          echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
 
       - name: Build lights HAL
         working-directory: lights-build
@@ -748,7 +858,11 @@ jobs:
             echo "::error::pre-build guard: hardware/samsung/aidl subdir present at build time (only light may remain)"
             exit 1
           fi
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults; do
+          if [ -n "$(find kernel/configs -type d -name vts)" ]; then
+            echo "::error::pre-build guard: kernel/configs vts dir present at build time"
+            exit 1
+          fi
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
