@@ -226,6 +226,21 @@
          same values) instead of syncing the project. libutils is the
          only user in this tree and IS in the HAL closure
          (libbinder_ndk -> libbinder -> libutils), so it cannot be pruned.
+       Runs #38/#39 (same commit 1e987f7, one minute apart) proved the
+       undefined-module surface is much larger than run #36's 11 and that
+       Soong reports a DIFFERENT SUBSET every run (#38: 5 errors, all in
+       hardware/interfaces, none in #39's 6; #39: the run #36 set minus 5).
+       The workflow now fixes whole classes at once instead of chasing the
+       reported subset: it STUBS use_libaidlvintf_gtest_helper_static +
+       neuralnetworks_utils_defaults (empty cc_defaults in yuzora-stubs/
+       Android.bp — VTS tests / NN utils are never built, so only the NAME
+       has to exist), prunes hardware/interfaces/audio + soundtrigger whole
+       (their latest_*_import_interface deps live in unsynced
+       frameworks/av), prunes every remaining `vts` dir, and the build step
+       re-verifies the pruned paths are absent immediately before `m`
+       (pre-build guard — run #39 still reported doze/dap/VTS/libutils
+       errors although the prune step verified those paths deleted;
+       unexplained, see the workflow comment).
        Project count stays 32. -->
 
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
