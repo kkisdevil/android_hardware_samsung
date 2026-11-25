@@ -459,7 +459,30 @@ has to satisfy Soong's parse. NO new projects: project count stays 32. -->
        reference frameworks/base, external/conscrypt, external/icu
        and more unsynced projects) for stub jars the C++ HAL never
        builds. NO new projects: project count stays 32. -->
-  <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
+  <!-- Runs #65 (45694124092, 15m6s) / #66 (15m3s) / #67 (45695507090,
+       14m23s) — all three FAILED at Soong ninja-file generation, 22-23s
+       into the build step, with a NEW error class at the same stage:
+       `error: frameworks/native/libs/bufferstreams/aidl/Android.bp:23:12:
+       module "android.graphics.bufferstreams_interface": imports: Import
+       does not exist: android.hardware.common`. The #62/#63/#64 fix HELD
+       completely in all three (prune + pre-build guard passed, zero
+       "depends on undefined module" errors). Root cause: the
+       aidl_interface "android.graphics.bufferstreams" imports
+       "android.hardware.common-V2", defined in hardware/interfaces/common/aidl
+       — a dir the #42 closure prune deletes. A scan of all 331 synced
+       frameworks/native + system/core Android.bp files at LineageOS
+       lineage-22.2 found exactly TWO such broken AIDL imports: bufferstreams
+       -> android.hardware.common-V2 and services/inputflinger/aidl ->
+       android.hardware.input.common-V1 (defined in hardware/interfaces/input/
+       common/aidl; not yet reported — Soong's AIDL import check fails fast).
+       Fix: the workflow now KEEPS hardware/interfaces/common/aidl +
+       input/common/aidl (both self-contained: no imports, only the kept
+       hardware_interfaces_license) and prunes the rest of common/ (fmq,
+       support) and input/ (classifier, processor, input/common/1.0).
+       Pruning the two aidl dirs instead would cascade (services/inputflinger/
+       rust references the generated -rust outputs). NO new projects:
+       project count stays 32. -->
+<!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
   <project path="external/fmtlib" name="platform/external/fmtlib" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
