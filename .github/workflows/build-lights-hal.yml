@@ -881,6 +881,55 @@ jobs:
           # errors for it), same soong_config_variables block. The stub
           # lives in yuzora-stubs/ at the tree root, next to the other
           # build-only stubs.
+          # Runs #65 (45694124092, 15m6s) / #66 (15m3s) / #67
+          # (45695507090, 14m23s) — all three FAILED at Soong ninja-file
+          # generation, 22-23s into the build step, with a NEW error
+          # class at the same stage: a single AIDL `imports:` error, NOT
+          # a "depends on undefined module" error:
+          #   error: frameworks/native/libs/bufferstreams/aidl/Android.bp:23:12:
+          #   module "android.graphics.bufferstreams_interface": imports:
+          #   Import does not exist: android.hardware.common
+          # The #62/#63/#64 fix HELD completely in all three runs (the
+          # prune step + pre-build guard passed, zero "depends on
+          # undefined module" errors — every earlier fix held too).
+          # Root cause, verified live at LineageOS lineage-22.2: the
+          # aidl_interface "android.graphics.bufferstreams" (rust backend
+          # only) has `imports: ["android.hardware.common-V2"]`, and
+          # "android.hardware.common" (versions 1+2) is defined in
+          # hardware/interfaces/common/aidl/Android.bp — a dir the #42
+          # closure prune deletes (it keeps only light/aidl +
+          # compatibility_matrices). The defining .bp file has NO imports
+          # and needs only hardware_interfaces_license (kept in the root
+          # Android.bp), so the module is restored by keeping the dir.
+          # The fix covers the COMPLETE layer, not the reported subset:
+          # all 331 Android.bp files in the synced frameworks/native (208)
+          # + system/core (123) trees were scanned live — exactly TWO
+          # aidl_interface `imports:` reference modules in pruned dirs:
+          # bufferstreams/aidl -> android.hardware.common-V2 (reported)
+          # and services/inputflinger/aidl -> android.hardware.input.common-V1
+          # (defined in hardware/interfaces/input/common/aidl, whose
+          # versions_with_info imports list is empty — also self-contained).
+          # Inputflinger's import has NOT surfaced yet: Soong's AIDL import
+          # check fails fast on the first bad import (same subset-reporting
+          # lesson as #38/#39/#48/#49/#50) — it would surface on the next run.
+          # Fix, same established pattern (keep the defining dir, don't sync
+          # a new project; NO new projects, still 32): the prune below now
+          # KEEPS hardware/interfaces/common/aidl + input/common/aidl and
+          # prunes everything else under common/ (fmq, support) and input/
+          # (classifier, processor, input/common/1.0) — SURGICAL, not whole
+          # dirs. Pruning the two aidl dirs instead was REJECTED:
+          # services/inputflinger/rust (rust_defaults
+          # libinputflinger_rs_defaults) has rustlibs
+          # ["com.android.server.inputflinger-rust",
+          # "android.hardware.input.common-V1-rust"] — the generated rust
+          # outputs of the two aidl_interface modules — so pruning the aidl
+          # dir would CREATE a new undefined-module error in inputflinger/rust.
+          # (Pruning bufferstreams/aidl alone would be safe — nothing
+          # references android.graphics.bufferstreams — but the keep fixes
+          # both imports with no cascade and no new .bp surface.) The
+          # kept-path + leftover checks below and the pre-build guard both
+          # verify the two kept dirs (and that nothing else survives under
+          # common/ or input/).
           echo "=== trees before prune (for forensics) ==="
           ls -d hardware/interfaces/*/ 2>/dev/null | sort
           ls -d hardware/google/interfaces/*/ 2>/dev/null | sort
@@ -889,16 +938,41 @@ jobs:
           ls -d hardware/samsung/aidl/*/ 2>/dev/null | sort
           # hardware/interfaces: keep ONLY light/aidl (the HAL's AIDL
           # interface) + compatibility_matrices (the vintf plugin, run #27).
+          # + common/aidl + input/common/aidl (the two AIDL dirs whose
+          # modules two synced aidl_interface modules import — runs
+          # #65/#66/#67 fix, see the comment block above).
           # light/2.0 + light/utils are pruned too — not in the closure.
           # The root Android.bp (hidl_package_root + license) stays: the
           # loop below touches directories only, never files.
           for d in hardware/interfaces/*/; do
             case "$d" in
-              hardware/interfaces/light/|hardware/interfaces/compatibility_matrices/) ;;
+              hardware/interfaces/light/|hardware/interfaces/compatibility_matrices/|hardware/interfaces/common/|hardware/interfaces/input/) ;;
               *) rm -rf "$d" ;;
             esac
           done
           rm -rf hardware/interfaces/light/2.0 hardware/interfaces/light/utils
+          # hardware/interfaces/common + input: keep ONLY the two AIDL dirs
+          # that define the imported modules (runs #65/#66/#67 fix — see the
+          # comment block above). common/fmq + common/support and
+          # input/classifier + input/processor + input/common/1.0 are pruned.
+          for d in hardware/interfaces/common/*/; do
+            case "$d" in
+              hardware/interfaces/common/aidl/) ;;
+              *) rm -rf "$d" ;;
+            esac
+          done
+          for d in hardware/interfaces/input/*/; do
+            case "$d" in
+              hardware/interfaces/input/common/) ;;
+              *) rm -rf "$d" ;;
+            esac
+          done
+          for d in hardware/interfaces/input/common/*/; do
+            case "$d" in
+              hardware/interfaces/input/common/aidl/) ;;
+              *) rm -rf "$d" ;;
+            esac
+          done
           # hardware/google/interfaces + hardware/google/pixel: keep only
           # the root Android.bp files (namespace imports); prune all subdirs.
           for d in hardware/google/interfaces/*/ hardware/google/pixel/*/; do
@@ -956,6 +1030,8 @@ jobs:
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
             hardware/interfaces/compatibility_matrices \
             hardware/interfaces/compatibility_matrices/build/Android.bp \
+            hardware/interfaces/common/aidl/Android.bp \
+            hardware/interfaces/input/common/aidl/Android.bp \
             hardware/interfaces/Android.bp \
             hardware/google/interfaces/Android.bp \
             hardware/google/pixel/Android.bp \
@@ -966,9 +1042,21 @@ jobs:
             fi
           done
           # No other subdir may survive in any of the four trees.
-          LEFTOVER="$(find hardware/interfaces -mindepth 1 -maxdepth 1 -type d ! -name light ! -name compatibility_matrices)"
+          LEFTOVER="$(find hardware/interfaces -mindepth 1 -maxdepth 1 -type d ! -name light ! -name compatibility_matrices ! -name common ! -name input)"
           if [ -n "$LEFTOVER" ]; then
             echo "::error::prune failed — hardware/interfaces leftovers:$LEFTOVER"
+            exit 1
+          fi
+          if [ -n "$(find hardware/interfaces/common -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
+            echo "::error::prune failed — hardware/interfaces/common leftovers (only aidl may remain)"
+            exit 1
+          fi
+          if [ -n "$(find hardware/interfaces/input -mindepth 1 -maxdepth 1 -type d ! -name common)" ]; then
+            echo "::error::prune failed — hardware/interfaces/input leftovers (only common may remain)"
+            exit 1
+          fi
+          if [ -n "$(find hardware/interfaces/input/common -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
+            echo "::error::prune failed — hardware/interfaces/input/common leftovers (only aidl may remain)"
             exit 1
           fi
           if [ -n "$(find hardware/interfaces/light -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
@@ -991,6 +1079,7 @@ jobs:
             exit 1
           fi
           echo "Unneeded subtrees pruned."
+          echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
@@ -1456,6 +1545,8 @@ jobs:
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
             hardware/interfaces/compatibility_matrices \
             hardware/interfaces/compatibility_matrices/build/Android.bp \
+            hardware/interfaces/common/aidl/Android.bp \
+            hardware/interfaces/input/common/aidl/Android.bp \
             hardware/interfaces/Android.bp \
             hardware/google/interfaces/Android.bp \
             hardware/google/pixel/Android.bp \
@@ -1465,8 +1556,20 @@ jobs:
               exit 1
             fi
           done
-          if [ -n "$(find hardware/interfaces -mindepth 1 -maxdepth 1 -type d ! -name light ! -name compatibility_matrices)" ]; then
-            echo "::error::pre-build guard: hardware/interfaces subdir present at build time (only light + compatibility_matrices may remain)"
+          if [ -n "$(find hardware/interfaces -mindepth 1 -maxdepth 1 -type d ! -name light ! -name compatibility_matrices ! -name common ! -name input)" ]; then
+            echo "::error::pre-build guard: hardware/interfaces subdir present at build time (only light + compatibility_matrices + common + input may remain)"
+            exit 1
+          fi
+          if [ -n "$(find hardware/interfaces/common -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
+            echo "::error::pre-build guard: hardware/interfaces/common subdir present at build time (only aidl may remain)"
+            exit 1
+          fi
+          if [ -n "$(find hardware/interfaces/input -mindepth 1 -maxdepth 1 -type d ! -name common)" ]; then
+            echo "::error::pre-build guard: hardware/interfaces/input subdir present at build time (only common may remain)"
+            exit 1
+          fi
+          if [ -n "$(find hardware/interfaces/input/common -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
+            echo "::error::pre-build guard: hardware/interfaces/input/common subdir present at build time (only aidl may remain)"
             exit 1
           fi
           if [ -n "$(find hardware/interfaces/light -mindepth 1 -maxdepth 1 -type d ! -name aidl)" ]; then
