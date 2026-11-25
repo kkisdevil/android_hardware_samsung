@@ -196,6 +196,38 @@
 
   <project path="system/tools/xsdc" name="platform/system/tools/xsdc" remote="aosp" revision="refs/tags/android-15.0.0_r32" clone-depth="1" />
 
+  <!-- Run #36 decision (2026-11-25): NO new projects for the five
+       "depends on undefined module" errors (run #36, 45559063073, 13m49s,
+       build step 47s). The xsdc fix WORKED (bootstrap compiled all 114
+       steps) — the failure is now whole-tree Soong analysis of modules
+       the lights HAL never needs. Syncing the defining projects would
+       be wrong here, so the workflow prunes / stubs instead (see the
+       "Prune unneeded subtrees + stub apex-lowest-min-sdk-version" step):
+       - SettingsLibDefaults -> frameworks/base/packages/SettingsLib/Android.bp
+         (LineageOS android_frameworks_base, lineage-22.2, java_defaults):
+         syncing frameworks/base (~GBs) for the doze/dap apps is absurd;
+         hardware/samsung/doze + hardware/samsung/dap are PRUNED.
+       - libcodec2-hidl-defaults + libcodec2-aidl-defaults ->
+         frameworks/av media/codec2/hal/*/Android.bp (lineage-22.2):
+         syncing frameworks/av (~GBs) for the codec2 media service is
+         absurd; hardware/samsung/aidl/codec2 is PRUNED.
+       - use_libaidlvintf_gtest_helper_static ->
+         system/libvintf/libaidlvintf_test_helper/Android.bp (AOSP r32):
+         its static_libs chain needs libz (external/zlib) + libselinux
+         (external/selinux), neither synced — syncing libvintf would
+         cascade; the five hardware/google/interfaces/bluetooth/*/aidl/vts
+         test dirs are PRUNED instead.
+       - apex-lowest-min-sdk-version -> packages/modules/common/sdk/Android.bp
+         lines 575-601 (LineageOS android_packages_modules_common,
+         lineage-22.2; library_linking_strategy_cc_defaults,
+         min_sdk_version "30"): its java/ + javatests/ concrete modules
+         reference unsynced framework libs, so the definition is STUBBED
+         verbatim in yuzora-stubs/Android.bp by the workflow (same type,
+         same values) instead of syncing the project. libutils is the
+         only user in this tree and IS in the HAL closure
+         (libbinder_ndk -> libbinder -> libutils), so it cannot be pruned.
+       Project count stays 32. -->
+
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
