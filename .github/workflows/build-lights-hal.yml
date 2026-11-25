@@ -556,6 +556,97 @@ jobs:
           # kernel-config-soong-rules (run #27), is not a vts dir and is
           # untouched). One stub covers all three init microdroid users.
           #
+          # Runs #48 (45597960313, 12m41s) / #49 (45598120384, 13m46s) /
+          # #50 (45598208863, 13m52s) — all three FAILED at Soong
+          # ninja-file generation, 21-33s into the build step, with the
+          # SAME class of error: "depends on undefined module" for the
+          # AIDL `-ndk_shared` / `-ndk_static` / `-ndk_export_shared`
+          # forwarding defaults that `frameworks/native` modules use in
+          # `defaults:`, plus `cts_defaults` (libnativehelper/tests_mts).
+          # The #46/#47 fix HELD completely (no keymint/avf/libvintf
+          # errors in any of the three runs) and the #42 closure prune
+          # HELD (zero hardware/interfaces errors). The new errors are
+          # one layer further out, in frameworks/native + libnativehelper
+          # — same failure shape, same cause: Soong validates every
+          # `defaults:` reference in every parsed .bp file, and these
+          # modules have no definition in the synced tree:
+          #
+          # - "android.hardware.power-ndk_shared" (libpowermanager_benchmarks
+          #   + libpowermanager_test) and "android.hardware.power-ndk_export_shared"
+          #   (libpowermanager itself) are cc_defaults in
+          #   hardware/interfaces/power/aidl/Android.bp — a dir the closure
+          #   prune deletes (the Power HAL is unrelated to the lights HAL).
+          #   Verified live at LineageOS lineage-22.2: power/aidl defines
+          #   both (lines 79 + 86), plus power-ndk_static (line 96).
+          # - "android.hardware.graphics.common-ndk_shared" (libtonemap,
+          #   libshaders, libshaders_test, libgralloctypes, libui,
+          #   libgui, surfaceflinger, renderengine),
+          #   "android.hardware.graphics.composer3-ndk_shared" (same set
+          #   minus gralloc) and "android.hardware.graphics.allocator-ndk_shared"
+          #   (libui) are the NDK forwarding defaults of the
+          #   graphics/common, graphics/composer and graphics/allocator
+          #   aidl_interface modules — dirs the closure prune deletes.
+          #   All three are used in `defaults:` (verified live in the
+          #   synced frameworks/native .bp files), so the stubs below are
+          #   cc_defaults, NOT libraries.
+          # - "android.hardware.power-ndk_static" +
+          #   "android.hardware.graphics.common-ndk_static" +
+          #   "android.hardware.graphics.composer3-ndk_static" (all three
+          #   used in `defaults:` by surfaceflinger's
+          #   libsurfaceflinger_mocks_defaults test helper) are the
+          #   static variants of the same forwarding defaults.
+          # - "android.os.hintmanager_aidl-ndk" (libpowermanager's
+          #   whole_static_libs) is the aidl-generated NDK static lib
+          #   for android.os.hintmanager (frameworks/base, unsynced) —
+          #   so it is stubbed as an (empty) cc_library_static with a
+          #   dummy source, NOT as a cc_defaults: whole_static_libs
+          #   entries must be static libraries.
+          # - "cts_defaults" (MtsLibnativehelperTestCases +
+          #   MtsLibnativehelperLazyTestCases in libnativehelper/tests_mts)
+          #   is defined in the unsynced CTS project. The tests_mts dir
+          #   is PRUNED below (MTS tests are never built for this
+          #   HAL-only target — same class as the vts prunes), and
+          #   cts_defaults is stubbed as well, belt-and-braces like the
+          #   libvintf stub (an unused cc_defaults is inert).
+          #
+          # NOTE — why not keep the real AIDL dirs instead of stubbing?
+          # The four aidl_interface modules import other AIDL interfaces
+          # (android.hardware.common-V2, android.hardware.common.fmq-V1,
+          # android.hardware.drm.common-V1) whose defining dirs are also
+          # pruned, and composer/allocator use
+          # `defaults: ["android.hardware.graphics.common-latest"]` —
+          # keeping the four dirs would cascade into keeping common/aidl,
+          # common/fmq/aidl, drm/aidl, ... . The referencing modules
+          # (powermanager, tonemap, shaders, gralloctypes, libui,
+          # surfaceflinger, renderengine) are NEVER built for this
+          # HAL-only target, so only the NAMES have to exist for Soong's
+          # parse — same reasoning as the #36/#39/#46 stubs.
+          #
+          # NOTE — the reported subset is NOT the whole layer: runs #48
+          # (11 errors), #49 (7) and #50 (9) on the same fix code each
+          # reported a different subset (same lesson as #38/#39). The
+          # stubs below cover the COMPLETE set, proven by scanning all
+          # 331 Android.bp files in the synced frameworks/native (208)
+          # + system/core (123) trees at LineageOS lineage-22.2 for
+          # every `-ndk_shared` / `-ndk_static` / `-ndk_export_shared` /
+          # `-ndk` reference: exactly 4 `-ndk_shared`, 1
+          # `-ndk_export_shared`, 3 `-ndk_static` and 1 `-ndk` module,
+          # all listed here. libnativehelper root + tests/ were checked
+          # live too (AOSP r32): they use only in-repo defaults, so
+          # tests_mts is the only problematic dir there. The HAL's own
+          # closure is untouched by these stubs: the HAL links libbase,
+          # libbinder_ndk and android.hardware.light-V2-ndk only — none
+          # of the stubbed modules is in it, so an empty stub cannot
+          # break the link.
+          #
+          # Fix, same established pattern as #36/#39/#46 (stub, don't
+          # sync; NO new projects, still 32): all nine are STUBBED below
+          # as empty cc_defaults (public visibility) + the hintmanager
+          # lib as an empty cc_library_static, and libnativehelper/tests_mts
+          # is PRUNED. The prune-step stub check and the pre-build guard
+          # both verify the new stubs (and the dummy source) and the
+          # absence of libnativehelper/tests_mts.
+          #
           # The fifth module CANNOT be pruned: "apex-lowest-min-sdk-version"
           # is used by system/core/libutils (libutils_headers +
           # libutils_impl_defaults), and libutils IS in the HAL closure
@@ -630,6 +721,20 @@ jobs:
           # HAL-only target. kernel/configs/build (kernel-config-soong-rules,
           # run #27) is not a vts dir and is untouched.
           find kernel/configs -type d -name vts -exec rm -rf {} +
+
+          # libnativehelper: prune tests_mts (runs #48/#49/#50 fix — see
+          # the comment block above). libnativehelper/tests_mts holds the
+          # MTS test cases MtsLibnativehelperTestCases +
+          # MtsLibnativehelperLazyTestCases, which use `defaults:
+          # ["cts_defaults"]` — cts_defaults is defined in the unsynced
+          # CTS project. MTS tests are never built for this HAL-only
+          # target. libnativehelper itself (jni_headers, needed by
+          # libbinder_ndk) is untouched; only the tests_mts subdir goes.
+          # (Verified live at AOSP r32: libnativehelper root + tests/
+          # use only in-repo defaults, so tests_mts is the only
+          # problematic dir there.)
+          rm -rf libnativehelper/tests_mts
+
           # Kept paths must still exist (the prune must not have eaten them).
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
             hardware/interfaces/compatibility_matrices \
@@ -786,8 +891,112 @@ jobs:
                   "//visibility:public",
               ],
           }
+
+          // Runs #48/#49/#50 fix: the AIDL `-ndk_shared` /
+          // `-ndk_static` / `-ndk_export_shared` forwarding defaults
+          // (all used in `defaults:` by frameworks/native modules, so
+          // the stubs are cc_defaults, NOT libraries) + cts_defaults.
+          // All nine are defined in dirs the closure prune deletes
+          // (hardware/interfaces/power/aidl, graphics/*/aidl) or in
+          // unsynced projects (CTS) — the referencing modules
+          // (libpowermanager, libtonemap, libshaders, libgralloctypes,
+          // libui, libgui, surfaceflinger, renderengine, MTS tests)
+          // are never built for this HAL-only target, so only the NAME
+          // has to exist for Soong's parse. Complete set proven by
+          // scanning all 331 Android.bp files in the synced
+          // frameworks/native + system/core trees (see the comment
+          // block at the top of this step) — do NOT add one at a time.
+          cc_defaults {
+              name: "android.hardware.power-ndk_shared",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_defaults {
+              name: "android.hardware.power-ndk_export_shared",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_defaults {
+              name: "android.hardware.power-ndk_static",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_defaults {
+              name: "android.hardware.graphics.common-ndk_shared",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_defaults {
+              name: "android.hardware.graphics.common-ndk_static",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_defaults {
+              name: "android.hardware.graphics.composer3-ndk_shared",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_defaults {
+              name: "android.hardware.graphics.composer3-ndk_static",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_defaults {
+              name: "android.hardware.graphics.allocator-ndk_shared",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          // cts_defaults (runs #48/#49/#50 fix): empty cc_defaults
+          // stub, belt-and-braces — the only referencer
+          // (libnativehelper/tests_mts) is pruned above, so this stub
+          // is inert unless another referencer surfaces on a later run.
+          cc_defaults {
+              name: "cts_defaults",
+              defaults_visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          // android.os.hintmanager_aidl-ndk (runs #48/#49/#50 fix):
+          // the aidl-generated NDK static lib for android.os.hintmanager
+          // (frameworks/base, unsynced), used in whole_static_libs by
+          // libpowermanager. whole_static_libs entries must be static
+          // libraries, so this stub is an (empty) cc_library_static with
+          // the dummy source created below — NOT a cc_defaults.
+          // libpowermanager is never built here, so the empty lib never
+          // links into anything.
+          cc_library_static {
+              name: "android.os.hintmanager_aidl-ndk",
+              srcs: ["empty.c"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults; do
+
+          # Dummy source for the android.os.hintmanager_aidl-ndk stub
+          # above: a cc_library_static needs at least one source file.
+          printf '/* Stub source — see the runs #48/#49/#50 comment above. */\nint yuzora_stub_empty;\n' > yuzora-stubs/empty.c
+          test -f yuzora-stubs/empty.c \
+            || { echo "::error::stub source missing after creation: yuzora-stubs/empty.c"; exit 1; }
+
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
@@ -796,6 +1005,7 @@ jobs:
           echo "apex-lowest-min-sdk-version stub created."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
+          echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
 
       - name: Build lights HAL
         working-directory: lights-build
@@ -862,7 +1072,13 @@ jobs:
             echo "::error::pre-build guard: kernel/configs vts dir present at build time"
             exit 1
           fi
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults; do
+          if [ -d libnativehelper/tests_mts ]; then
+            echo "::error::pre-build guard: libnativehelper/tests_mts present at build time"
+            exit 1
+          fi
+          test -f yuzora-stubs/empty.c \
+            || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.c"; exit 1; }
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
