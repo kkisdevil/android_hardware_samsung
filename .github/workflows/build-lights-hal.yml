@@ -1158,6 +1158,90 @@ jobs:
           echo "Unneeded subtrees pruned."
           echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
           echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats."
+          # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
+          # bindings map (run #74, 45715506626, 12m40s, build step 33s;
+          # run #73, 45715395273, 12m14s, 50s; run #72, 45714883089,
+          # 13m51s, 33s — all three on the same fix code).
+          #
+          # The #68/#69/#70/#71 fix HELD completely in all three runs:
+          # prune step + pre-build guard passed, zero "depends on
+          # undefined module" errors, zero "HardwareBuffer_aidl" /
+          # "android.frameworks.stats" mentions. The new failure is a
+          # Soong bootstrap panic, one step EARLIER than the old
+          # undefined-module errors (soong_build dies in the PreArch
+          # mutator phase, before the deps mutator ever reports):
+          #
+          #   internal error: panic in bottom up mutator
+          #     "licensesPropertyGatherer" for module
+          #     "fuzzer_bindings_test"
+          #   Fuzzer doesn't exist : ot_daemon_service_fuzzer   (#74)
+          #   Fuzzer doesn't exist: update_engine_service_fuzzer (#72)
+          #   Fuzzer doesn't exist: libcodec2-aidl-fuzzer       (#73)
+          #
+          # Root cause, verified live at LineageOS lineage-22.2 and
+          # AOSP android-15.0.0_r32: system/sepolicy/build/soong/
+          # validate_bindings.go registers a PreArch BottomUp mutator
+          # (addFuzzerConfigDeps) that runs for the fuzzer_bindings_test
+          # module (defined in system/sepolicy/contexts/Android.bp,
+          # srcs plat_service_contexts) and panics unless EVERY fuzzer
+          # named in ServiceFuzzerBindings exists as a Soong module
+          # (unless ALLOW_MISSING_DEPENDENCIES, which this workflow
+          # never sets — a missing dep must fail loudly). The bindings
+          # map (system/sepolicy/build/soong/service_fuzzer_bindings.go,
+          # pinned to the AOSP r32 tag) names ~44 fuzzers; the three
+          # runs each name a DIFFERENT first-missing one, so the missing
+          # set is large and the reported name is whichever the parallel
+          # mutator traversal hits first — stubbing one fuzzer would
+          # just surface the next. The missing fuzzers live in unsynced
+          # projects (external/openthread for ot_daemon,
+          # system/update_engine, frameworks/av for libcodec2) or in
+          # dirs the closure prune deletes (hardware/interfaces/*).
+          # Syncing them would cascade, for a test that is meaningless
+          # in a 32-project tree: the bindings test checks that every
+          # service in service_contexts has a fuzzer, and this HAL-only
+          # build ships no services at all.
+          #
+          # Fix: overwrite the synced bindings file with an empty map.
+          # The mutator then iterates zero entries and cannot panic;
+          # the fuzzer_bindings_test module still exists (so the
+          # selinux_policy_system phony's required entry still resolves)
+          # and its build action just marshals the empty map. The
+          # sepolicy project is pinned to the r32 tag, so the file
+          # content is frozen — this overwrite is stable across runs.
+          # NOT stubbing the ~44 fuzzers one by one: the missing set is
+          # large, the reported name varies per run, and a stub would
+          # collide (duplicate-module error) if a floating LineageOS pin
+          # later added the real module. NOT pruning contexts/Android.bp:
+          # it defines many other needed context/test modules. NOT
+          # setting ALLOW_MISSING_DEPENDENCIES: it would mask real
+          # missing deps (see the workflow header).
+          # NOTE: runs #68-#71 on the same commit did NOT hit this
+          # panic (the mutator passed there and the runs died later on
+          # the bufferstreams/trusty errors) — why it first appears in
+          # #72 is unexplained from the available evidence. The fix
+          # does not depend on that explanation: an empty map cannot
+          # panic on any tree.
+          cat > system/sepolicy/build/soong/service_fuzzer_bindings.go <<'EOF'
+          // YUZORA_EMPTY_FUZZER_BINDINGS — runs #72/#73/#74 fix.
+          //
+          // Stub replacement for the synced
+          // system/sepolicy/build/soong/service_fuzzer_bindings.go
+          // (AOSP android-15.0.0_r32, pinned): the upstream map names
+          // ~44 service fuzzers, most defined in projects this minimal
+          // manifest never syncs, and the addFuzzerConfigDeps mutator
+          // (validate_bindings.go) panics on the first missing one.
+          // An empty map makes the mutator a no-op. The names and types
+          // are kept identical so the rest of package selinux still
+          // compiles unchanged.
+          package selinux
+
+          var EXCEPTION_NO_FUZZER = []string{}
+
+          var ServiceFuzzerBindings = map[string][]string{}
+          EOF
+          grep -q "YUZORA_EMPTY_FUZZER_BINDINGS" system/sepolicy/build/soong/service_fuzzer_bindings.go \
+            || { echo "::error::prune failed — fuzzer bindings stub not written"; exit 1; }
+          echo "runs #72/#73/#74 stubbed: system/sepolicy/build/soong/service_fuzzer_bindings.go emptied."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
@@ -1707,6 +1791,10 @@ jobs:
           test -f "$api" \
             || { echo "::error::pre-build guard: apexs test api file missing at build time: $api"; exit 1; }
           done
+                    # Runs #72/#73/#74 fix: the emptied fuzzer bindings map (see
+          # the prune-step comment) must still be the stub at build time.
+          grep -q "YUZORA_EMPTY_FUZZER_BINDINGS" system/sepolicy/build/soong/service_fuzzer_bindings.go \
+            || { echo "::error::pre-build guard: fuzzer bindings stub missing at build time"; exit 1; }
           echo "Pre-build guard passed: pruned paths absent, stubs present."
           # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
           # dep must fail here, not be silently skipped.
