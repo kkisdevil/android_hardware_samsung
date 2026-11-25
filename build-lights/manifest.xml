@@ -341,6 +341,40 @@
        no stubbed module is in its closure. NO new projects:
        project count stays 32. -->
 
+<!-- Runs #51 (45618322499, 14m28s) / #52 (45618463477, 14m11s) /
+#53 (45619867686, 14m02s) — all three FAILED at Soong ninja-file
+generation, 31s (#51) / 33s (#52) / 41s (#53) into the build step,
+with the SAME single error:
+"frameworks/native/libs/renderengine/Android.bp:118:1:
+"librenderengine_deps" depends on undefined module
+"skia_renderengine_deps"". The #48/#49/#50 fix HELD completely (no
+power/graphics -ndk_* or hintmanager errors in any of the three
+runs). The new error is one layer further out, in
+frameworks/native/libs/renderengine — same failure shape, same
+cause: Soong validates every `defaults:` and `static_libs:`
+reference in every parsed .bp file, and these two modules have no
+definition in the synced tree:
+- "skia_renderengine_deps" (used in `defaults:` by
+librenderengine_deps, a cc_defaults in
+frameworks/native/libs/renderengine/Android.bp) is a cc_defaults in
+external/skia/Android.bp (lines 4129-4193, LineageOS lineage-22.2).
+- "libskia_renderengine" (used in `static_libs:` by the same
+librenderengine_deps) is a cc_library_static in
+external/skia/Android.bp (lines 280-288). external/skia is NOT
+synced: syncing it would cascade (libpng, libz, libarect,
+libperfetto, EGL/GLESv2/vulkan, the whole Skia tree) for a
+RenderEngine the HAL never needs. Fix, same established pattern
+as #36/#39/#46 (stub, don't sync): the workflow STUBS both —
+skia_renderengine_deps as an empty cc_defaults (used in
+`defaults:`) and libskia_renderengine as an empty
+cc_library_static with the dummy source (used in `static_libs:`,
+same form as the hintmanager stub). librenderengine is never
+built here (not in the HAL closure), so the empty lib never links
+into anything. Stub BOTH, not just the reported one: Soong
+reports the first undefined dep per module (defaults before
+static_libs), so the static_libs dep would surface on the next
+run. NO new projects: project count stays 32. -->
+
   <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
