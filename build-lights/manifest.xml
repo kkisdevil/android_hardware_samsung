@@ -592,6 +592,12 @@ references its modules in srcs (run #58). NOT syncing frameworks/base
 or prebuilts/sdk (gigabytes, for test/host modules the HAL never
 builds). NOT setting ALLOW_MISSING_DEPENDENCIES. NO new projects:
 project count stays 32. -->
+<!-- Runs #78 (45745524812, 16m27s) / #79 (45746851592) / #80 (45746992186, 12m58s) — all three FAILED at Soong ninja-file generation on the same fix code (head 8b051db), reporting THREE disjoint error sets on one commit — the union, not one run's subset, is fixed:
+- #79: 13 errors (libsepol x6, libpcre2, libselinux, compatibility_matrix_schema x2, libwinpthread Windows-variant x3).
+- #80: 1 error (libprotobuf-java-full missing linux_glibc host variant, system/apex/proto/Android.bp:73:1, dependency of apex_manifest_proto_java).
+- #78: 91 errors (86 "depends on undefined module" + 5 missing-variant for signapk): android.hidl.base@1.0_interface x60, android.hardware.tests.baz@1.0_interface x11, android.hidl.tests.safe_union@1.0_interface x10, android.frameworks.displayservice@1.0_interface x5 — ALL in system/tools/hidl/test/** or hidl2aidl/test/** — plus apksig, bouncycastle-unbundled, bouncycastle-bcpkix-unbundled, conscrypt-unbundled, libconscrypt_openjdk_jni (signapk, java_binary_host).
+Fix, same established pattern (stub, don't sync; prune test dirs): the workflow gives every java_library stub host_supported: true + target.windows.enabled: true (libprotobuf-java-full is Soong's implicit dep of the host-supported apex_manifest_proto_java, proto type "full"), adds host_supported (+ windows) to libwinpthread / libconscrypt_openjdk_jni and host_supported to android.os.hintmanager_aidl-ndk / libskia_renderengine, STUBS libsepol / libpcre2 / libselinux (empty cc_library_static, host tools) + compatibility_matrix_schema (filegroup, system/libvintf, not synced; minimal XSD skeleton, never read — the .xml matrix modules are never built here), and PRUNES system/tools/hidl/test + hidl2aidl/test whole (the hidl-soong-rules plugin lives in build/ and the hidl2aidl tool parses clean). The pre-build guard now also verifies the new stubs, the XSD file, and that both hidl test dirs are absent. NO new projects: project count stays 32. -->
+
 <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
