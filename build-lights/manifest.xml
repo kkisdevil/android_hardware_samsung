@@ -470,6 +470,69 @@ still 32 projects.
   which touches the cache steps and needs his word - not
   changed in this fix round.
 
+  Runs #122 (45867347789, 15m0s, auto, manifest b35b3cd),
+  #123 (45867671751, 15m22s, auto, README a5b3730) and #124
+  (45867963752, 15m59s, manual dispatch ~22:58 IST 2026-11-26,
+  head a5b3730 - the runs #119/#120/#121 fix, workflow d0b8b17):
+  ALL FAILED at Soong ninja-file generation, ~36-54s into the
+  "Build lights HAL" step. The #119/#120/#121 fix HELD in all
+  three (prune step passed + pre-build guard passed). Subset
+  reporting again: #122 reports 11 lines, #123 reports 10,
+  #124 reports 15 - all different subsets of one commit. The fix
+  covers the UNION (17 distinct lines, 10 distinct modules -
+  #122's 11 lines are all inside the #124+#123 union).
+  Raw-log verbatim (job-logs.txt, genuine build-output lines
+  only): liblp needs libext4_utils; inspect_cow +
+  create_snapshot + write_cow need libgflags; libfs_avb_test_util
+  needs libavb_host_sysdeps + libchrome; libhidl-gen needs
+  libhwbinder_headers; libtracing_perfetto needs libperfetto_c +
+  android.os.flags-aconfig-cc-host; libsnapuserd needs
+  libext4_utils + liburing; libapex needs libziparchive;
+  libvbmeta_test + create_snapshot + libhidl-gen need the
+  libcrypto STATIC variant; libapex needs the libselinux SHARED
+  variant. Root causes, verified live at LineageOS lineage-22.2 /
+  AOSP android-15.0.0_r32 (all 10 defining projects UNSYNCED):
+  libext4_utils is plain cc_library in system/extras/ext4_utils
+  (r32 ~lines 41-45, host_supported); libgflags is plain
+  cc_library in external/gflags (r32 ~line 107, host_supported
+  via gflags_defaults); libavb_host_sysdeps is
+  cc_library_host_static in external/avb (r32 ~line 627,
+  host-only by type); libchrome is plain cc_library in
+  external/libchrome (r32 ~line 1657, host_supported);
+  libhwbinder_headers is cc_library_headers in
+  system/libhwbinder (r32 ~line 67, host_supported);
+  libperfetto_c is cc_library_shared in external/perfetto (r32,
+  host_supported; on main it is plain cc_library - r32 is
+  authoritative); android.os.flags-aconfig-cc-host is a
+  cc_aconfig_library in frameworks/base/AconfigFlags.bp
+  (lineage-22.2 lines 918-926, host_supported) - explicitly
+  declared, a plain cc_library stub satisfies it; libziparchive
+  is plain cc_library in system/libziparchive (lineage-22.2
+  lines 284-300, host_supported); liburing is cc_library_static
+  in external/liburing (r32, host_supported); libcrypto is plain
+  cc_library in external/boringssl (r32 ~line 497) - the #96
+  cc_library_shared stub provides no static variant; libselinux
+  is plain cc_library in external/selinux/libselinux (r32) -
+  the #78 cc_library_static stub provides no shared variant.
+  The fix is workflow-only: 9 new stubs in
+  yuzora-stubs/Android.bp (5 plain cc_library, 1
+  cc_library_host_static, 1 cc_library_headers, 1
+  cc_library_shared, 1 cc_library_static) + the libcrypto stub
+  changed cc_library_shared -> plain cc_library + the
+  libselinux stub changed cc_library_static -> plain
+  cc_library. No new projects (still 32). The cache steps are
+  untouched (see the save-always note below).
+
+  CACHE NOTE (run #124): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took 12m32s, and no "Save repo cache" step ran at all
+  (the phrase does not occur in the raw job log; only "Post
+  Restore repo cache 0s" ran) - same as runs #118/#121. The
+  next run will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
