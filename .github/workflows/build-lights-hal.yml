@@ -86,6 +86,7 @@ jobs:
           restore-keys: |
             lights-repo-
           save-always: true
+
       - name: Init + sync minimal manifest
         run: |
           set -euo pipefail
@@ -3406,6 +3407,119 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #111/#112/#113 fix: the #110 fix HELD in all three
+          // (prune step passed in 1s + pre-build guard passed). All
+          // three fail at Soong ninja generation, ~36-55s into the
+          // build step, on the SAME fix code (head bfbbfcb - the #110
+          // fix, workflow fd7e33e). Subset-reporting again: #113 and
+          // #112 report the same pair, #111 reports a different one.
+          // The fix covers the UNION (3 lines). Raw-log verbatim:
+          //   #113 (45835491023, 14m40s, manual, bfbbfcb) + #112
+          //   (45835366346, 14m30s, auto, bfbbfcb) - 2 lines each:
+          //   system/core/fs_mgr/libdm/Android.bp:22:1 libdm depends
+          //   on undefined module libext2_uuid; system/core/fs_mgr/
+          //   libfstab/Android.bp:24:1 libfstab depends on undefined
+          //   module libgsi_headers.
+          //   #111 (45835194480, 15m01s, auto, e000389) - 1 line:
+          //   external/rust/android-crates-io/crates/drm-ffi/
+          //   Android.bp:16:1 libdrm_ffi depends on undefined module
+          //   libdrm_sys.
+          //   (The 50 other error: lines in each Build step are the
+          //   runner echoing the pre-build-guard echo commands that
+          //   did NOT fire - the guard printed Pre-build guard passed
+          //   in all three runs.)
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32:
+          // - libext2_uuid: static_libs of the cc_library_static
+          //   libdm (system/core/fs_mgr/libdm/Android.bp,
+          //   lineage-22.2). Upstream plain cc_library in
+          //   external/e2fsprogs/lib/uuid/Android.bp (lineage-22.2,
+          //   host_supported) - external/e2fsprogs is NOT synced (not
+          //   in the 32-project manifest). Stubbed as plain cc_library
+          //   (covers the static_libs use, same as the libssl /
+          //   libjsoncpp pattern).
+          // - libgsi_headers: header_libs of the cc_library_static
+          //   libfstab (system/core/fs_mgr/libfstab/Android.bp,
+          //   lineage-22.2). Upstream cc_library_headers in
+          //   platform/system/gsid/Android.bp (r32, host_supported,
+          //   export_include_dirs include) - system/gsid is its own
+          //   project, NOT synced; system/core never contained it (no
+          //   libgsi dir under fs_mgr at lineage-22.2). Stubbed as
+          //   cc_library_headers, mirroring the #105
+          //   libstagefright_headers stub.
+          // - libgsi + libgsid: NOT reported by any run yet, but the
+          //   same unsynced gsid file defines them (libgsi cc_library,
+          //   libgsid cc_library_static) and the SYNCED
+          //   system/core/fs_mgr/Android.bp references both in
+          //   static_libs (libfs_mgr_defaults lists libgsi; remount
+          //   lists libgsid) - they are the next subset-reporting
+          //   layer, so both are stubbed now (plain cc_library covers
+          //   the static use; same complete-layer precedent as the
+          //   #102 sibling sdk_module-lib_34_system_modules stub).
+          // - libdrm_sys: rustlibs of the rust_library libdrm_ffi
+          //   (external/rust/android-crates-io/crates/drm-ffi/
+          //   Android.bp, r32, crate drm_ffi 0.8.0). NO defining file
+          //   exists at r32 or on main: crates/drm-sys/Android.bp
+          //   404s in android-crates-io and in external/rust/crates,
+          //   and the r32 crates listing has no drm-sys entry - an
+          //   upstream gap (the drm-ffi 0.8.0 upgrade references a
+          //   crate never vendored), not a sync/prune issue. Stubbed
+          //   as rust_library with crate_name drm_sys (what drm-ffi
+          //   resolves with extern crate drm_sys), srcs lib.rs
+          //   (reused from the #96 libcxx stub), mirroring the libcxx
+          //   stub.
+          // COMPILE-STAGE CAVEATS (the next round may hit these if
+          // libdm / libfstab are actually compiled for this target -
+          // Soong only needed the stubs to parse): dm.cpp includes
+          // uuid/uuid.h and calls uuid_generate / uuid_unparse_lower;
+          // fstab.cpp includes libgsi/libgsi.h and uses gsi
+          // kDsuPostfix etc. A bare stub passes Soong; dummy headers
+          // plus stub functions will be needed only if the next run
+          // fails at compile/link.
+          cc_library {
+              name: "libext2_uuid",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libgsi_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libgsi",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libgsid",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          rust_library {
+              name: "libdrm_sys",
+              crate_name: "drm_sys",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -3567,6 +3681,13 @@ jobs:
           # defaults block (name: line to its closing brace) instead.
           sed -n '/name: "android.hardware.graphics.common-ndk_shared"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq '"android.hardware.graphics.common-V6-ndk"' || { echo "::error::common-ndk_shared defaults missing V6-ndk shared_libs"; exit 1; }
           echo "runs #105/#106/#107 stubs created: androidx.test.rules + testng + frameworks-base-testutils java_library stubs; libstagefright_headers + libstagefright_foundation_headers cc_library_headers stubs; pyfakefs + asuite_cc_client python_library stubs + watchdog python_library_host stub (+ empty.py); libssl + libtinyxml2 + libgtest_isolated + libprocinfo + libjsonpbverify + libjsonpbparse + libhidlbase cc_library stubs; libcrypto_static + libgoogle-benchmark cc_library_static stubs; android.hardware.graphics.common-V6-ndk + android.hardware.graphics.mapper@4.0 cc_library_shared stubs; libjsoncpp changed cc_library_shared -> cc_library; android.hardware.graphics.common-ndk_shared defaults gains shared_libs V6-ndk."
+          # Runs #111/#112/#113 fix: verify all 5 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105 loops above).
+          for stub in libext2_uuid libgsi_headers libgsi libgsid libdrm_sys; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #111/#112/#113 stubs created: libext2_uuid cc_library stub; libgsi_headers cc_library_headers stub; libgsi + libgsid cc_library stubs (same-file siblings, referenced by synced fs_mgr code); libdrm_sys rust_library stub (+ lib.rs)."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -3804,6 +3925,11 @@ jobs:
           # Runs #105/#106/#107 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in androidx.test.rules testng frameworks-base-testutils libstagefright_headers libstagefright_foundation_headers pyfakefs asuite_cc_client watchdog libssl libtinyxml2 libgtest_isolated libprocinfo libjsonpbverify libjsonpbparse libcrypto_static libgoogle-benchmark android.hardware.graphics.common-V6-ndk android.hardware.graphics.mapper@4.0 libhidlbase; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #111/#112/#113 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libext2_uuid libgsi_headers libgsi libgsid libdrm_sys; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
