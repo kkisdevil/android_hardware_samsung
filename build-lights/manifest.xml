@@ -93,6 +93,54 @@ still 32 projects.
   still in flight on the same broken code (cc42806) when the fix landed,
   are expected to fail identically in the prune step.
 
+  Runs #96 (45800651582, 14m36s, manifest push b8b3e8c), #97 (45801208075,
+  12m58s, README push fc4b646) and #98 (45801390708, 14m34s, manual dispatch
+  ~15:56 IST, same commit fc4b646) ALL FAILED at Soong ninja-file generation,
+  ~36-54s into the build step, on the #93 fix code (workflow 322136d). The #93
+  fix HELD in all three (prune step + pre-build guard passed). The three runs
+  report THREE different error sets on one commit - the subset-reporting
+  lesson at its extreme (same as #38/#39, #48/#49/#50, #62/#63/#64, #78/#79/#80,
+  #87/#88/#89): #96 has the widest set (error block log lines 365-678), #97
+  has 24 error lines, #98 has 40 error lines (Soong [97% 111/114]). The fix
+  covers the UNION: 23 new stubs in yuzora-stubs/Android.bp (8 empty
+  java_library: android_stubs_current, android_test_stubs_current,
+  android_system_stubs_current - the SDK stubs Soong resolves sdk_version
+  "current"/"test_current"/"system_current" to, same family as the
+  already-stubbed android_module_lib_stubs_current (#87 fix, held) -
+  sysprop-library-stub-platform (Soong's javaSyspropStub for platform-owned
+  sysprop_library modules), ext + framework (java_library in
+  frameworks/base/Android.bp), androidx.test.runner + androidx.test.core
+  (java_library in external/androidx); 2 android_app: framework-res (android_app
+  in frameworks/base/core/res/Android.bp) + org.lineageos.platform-res
+  (LineageOS platform resources package, vendor/lineage - type unverified, stubbed
+  as android_app because an RRO target must be an app or library with a
+  manifest/package; if the next run errors on its type, switch to android_library);
+  6 cc_library_shared (libz, libgrpc++, libusb, libusb_platform, libjsoncpp,
+  libcrypto - all in shared_libs:); 3 cc_library_static (libprotobuf-cpp-lite,
+  libprotobuf-cpp-full - external/protobuf is NOT synced - libjemalloc5_je_prefixed,
+  all in static_libs:); 2 cc_library_headers (libhardware_headers, gwp_asan_headers
+  - external/gwp-asan is NOT synced - both in header_libs:); 1 cc_binary (dex2oatd,
+  the binary dexpreopt depends on, art_cc_binary in unsynced art/dex2oat); 1
+  rust_library (libcxx, the Rust cxx crate, rustlibs: of libmoveit)) + SDK 34 shims
+  (prebuilts/sdk/34/public/android.jar + prebuilts/sdk/34/system/android.jar +
+  prebuilts/sdk/34/public/framework.aidl + prebuilts/sdk/34/system/framework.aidl -
+  the build's "current" SDK version is empirically 34) + an empty
+  frameworks/base/boot/boot-image-profile.txt (listed as a source path by the
+  .impl modules of test_framework-apexd/test_service-apexd; frameworks/base is NOT
+  synced) + deletion of kernel_config_q_4.9 + kernel_config_s_4.14 from the
+  kernel_configs: lists of framework_compatibility_matrix.5.xml/.6.xml (the vintf
+  plugin requires each kernel_config dep to be a real KernelConfigRule, so they are
+  deleted, not stubbed - same reason #75 sed-deleted dexpreopt_systemserver_check).
+  No new projects (still 32) - the RROs' source apps live in the kept
+  apexs_testdata file, which kept system/apex/apexd/Android.bp references (same
+  reason as run #58, which forbade pruning apexs_testdata), and the aconfig_storage /
+  aidl test dirs are NOT pruned because all their missing deps are stubbed anyway.
+  The cache steps are untouched (save-always flip still needs the user's word).
+  Timing difference noted, not resolved: #96 prune 2s / #97 prune 0s vs #98 prune
+  3m14s; restore cache 1s / 0s vs 1m31s; sync 11m43s / 9m31s vs 8m25s - attributed
+  to different cache/prune state, not different code. The fix covers the union
+  regardless.
+
   -->
 
 <manifest>
