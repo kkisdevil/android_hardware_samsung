@@ -268,6 +268,54 @@ still 32 projects.
   grep -A5. No new projects (still 32). The cache steps are untouched
   (save-always flip still needs the user's word).
 
+  Run #113 (45835491023, 14m40s, manual dispatch ~19:35 IST
+  2026-11-26, head bfbbfcb - the run #110 fix, workflow fd7e33e),
+  Run #112 (45835366346, 14m30s, auto, bfbbfcb) and
+  Run #111 (45835194480, 15m01s, auto, e000389): ALL FAILED at Soong
+  ninja-file generation, ~36-55s into the "Build lights HAL" step.
+  The #110 fix HELD in all three (prune step passed in 1s + pre-build
+  guard passed). Subset reporting again: #113 and #112 report the
+  same pair, #111 reports a different one. The fix covers the UNION
+  (3 lines). Raw-log verbatim: system/core/fs_mgr/libdm/Android.bp:
+  22:1 "libdm" depends on undefined module "libext2_uuid";
+  system/core/fs_mgr/libfstab/Android.bp:24:1 "libfstab" depends on
+  undefined module "libgsi_headers"; external/rust/android-crates-io/
+  crates/drm-ffi/Android.bp:16:1 "libdrm_ffi" depends on undefined
+  module "libdrm_sys". Root causes, verified live at LineageOS
+  lineage-22.2 / AOSP android-15.0.0_r32: libext2_uuid is plain
+  cc_library in external/e2fsprogs/lib/uuid/Android.bp
+  (external/e2fsprogs NOT synced), used in static_libs by the
+  cc_library_static libdm; libgsi_headers is cc_library_headers in
+  platform/system/gsid/Android.bp (system/gsid NOT synced), used in
+  header_libs by the cc_library_static libfstab; libdrm_sys has NO
+  defining file at r32 or on main (upstream gap - the drm-ffi 0.8.0
+  upgrade references a crate never vendored into android-crates-io),
+  used in rustlibs by the rust_library libdrm_ffi. The fix is
+  workflow-only: 5 new stubs in yuzora-stubs/Android.bp
+  (libext2_uuid plain cc_library, libgsi_headers cc_library_headers,
+  libgsi + libgsid plain cc_library - same-file siblings referenced
+  in static_libs by synced fs_mgr code, libdrm_sys rust_library with
+  crate_name drm_sys, srcs lib.rs). No new projects (still 32). The
+  fix was rebased onto 65709cd (see below) - the cache steps are
+  otherwise untouched.
+
+  Run #114 (45844320862) and Run #115 (45844846893): NOT Soong
+  failures - no job ran in either. The user himself flipped the
+  cache save-always on (commit c5469f3, 2026-11-26 ~20:28 IST - the
+  flip the cron body said needed his word) but added
+  `save-always: true` at 8 spaces, so GitHub rejected the file
+  ("Invalid workflow file ... Line: 88, Col: 9: Unexpected value
+  'save-always'"). a402eeb (~20:31 IST) fixed the wrong line (mkdir
+  10 -> 12 spaces); 65709cd (~20:33 IST) put save-always at 10
+  spaces and restored mkdir to 10. Net effect vs bfbbfcb: exactly
+  one added line (save-always: true at 10 spaces in the Restore repo
+  cache with: block). 65709cd triggered NO run (the push paths
+  filter covers only aidl/light/** + build-lights/**, so a
+  workflow-only push matches nothing). The cache now saves even when
+  the build fails, so the next run can restore it. The
+  #111/#112/#113 fix was rebased onto 65709cd (one-line rebase, no
+  other change to the fix).
+
   -->
 
 <manifest>
