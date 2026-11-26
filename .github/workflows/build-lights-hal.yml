@@ -2868,7 +2868,7 @@ jobs:
                   "//visibility:public",
               ],
           }
-          cc_library_shared {
+          cc_library {
               name: "libz",
               srcs: ["empty.c"],
               host_supported: true,
@@ -3627,6 +3627,261 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #119/#120/#121 fix: the #116/#117/#118 fix HELD in
+          // all three (prune step passed + pre-build guard passed).
+          // All three fail at Soong ninja generation, ~35-53s into
+          // the build step, on the SAME fix code (head 5a83c08 - the
+          // #116/#117/#118 fix, workflow fa506ff). Subset-reporting
+          // again: #119 reports 10 lines, #120 reports 15, #121
+          // reports 7 - all different subsets of one commit. The fix
+          // covers the UNION (12 distinct modules, 15 error lines -
+          // #120's 15 lines are the full union; #119's 10 and #121's
+          // 7 are subsets of them). Raw-log verbatim (job logs,
+          // genuine build-output lines only - the other "error:"
+          // matches in each log are the runner echoing the Build
+          // step script itself, the pre-build-guard echo commands
+          // that did NOT fire, NOT build errors):
+          //   #119 (45857356942, 15m45s, auto, manifest 02209e6) -
+          //   10 lines: libsnapshot_cow (system/core/fs_mgr/
+          //   libsnapshot/Android.bp:201) needs
+          //   libupdate_engine_headers, libbrotli, liblz4,
+          //   libzstd, and libz missing variant; liblog-host-test
+          //   (system/logging/liblog/tests/Android.bp:139) needs
+          //   libgtest_isolated_main; libinput_from_rust_to_cpp
+          //   (frameworks/native/libs/input/Android.bp:176) needs
+          //   cxx-bridge-header; libexpresslog (system/core/
+          //   libstats/expresslog/Android.bp:29) needs
+          //   libtextclassifier_hash_headers +
+          //   libtextclassifier_hash_static; run_dex2oat_test
+          //   (frameworks/native/cmds/installd/Android.bp:126)
+          //   needs server_configurable_flags.
+          //   #120 (45857551439, 16m25s, auto, README 5a83c08) -
+          //   15 lines: the #119 set (same 10, different order) +
+          //   5 more: libaconfig_flags_rust (build/make/tools/
+          //   aconfig/aconfig_flags/Android.bp:36) +
+          //   libaconfig_test_rust_library (build/make/tools/
+          //   aconfig/aconfig/Android.bp:241) need libflags_rust;
+          //   libaconfig_storage_read_api_cc (aconfig/
+          //   aconfig_storage_read_api/Android.bp:80) +
+          //   libaconfig_storage_file_cc (aconfig/
+          //   aconfig_storage_file/Android.bp:121) need
+          //   cxx-bridge-header; libfs_avb (system/core/fs_mgr/
+          //   libfs_avb/Android.bp:27) needs libavb.
+          //   #121 (45857942449, 12m43s, manual ~21:51 IST,
+          //   5a83c08) - 7 lines: the libsnapshot_cow set (5) +
+          //   libgtest_isolated_main + cxx-bridge-header
+          //   (libinput_from_rust_to_cpp only).
+          //   CORRECTION: an early browser read of #121 reported
+          //   two vendor/qcom/opensource/power/config/Android.bp
+          //   "power.qcom / power.qcom.rc is not a module name"
+          //   lines - PHANTOM. A second exhaustive read of the
+          //   same job log (every error line + negative searches)
+          //   found no such lines in any of the three runs, and
+          //   the manifest syncs no vendor/qcom project, so that
+          //   file cannot exist in the synced tree. Same class as
+          //   the #30/#33/#84 phantom reads.
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all 12 defining projects
+          // UNSYNCED):
+          // - libupdate_engine_headers: header_libs of
+          //   libsnapshot_cow_defaults (system/core/fs_mgr/
+          //   libsnapshot/Android.bp:176-199, which the
+          //   cc_library_static libsnapshot_cow pulls in via
+          //   defaults). Upstream cc_library_headers in
+          //   system/update_engine/Android.bp (r32 lines
+          //   1313-1314) - system/update_engine NOT synced.
+          // - libbrotli: static_libs of the same defaults block.
+          //   Upstream cc_library_static in external/brotli/
+          //   Android.bp (r32 lines 49-50) - external/brotli NOT
+          //   synced.
+          // - liblz4: static_libs of the same defaults block.
+          //   Upstream plain cc_library in external/lz4/lib/
+          //   Android.bp (r32 lines 19-20; external/lz4/
+          //   Android.bp does not exist at r32) - external/lz4
+          //   NOT synced.
+          // - libzstd: static_libs of the same defaults block.
+          //   Upstream plain cc_library in external/zstd/
+          //   Android.bp (r32 lines 44-45) - external/zstd NOT
+          //   synced.
+          // - libz: static_libs of the same defaults block.
+          //   Upstream plain cc_library in external/zlib/
+          //   Android.bp (r32 lines 180-181) - external/zlib NOT
+          //   synced. The #96 stub was cc_library_shared, which
+          //   provides no static variant, so the static variant
+          //   the consumer requests is missing - same fix as
+          //   libjsoncpp (#105) and the protobuf stubs (#99):
+          //   change the stub to plain cc_library (it still
+          //   provides the shared variant liblibz_sys needs).
+          // - libgtest_isolated_main: NOT named in the consumer
+          //   file. liblog-host-test (cc_test_host, system/
+          //   logging/liblog/tests/Android.bp:139) sets isolated:
+          //   true, and Soong's cc/test.go appends
+          //   libgtest_isolated_main to the test's StaticLibs
+          //   automatically. Upstream cc_library_static in
+          //   system/testing/gtest_extras/gtest_isolated/
+          //   Android.bp (r32 lines 59-60, srcs Main.cpp,
+          //   host_supported; its whole_static_libs
+          //   libgtest_isolated + shared_libs liblog are NOT
+          //   replicated - bare stub, as usual) - system/testing/
+          //   gtest_extras NOT synced.
+          // - cxx-bridge-header: generated_headers of
+          //   libinput_from_rust_to_cpp (frameworks/native/libs/
+          //   input/Android.bp:189-190),
+          //   libaconfig_storage_read_api_cc (build/make/tools/
+          //   aconfig/aconfig_storage_read_api/Android.bp:80)
+          //   and libaconfig_storage_file_cc (aconfig/
+          //   aconfig_storage_file/Android.bp:121). Upstream
+          //   genrule in external/rust/cxx/Android.bp (r32 lines
+          //   93-98, tools cxxbridge, out rust/cxx.h) -
+          //   external/rust/cxx NOT synced, and NOT in
+          //   external/rust/crates/cxx (that path 404s). Stubbed
+          //   as a genrule with the same out and a cmd that
+          //   touches it - tools omitted (cxxbridge is unsynced)
+          //   and the rule never runs, since the consumers are
+          //   never built. If the next run errors on the genrule
+          //   stub, switch it to cc_library_headers.
+          // - libtextclassifier_hash_headers: header_libs of
+          //   libexpresslog (system/core/libstats/expresslog/
+          //   Android.bp:38-39). Upstream cc_library_headers in
+          //   external/libtextclassifier/native/Android.bp (r32
+          //   lines 24-25) - external/libtextclassifier NOT
+          //   synced.
+          // - libtextclassifier_hash_static: static_libs of the
+          //   same libexpresslog (lines 41-43). Upstream
+          //   cc_library_static in the same file (r32 lines
+          //   62-63) - the same-file sibling
+          //   libtextclassifier_hash (plain cc_library, lines
+          //   55-56) is NOT stubbed: no synced file references
+          //   it (unlike libgsi/libgsid in #111, which synced
+          //   fs_mgr code references) - stub it if a run
+          //   reports it.
+          // - server_configurable_flags: shared_libs of
+          //   run_dex2oat_test (frameworks/native/cmds/installd/
+          //   Android.bp:126; also installd_defaults). Upstream
+          //   plain cc_library in system/
+          //   server_configurable_flags/libflags/Android.bp (r32
+          //   lines 5-6) - system/server_configurable_flags NOT
+          //   synced.
+          // - libflags_rust: NOT named in either consumer file.
+          //   libaconfig_flags_rust (rust_aconfig_library,
+          //   build/make/tools/aconfig/aconfig_flags/
+          //   Android.bp:36-41) and libaconfig_test_rust_library
+          //   (rust_aconfig_library, aconfig/Android.bp:241-246)
+          //   have no rustlibs entry for it; Soong's
+          //   rust_aconfig_library SourceProviderDeps (build/
+          //   soong/aconfig/codegen/rust_aconfig_library.go)
+          //   appends libflags_rust to deps.Rustlibs for every
+          //   rust_aconfig_library. Upstream rust_library in
+          //   system/server_configurable_flags/libflags/
+          //   Android.bp (r32 lines 75-77, crate_name flags_rust,
+          //   srcs lib.rs, rustlibs libcxx) - same project as
+          //   above, NOT synced. The stub is bare (no rustlibs /
+          //   static_libs replicated), like the other rust stubs.
+          // - libavb: static_libs of libfs_avb
+          //   (cc_library_static, system/core/fs_mgr/libfs_avb/
+          //   Android.bp:43-44, alongside the synced libdm and
+          //   libfstab and the #111-stubbed libgsi). Upstream
+          //   cc_library_static in external/avb/Android.bp (r32
+          //   lines 195-196) - external/avb NOT synced.
+          // All stubs use srcs empty.c (cc) / lib.rs (rust),
+          // mirroring the existing stubs; the headers stubs have
+          // no srcs, like libgsi_headers /
+          // libstagefright_headers.
+          cc_library_headers {
+              name: "libupdate_engine_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libbrotli",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "liblz4",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libzstd",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libgtest_isolated_main",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          genrule {
+              name: "cxx-bridge-header",
+              out: ["rust/cxx.h"],
+              cmd: "touch $(out)",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libtextclassifier_hash_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libtextclassifier_hash_static",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "server_configurable_flags",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          rust_library {
+              name: "libflags_rust",
+              crate_name: "flags_rust",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libavb",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -3750,7 +4005,7 @@ jobs:
           for stub in android_stubs_current android_test_stubs_current android_system_stubs_current sysprop-library-stub-platform ext framework androidx.test.runner androidx.test.core framework-res org.lineageos.platform-res libz libgrpc++ libusb libusb_platform libjsoncpp libcrypto libprotobuf-cpp-lite libprotobuf-cpp-full libjemalloc5_je_prefixed libhardware_headers gwp_asan_headers dex2oatd libcxx; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
-          echo "runs #96/#97/#98 stubs created: android_stubs_current + android_test_stubs_current + android_system_stubs_current + sysprop-library-stub-platform + ext + framework + androidx.test.runner + androidx.test.core java_library stubs; framework-res + org.lineageos.platform-res android_app stubs (+ AndroidManifest.xml + AndroidManifest-lineage.xml); libz + libgrpc++ + libusb + libusb_platform + libcrypto cc_library_shared stubs; libjsoncpp plain cc_library stub (runs #105/#106/#107 fix: was cc_library_shared); libprotobuf-cpp-lite + libprotobuf-cpp-full cc_library stubs (runs #99/#100/#101 fix: was cc_library_static) + libjemalloc5_je_prefixed cc_library_static stub; libhardware_headers + gwp_asan_headers cc_library_headers stubs; dex2oatd cc_binary stub; libcxx rust_library stub (+ lib.rs); boot-image-profile.txt."
+          echo "runs #96/#97/#98 stubs created: android_stubs_current + android_test_stubs_current + android_system_stubs_current + sysprop-library-stub-platform + ext + framework + androidx.test.runner + androidx.test.core java_library stubs; framework-res + org.lineageos.platform-res android_app stubs (+ AndroidManifest.xml + AndroidManifest-lineage.xml); libgrpc++ + libusb + libusb_platform + libcrypto cc_library_shared stubs; libz plain cc_library stub (runs #119/#120/#121 fix: was cc_library_shared); libjsoncpp plain cc_library stub (runs #105/#106/#107 fix: was cc_library_shared); libprotobuf-cpp-lite + libprotobuf-cpp-full cc_library stubs (runs #99/#100/#101 fix: was cc_library_static) + libjemalloc5_je_prefixed cc_library_static stub; libhardware_headers + gwp_asan_headers cc_library_headers stubs; dex2oatd cc_binary stub; libcxx rust_library stub (+ lib.rs); boot-image-profile.txt."
           # Runs #99/#100/#101 fix: verify all 5 new stubs are present in
           # yuzora-stubs/Android.bp (same `name: "..."` grep form as the
           # #96 loop above).
@@ -3777,6 +4032,12 @@ jobs:
           # libprocessgroup_proto_test needs. (No comment line in this
           # file contains `cc_library {`, so the grep is exact.)
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::libjsoncpp stub is not a plain cc_library"; exit 1; }
+          # libz must be a plain cc_library now (runs #119/#120/#121
+          # fix): same check as libjsoncpp above - the static variant
+          # libsnapshot_cow needs cannot come from a cc_library_shared
+          # stub. (No comment line in the generated file contains
+          # `cc_library {`, so the grep is exact.)
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libz"' || { echo "::error::libz stub is not a plain cc_library"; exit 1; }
           # The common-ndk_shared defaults must forward V6-ndk into
           # shared_libs (runs #105/#106/#107 fix) or libgralloctypes'
           # export_shared_lib_headers check fails again.
@@ -3802,6 +4063,13 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #116/#117/#118 stubs created: libbssl_sys + libopenssl + libgbm_sys + liblibsqlite3_sys rust_library stubs (+ lib.rs)."
+          # Runs #119/#120/#121 fix: verify all 11 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116 loops above).
+          for stub in libupdate_engine_headers libbrotli liblz4 libzstd libgtest_isolated_main cxx-bridge-header libtextclassifier_hash_headers libtextclassifier_hash_static server_configurable_flags libflags_rust libavb; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #119/#120/#121 stubs created: libupdate_engine_headers + libtextclassifier_hash_headers cc_library_headers stubs; libbrotli + libgtest_isolated_main + libtextclassifier_hash_static + libavb cc_library_static stubs; liblz4 + libzstd + server_configurable_flags cc_library stubs; cxx-bridge-header genrule stub; libflags_rust rust_library stub (+ lib.rs); libz changed cc_library_shared -> cc_library."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -4051,9 +4319,17 @@ jobs:
           for stub in libbssl_sys libopenssl libgbm_sys liblibsqlite3_sys; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
+          # Runs #119/#120/#121 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libupdate_engine_headers libbrotli liblz4 libzstd libgtest_isolated_main cxx-bridge-header libtextclassifier_hash_headers libtextclassifier_hash_static server_configurable_flags libflags_rust libavb; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
+          # Runs #119/#120/#121 fix: libz must be a plain cc_library at
+          # build time (same check as the prune step above).
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libz"' || { echo "::error::pre-build guard: libz stub is not a plain cc_library"; exit 1; }
           # Runs #105/#106/#107 fix: the common-ndk_shared defaults must
           # forward V6-ndk at build time (same check as the prune step).
           # Run #110 fix: grep -A5 false-negatived here too (the V6-ndk
