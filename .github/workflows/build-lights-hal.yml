@@ -1653,6 +1653,19 @@ jobs:
 
           cc_defaults {
               name: "android.hardware.graphics.common-ndk_shared",
+              // Runs #105/#106/#107 fix: the real generated defaults
+              // forwards the -ndk lib into shared_libs (that is how an
+              // aidl_interface's -ndk_shared defaults works); the empty
+              // stub is what makes Soong report
+              // android.hardware.graphics.common-V6-ndk as "not in
+              // shared_libs" on libgralloctypes' export_shared_lib_headers
+              // check (frameworks/native/libs/gralloc/types/Android.bp:58).
+              // V6 is the current version (aidl_interface frozen: false,
+              // aidl_api 1-5 + current) - the same name the export list
+              // names. The V6-ndk stub is added below.
+              shared_libs: [
+                  "android.hardware.graphics.common-V6-ndk",
+              ],
               defaults_visibility: [
                   "//visibility:public",
               ],
@@ -2627,16 +2640,28 @@ jobs:
           // system/apex/apexd/Android.bp references (its ApexTestCases
           // data lists name the test apexes) - same reason as run #58.
           //
-          // libz / libgrpc++ / libusb / libusb_platform / libjsoncpp /
-          // libcrypto / libstatssocket - cc_library_shared, all used in
-          // shared_libs: by a synced module: libz by liblibz_sys
+          // libz / libgrpc++ / libusb / libusb_platform / libcrypto /
+          // libstatssocket - cc_library_shared, all used in shared_libs:
+          // by a synced module (libjsoncpp was in this list until the
+          // runs #105/#106/#107 fix - see its note below - it is now a
+          // plain cc_library stub): libz by liblibz_sys
           // (rust_library, external/rust/android-crates-io/crates/libz-sys);
           // libgrpc++ by libgrpcio_sys (same tree, crates/grpcio-sys);
           // libusb + libusb_platform by liblibusb1_sys /
           // liblibusb1_sys_platform (crates/libusb1-sys; the real ones are
           // cc_library in external/libusb, verified live at r32);
           // libjsoncpp by aidl_metadata_parser + hidl_metadata_parser
-          // (cc_binary, shared_libs, verified live at r32);
+          // (cc_binary, shared_libs, verified live at r32). Runs
+          // #105/#106/#107 fix: run #105 ALSO reports libjsoncpp as a
+          // missing STATIC variant (libprocessgroup_proto_test,
+          // system/core/libprocessgroup/profiles/Android.bp:108,
+          // static_libs) - upstream libjsoncpp is plain cc_library
+          // (external/jsoncpp/Android.bp, verified live at r32), which
+          // builds BOTH variants, so the stub below changes from
+          // cc_library_shared to plain cc_library (same fix as the
+          // #99/#100/#101 protobuf stubs). The shared_libs users above
+          // are unaffected - a plain cc_library still provides the
+          // shared variant.
           // libcrypto by libcrypto_utils (cc_library, shared_libs,
           // verified live at lineage-22.2); libstatssocket by
           // libstatslog_express (cc_library, shared_libs - the module is
@@ -2878,7 +2903,7 @@ jobs:
                   "//visibility:public",
               ],
           }
-          cc_library_shared {
+          cc_library {
               name: "libjsoncpp",
               srcs: ["empty.c"],
               host_supported: true,
@@ -3070,6 +3095,317 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #105/#106/#107 fix: the #102/#103/#104 fix HELD in
+          // all three (prune step + pre-build guard passed). The three
+          // runs report THREE different error sets on the same fix code
+          // (subset-reporting at its extreme, again): #105 (28 lines)
+          // the widest, #106 (4), #107 (2). The fix covers the UNION
+          // (30 lines). Raw-log verbatim, per run:
+          //   #107 (45819014190, 13m58s, manual, f8e598c) - 2 lines,
+          //   both build/make/tools/aconfig/aconfig/Android.bp:105:1
+          //   ("aconfig.test.java"): androidx.test.rules, testng.
+          //   #106 (45818868390, 14m41s, auto, f8e598c) - 4 lines:
+          //   system/tools/aidl/Android.bp:857:1 + :841:1
+          //   (aidl_test_java_service_permission,
+          //   aidl_test_java_client_permission):
+          //   frameworks-base-testutils; frameworks/native/headers/
+          //   Android.bp:11:1 (media_plugin_headers):
+          //   libstagefright_headers, libstagefright_foundation_headers.
+          //   #105 (45818724942, 15m25s, auto, fab59cc) - 28 lines:
+          //   both media_plugin_headers lines + both aconfig.test.java
+          //   lines + pyfakefs x4 (build/soong/bloaty/Android.bp:19,
+          //   build/make/ci/Android.bp:52, :20, :74) + asuite_cc_client
+          //   x3 (build/make/tools/edit_monitor/Android.bp:33,
+          //   build/make/tools/tool_event_logger/Android.bp:33, :46) +
+          //   watchdog (edit_monitor:33) + the libgralloctypes triple
+          //   (frameworks/native/libs/gralloc/types/Android.bp:58:30
+          //   export_shared_lib_headers V6-ndk, :25:1 mapper@4.0,
+          //   :25:1 libhidlbase) + libssl x4 / libcrypto_static x2
+          //   (external/rust/android-crates-io/crates/quiche/Android.bp)
+          //   + libgoogle-benchmark x2 / libtinyxml2 x2 (bionic tests +
+          //   benchmarks) + libgtest_isolated (bionic/tests:855) +
+          //   libprocinfo (bionic/tests:809) + the libprocessgroup
+          //   triple (system/core/libprocessgroup/profiles/Android.bp:108:
+          //   libjsoncpp missing STATIC variant, libjsonpbverify,
+          //   libjsonpbparse). (The 46 other "error:" lines in each Build
+          // step are the runner echoing the step script itself, NOT build
+          // errors. NOTE: the first UI-log read of #107 reported the
+          // aconfig error path as frameworks/base/aconfig/test/Android.bp
+          // - WRONG; the raw log says build/make/tools/aconfig/aconfig/
+          // Android.bp, and frameworks/base has no aconfig/ dir at
+          // lineage-22.2 (verified by git ls-tree) and is not synced.)
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (each stub's type is its upstream
+          // type, or the type the referencer's property requires where
+          // the home was not traced to a file):
+          // - androidx.test.rules + testng: static_libs of the
+          //   android_test aconfig.test.java (build/make/tools/aconfig/
+          //   aconfig/Android.bp:105, lineage-22.2). testng is
+          //   java_library in external/testng (r32, host_supported);
+          //   androidx.test.rules is java_library in external/androidx,
+          //   same family as the #96 androidx.test.runner/core stubs.
+          // - frameworks-base-testutils: static_libs of the java_test
+          //   aidl_test_java_client_permission / _service_permission
+          //   (system/tools/aidl/Android.bp:841, :857, r32) - java_library
+          //   in unsynced frameworks/base (defining file not traced).
+          // - libstagefright_headers + libstagefright_foundation_headers:
+          //   header_libs (+ export_header_lib_headers) of the
+          //   cc_library_headers media_plugin_headers
+          //   (frameworks/native/headers/Android.bp:11, lineage-22.2).
+          //   libstagefright_headers is cc_library_headers in
+          //   frameworks/av media/libstagefright/Android.bp
+          //   (lineage-22.2); _foundation_headers is cc_library_headers
+          //   in frameworks/av (unsynced; the defining file was not
+          //   located - no media/libstagefright/foundation/ dir in the
+          //   lineage-22.2 or r32 frameworks/av checkouts).
+          // - pyfakefs: libs: of python_test_host bloaty_merger_test
+          //   (build/soong/bloaty/Android.bp:19) + build_test_suites_*
+          //   (build/make/ci/Android.bp) - python_library in
+          //   external/python/pyfakefs/pyfakefs/Android.bp (r32,
+          //   host_supported).
+          // - asuite_cc_client + watchdog: libs: of python_library_host
+          //   edit_monitor_lib (build/make/tools/edit_monitor/Android.bp:
+          //   33, lineage-22.2) and python_binary_host tool_event_logger
+          //   (+ _test). watchdog is python_library_host in
+          //   external/python/watchdog/src/watchdog/Android.bp (r32);
+          //   asuite_cc_client is a python library (home not traced to
+          //   a file) - both stubbed with srcs empty.py, same form as
+          //   the #99 python stubs.
+          // - libssl + libcrypto_static: libquiche (rust_library,
+          //   shared_libs) + libquiche_ffi (rust_ffi, static_libs) +
+          //   libquiche_static (rust_library_rlib, static_libs)
+          //   (external/rust/android-crates-io/crates/quiche/Android.bp,
+          //   r32). Upstream external/boringssl: libssl is plain
+          //   cc_library, libcrypto_static is cc_library_static (r32).
+          //   libssl is used in BOTH shared_libs and static_libs, so
+          //   only a plain cc_library stub satisfies both; libcrypto
+          //   (shared_libs) is already stubbed as cc_library_shared.
+          // - libgoogle-benchmark: static_libs of cc_library_static
+          //   libbionic_spawn_benchmark (bionic/benchmarks/spawn/
+          //   Android.bp:53) + the cc_benchmark_host
+          //   bionic-benchmarks-glibc (no such entry in its own .bp text
+          //   or its bionic-benchmarks-defaults - Soong's cc_benchmark
+          //   type adds the benchmark runtime implicitly). Upstream
+          //   cc_library_static in external/google-benchmark (r32).
+          // - libtinyxml2: static_libs of libBionicStandardTests +
+          //   bionic-benchmarks-defaults (bionic/benchmarks/Android.bp)
+          //   - plain cc_library in external/tinyxml2 (r32,
+          //   host_supported).
+          // - libgtest_isolated: static_libs of libBionicStandardTests
+          //   + whole_static_libs of libBionicCtsGtestMain
+          //   (bionic/tests/Android.bp:369, :855, lineage-22.2) - NOT
+          //   defined in external/googletest at r32 (all four .bp files
+          //   checked); home not traced - plain cc_library stub (the
+          //   static variant is what both referencers need).
+          // - libprocinfo: static_libs of cc_test_library
+          //   libBionicLoaderTests (bionic/tests/Android.bp:809,
+          //   lineage-22.2) - NOT in system/core at lineage-22.2 or
+          //   r32 (no libprocinfo dir in either checkout) and NOT in
+          //   bionic; home not traced - plain cc_library stub.
+          // - libjsonpbverify + libjsonpbparse: static_libs of
+          //   cc_test_host libprocessgroup_proto_test (system/core/
+          //   libprocessgroup/profiles/Android.bp:108, lineage-22.2) -
+          //   NOT in system/core/libprocessgroup/Android.bp at r32;
+          //   home not traced - plain cc_library stubs.
+          // - libjsoncpp missing variant (same file:108): the #96 stub
+          //   is cc_library_shared, but the test needs the STATIC
+          //   variant ("missing variant os:linux_glibc,arch:x86_64,
+          //   link:static"). Upstream libjsoncpp is plain cc_library
+          //   (external/jsoncpp/Android.bp, r32) - the stub changes to
+          //   plain cc_library, same fix as the #99/#100/#101 protobuf
+          //   stubs. Its shared_libs users (aidl/hidl metadata parsers)
+          //   are unaffected.
+          // - android.hardware.graphics.common-V6-ndk +
+          //   android.hardware.graphics.mapper@4.0 + libhidlbase:
+          //   libgralloctypes (cc_library, frameworks/native/libs/
+          //   gralloc/types/Android.bp, lineage-22.2) lists mapper@4.0
+          //   + libhidlbase in shared_libs and V6-ndk + mapper@4.0 +
+          //   libhidlbase in export_shared_lib_headers. mapper@4.0 is a
+          //   hidl_interface in hardware/interfaces/graphics/mapper/4.0
+          //   and V6-ndk is the NDK lib of the aidl_interface
+          //   android.hardware.graphics.common (frozen: false, aidl_api
+          //   1-5 + current = V6) - BOTH dirs are deleted by the closure
+          //   prune below (hardware/interfaces keeps ONLY light/aidl +
+          //   compatibility_matrices + common/aidl + input), so neither
+          //   module exists in this tree. libhidlbase is plain
+          //   cc_library in system/libhidl (r32, unsynced). V6-ndk +
+          //   mapper@4.0 stubbed as cc_library_shared (the HIDL/AIDL
+          //   generated libs are shared); libhidlbase as plain
+          //   cc_library (its upstream type). AND the
+          //   android.hardware.graphics.common-ndk_shared cc_defaults
+          //   stub (runs #48/#49/#50) gains shared_libs V6-ndk: the real
+          //   generated defaults forwards the -ndk lib into shared_libs,
+          //   and the empty stub is what makes Soong report V6-ndk as
+          //   "not in shared_libs" on the export check.
+          java_library {
+              name: "androidx.test.rules",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "testng",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "frameworks-base-testutils",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libstagefright_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libstagefright_foundation_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          python_library {
+              name: "pyfakefs",
+              srcs: ["empty.py"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          python_library {
+              name: "asuite_cc_client",
+              srcs: ["empty.py"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          python_library_host {
+              name: "watchdog",
+              srcs: ["empty.py"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libssl",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libtinyxml2",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libgtest_isolated",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libprocinfo",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libjsonpbverify",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libjsonpbparse",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libhidlbase",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libcrypto_static",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libgoogle-benchmark",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "android.hardware.graphics.common-V6-ndk",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "android.hardware.graphics.mapper@4.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -3193,7 +3529,7 @@ jobs:
           for stub in android_stubs_current android_test_stubs_current android_system_stubs_current sysprop-library-stub-platform ext framework androidx.test.runner androidx.test.core framework-res org.lineageos.platform-res libz libgrpc++ libusb libusb_platform libjsoncpp libcrypto libprotobuf-cpp-lite libprotobuf-cpp-full libjemalloc5_je_prefixed libhardware_headers gwp_asan_headers dex2oatd libcxx; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
-          echo "runs #96/#97/#98 stubs created: android_stubs_current + android_test_stubs_current + android_system_stubs_current + sysprop-library-stub-platform + ext + framework + androidx.test.runner + androidx.test.core java_library stubs; framework-res + org.lineageos.platform-res android_app stubs (+ AndroidManifest.xml + AndroidManifest-lineage.xml); libz + libgrpc++ + libusb + libusb_platform + libjsoncpp + libcrypto cc_library_shared stubs; libprotobuf-cpp-lite + libprotobuf-cpp-full cc_library stubs (runs #99/#100/#101 fix: was cc_library_static) + libjemalloc5_je_prefixed cc_library_static stub; libhardware_headers + gwp_asan_headers cc_library_headers stubs; dex2oatd cc_binary stub; libcxx rust_library stub (+ lib.rs); boot-image-profile.txt."
+          echo "runs #96/#97/#98 stubs created: android_stubs_current + android_test_stubs_current + android_system_stubs_current + sysprop-library-stub-platform + ext + framework + androidx.test.runner + androidx.test.core java_library stubs; framework-res + org.lineageos.platform-res android_app stubs (+ AndroidManifest.xml + AndroidManifest-lineage.xml); libz + libgrpc++ + libusb + libusb_platform + libcrypto cc_library_shared stubs; libjsoncpp plain cc_library stub (runs #105/#106/#107 fix: was cc_library_shared); libprotobuf-cpp-lite + libprotobuf-cpp-full cc_library stubs (runs #99/#100/#101 fix: was cc_library_static) + libjemalloc5_je_prefixed cc_library_static stub; libhardware_headers + gwp_asan_headers cc_library_headers stubs; dex2oatd cc_binary stub; libcxx rust_library stub (+ lib.rs); boot-image-profile.txt."
           # Runs #99/#100/#101 fix: verify all 5 new stubs are present in
           # yuzora-stubs/Android.bp (same `name: "..."` grep form as the
           # #96 loop above).
@@ -3208,6 +3544,23 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #102/#103/#104 stubs created: sdk_public_34_system_modules + sdk_module-lib_34_system_modules java_system_modules stubs."
+          # Runs #105/#106/#107 fix: verify all 19 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102 loops above) + the two type fixes below.
+          for stub in androidx.test.rules testng frameworks-base-testutils libstagefright_headers libstagefright_foundation_headers pyfakefs asuite_cc_client watchdog libssl libtinyxml2 libgtest_isolated libprocinfo libjsonpbverify libjsonpbparse libcrypto_static libgoogle-benchmark android.hardware.graphics.common-V6-ndk android.hardware.graphics.mapper@4.0 libhidlbase; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # libjsoncpp must be a plain cc_library now (runs #105/#106/#107
+          # fix): the line before its name: must read `cc_library {` -
+          # a cc_library_shared stub cannot provide the static variant
+          # libprocessgroup_proto_test needs. (No comment line in this
+          # file contains `cc_library {`, so the grep is exact.)
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::libjsoncpp stub is not a plain cc_library"; exit 1; }
+          # The common-ndk_shared defaults must forward V6-ndk into
+          # shared_libs (runs #105/#106/#107 fix) or libgralloctypes'
+          # export_shared_lib_headers check fails again.
+          grep -A5 'name: "android.hardware.graphics.common-ndk_shared"' yuzora-stubs/Android.bp | grep -Fq '"android.hardware.graphics.common-V6-ndk"' || { echo "::error::common-ndk_shared defaults missing V6-ndk shared_libs"; exit 1; }
+          echo "runs #105/#106/#107 stubs created: androidx.test.rules + testng + frameworks-base-testutils java_library stubs; libstagefright_headers + libstagefright_foundation_headers cc_library_headers stubs; pyfakefs + asuite_cc_client python_library stubs + watchdog python_library_host stub (+ empty.py); libssl + libtinyxml2 + libgtest_isolated + libprocinfo + libjsonpbverify + libjsonpbparse + libhidlbase cc_library stubs; libcrypto_static + libgoogle-benchmark cc_library_static stubs; android.hardware.graphics.common-V6-ndk + android.hardware.graphics.mapper@4.0 cc_library_shared stubs; libjsoncpp changed cc_library_shared -> cc_library; android.hardware.graphics.common-ndk_shared defaults gains shared_libs V6-ndk."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -3442,6 +3795,17 @@ jobs:
           for stub in sdk_public_34_system_modules sdk_module-lib_34_system_modules; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
+          # Runs #105/#106/#107 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in androidx.test.rules testng frameworks-base-testutils libstagefright_headers libstagefright_foundation_headers pyfakefs asuite_cc_client watchdog libssl libtinyxml2 libgtest_isolated libprocinfo libjsonpbverify libjsonpbparse libcrypto_static libgoogle-benchmark android.hardware.graphics.common-V6-ndk android.hardware.graphics.mapper@4.0 libhidlbase; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
+          # at build time (same check as the prune step above).
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
+          # Runs #105/#106/#107 fix: the common-ndk_shared defaults must
+          # forward V6-ndk at build time (same check as the prune step).
+          grep -A5 'name: "android.hardware.graphics.common-ndk_shared"' yuzora-stubs/Android.bp | grep -Fq '"android.hardware.graphics.common-V6-ndk"' || { echo "::error::pre-build guard: common-ndk_shared defaults missing V6-ndk shared_libs"; exit 1; }
           if [ -d system/core/fs_mgr/tests ]; then
             echo "::error::pre-build guard: system/core/fs_mgr/tests present at build time"
             exit 1
