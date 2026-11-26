@@ -29,6 +29,16 @@
   fork: hardware/samsung is pinned to its lineage-22.2 branch, whose tip
   is the no-op-light commit e7968ab68b15d9bda03c267195c2bfb0af986874.
   It is NOT upstream LineageOS. Do not point hardware/samsung at upstream.
+
+  Run #84 (45767300168, 13m30s, 2026-11-26): FAILED at Soong ninja-file generation,
+  26s into the build step, with 48 "depends on undefined module" errors, all in
+  modules the lights HAL never builds (conscrypt/i18n core-library stubs, Kotlin
+  stdlib + metalava, junit, libsqlite, libchrome-gestures_headers, and five
+  test-only dirs). The fix is workflow-only: empty stubs + prunes in
+  .github/workflows/build-lights-hal.yml (see that file's run #84 comments).
+  NO manifest change: no project added, none removed, still 32 projects.
+  Do NOT sync frameworks/base, libcore, external/conscrypt, external/icu or
+  external/sqlite for these stubs, and do NOT set ALLOW_MISSING_DEPENDENCIES.
 -->
 
 <manifest>
