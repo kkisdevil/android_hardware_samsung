@@ -1444,7 +1444,7 @@ jobs:
           test -f prebuilts/sdk/9/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/9/public/framework.aidl"; exit 1; }
           test -f prebuilts/sdk/28/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/28/public/framework.aidl"; exit 1; }
           test -f prebuilts/sdk/29/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/29/public/framework.aidl"; exit 1; }
-          echo "runs #75/#76/#77 + #87/#88/#89 SDK shims created: prebuilts/sdk/7,8,9,28,29/public/android.jar + prebuilts/sdk/7,8,9,28,29/public/framework.aidl + prebuilts/sdk/tools/core-lambda-stubs.jar (empty jars + empty aidl files, parse-time only).""
+          echo "runs #75/#76/#77 + #87/#88/#89 SDK shims created: prebuilts/sdk/7,8,9,28,29/public/android.jar + prebuilts/sdk/7,8,9,28,29/public/framework.aidl + prebuilts/sdk/tools/core-lambda-stubs.jar (empty jars + empty aidl files, parse-time only)."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
