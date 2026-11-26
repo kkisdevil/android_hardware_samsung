@@ -75,7 +75,25 @@ one-line echo repair in commit 1010bc6 (drop the duplicated
 tail; the #84 echo on the line above already prints that
 text). NO manifest change: no project added, none removed,
 still 32 projects.
--->
+
+  Run #93 (45795645174), 2026-11-26, 11m26s: FAILED in the "Prune unneeded
+  subtrees + stub missing defaults" step with the SAME bash syntax error
+  (line 2163: syntax error near unexpected token `(', exit code 2) as runs
+  #90/#91/#92 — the build never ran. Root cause, verified from the true
+  file text (bash -n on the extracted prune script): the SDK-shims echo
+  (true file line 1447) ends with a doubled closing quote `.""`, introduced
+  by commit 0db514a when that line was rewritten for the #87/#88/#89 fix.
+  The 1010bc6 repair fixed only the OTHER odd-quote echo (line 2577), so
+  the 1447 defect survived and #93 died at the same line 2163. Runs #87/
+  #88/#89 passed the prune step because they ran on head 7b3b96f, where
+  this line still ended with a single quote. The fix is workflow-only:
+  delete one `"` at line 1447 (workflow commit 322136d);
+  verified locally that all 12 run steps then pass bash -n. NO manifest
+  change: no project added, none removed, still 32 projects. Runs #94/#95,
+  still in flight on the same broken code (cc42806) when the fix landed,
+  are expected to fail identically in the prune step.
+
+  -->
 
 <manifest>
 
