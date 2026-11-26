@@ -85,7 +85,7 @@ jobs:
           key: lights-repo-${{ hashFiles('build-lights/manifest.xml') }}
           restore-keys: |
             lights-repo-
-
+        save-always: true
       - name: Init + sync minimal manifest
         run: |
           set -euo pipefail
