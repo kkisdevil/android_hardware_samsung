@@ -533,6 +533,70 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #125 (45875772540, 15m16s, auto, manifest ce8b2b9),
+  #126 (45875913306, 13m52s, auto, README 205ec0a) and #127
+  (45876399917, 14m53s, manual dispatch ~00:00 IST 2026-11-27,
+  head 205ec0a - the runs #122/#123/#124 fix, workflow aa3581b):
+  ALL FAILED at Soong ninja-file generation, ~35-37s into the
+  "Build lights HAL" step. The #122/#123/#124 fix HELD in all
+  three (prune step passed + pre-build guard passed). Subset
+  reporting again, at its extreme: #125 reports 10 lines, #126
+  reports 4, #127 reports 2 - all different subsets of one
+  commit. The fix covers the UNION (12 distinct lines, 8
+  distinct modules - #127's 2 lines are a subset of #126's 4;
+  #126's 4 are #125's libcap pair plus the new
+  libaconfigd_protos_rust pair). Raw-log verbatim
+  (job-logs.txt, genuine build-output lines only):
+  libinit_host + host_init_verifier need libcap; libzipalign
+  needs libzopfli; libfastboot2 needs avb_headers +
+  bootimg_headers + libadb_host; libutils_binder_test needs
+  liblzma; libfastboot needs bootimg_headers + avb_headers +
+  platform_tools_version; aflags + aflags.test need
+  libaconfigd_protos_rust. No genuine "missing variant" line
+  in any of the three runs. Root causes, verified live at
+  LineageOS lineage-22.2 / AOSP android-15.0.0_r32 (all 8
+  defining projects UNSYNCED): libcap is plain cc_library in
+  external/libcap (r32 ~lines 48-91, host_supported);
+  libzopfli is plain cc_library in external/zopfli (r32
+  ~lines 20-50, host_supported); avb_headers is
+  cc_library_headers in external/avb (lineage-22.2 lines
+  838-870, host_supported); bootimg_headers is
+  cc_library_headers in system/tools/mkbootimg (r32 ~lines
+  7-22, host_supported); libadb_host is cc_library_host_static
+  in packages/modules/adb (r32 lines 536-538) - adb moved out
+  of system/core, not a prune casualty; liblzma is plain
+  cc_library in external/lzma (r32 ~lines 40-44,
+  host_supported) - used in shared_libs AND static_libs by
+  libutils_binder_test, so only plain cc_library satisfies
+  both; platform_tools_version is a genrule in
+  development/sdk (r32 lines 42-52, out
+  platform_tools_version.h); libaconfigd_protos_rust is a
+  rust_library in packages/modules/ConfigInfrastructure/
+  aconfigd/proto (r32 lines 108-126, crate_name
+  aconfigd_protos, host_supported) - the daemon lives under
+  ConfigInfrastructure, not build/make/tools/aconfig/aconfigd
+  or system/aconfigd. NOTE on :line numbers: Soong's reported
+  lines do not reproduce in the live files (fastboot :47/:280
+  vs live 89/521, init :661/:631 vs live 1269/1211, zipalign
+  :21 vs live 37) - verified at lineage-22.2 tip AND the
+  manifest-pinned HEAD bcb8623 (byte-identical), so Soong
+  attributes through the defaults: expansion; key the fix off
+  module names, not :line numbers. The fix is workflow-only:
+  8 new stubs in yuzora-stubs/Android.bp (3 plain cc_library,
+  2 cc_library_headers, 1 cc_library_host_static, 1 genrule,
+  1 rust_library). No new projects (still 32). The cache steps
+  are untouched (see the save-always note below).
+
+  CACHE NOTE (run #127): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS
+  (checked live at 00:10 IST, run 10m17s in, sync step at
+  7m59s), sync took ~11 min, and no "Save repo cache" step ran
+  - same as runs #118/#121/#124. The next run will also
+  restore-miss and sync ~9-12 min. The upstream-recommended
+  fix is separate restore + save steps (the save step with
+  `if: always()`), which touches the cache steps and needs his
+  word - not changed in this fix round.
+
   -->
 
 <manifest>
