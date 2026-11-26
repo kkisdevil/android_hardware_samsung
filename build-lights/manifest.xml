@@ -59,6 +59,22 @@
   added, none removed, still 32 projects. Do NOT sync external/guava,
   system/linkerconfig, libcore or prebuilts/sdk for these stubs, and do
   NOT set ALLOW_MISSING_DEPENDENCIES.
+
+Runs #90 (45787924591), #91 (45789344781) and #92
+(45789546514), all 2026-11-26: FAILED in the "Prune unneeded
+subtrees + stub missing defaults" step with a bash syntax error
+(line 2163: syntax error near unexpected token `(', exit code 2)
+at the mangled runs #87/#88/#89 stub echo line in
+.github/workflows/build-lights-hal.yml (true file line 2577,
+introduced by commit 0db514a: the #87 echo text was prepended
+to the existing #84 echo line, leaving its duplicated tail after
+a closing quote, with 3 double-quotes and an unquoted `(' in
+`(+ empty-api.txt)'). The build never ran, so the #87/#88/#89
+fix was untested by any run. The fix is workflow-only: the
+one-line echo repair in commit 1010bc6 (drop the duplicated
+tail; the #84 echo on the line above already prints that
+text). NO manifest change: no project added, none removed,
+still 32 projects.
 -->
 
 <manifest>
