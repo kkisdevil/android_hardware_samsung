@@ -750,6 +750,63 @@ still 32 projects.
   `if: always()`), which touches the cache steps and needs his
   word - not changed in this fix round.
 
+  Runs #138 (45907425555, 14m34s, auto, manifest 03a736c),
+  #139 (45907515196, 14m47s, auto, README 8603eb6) and #140
+  (45907764291, 14m40s, manual dispatch ~04:25 IST 2026-11-27,
+  head 8603eb6 - the runs #135/#136/#137 fix, workflow
+  3a06e37): ALL FAILED at Soong ninja-file generation, tens of
+  seconds into the "Build lights HAL" step. The
+  #135/#136/#137 fix HELD in all three (prune step passed
+  + pre-build guard passed). Subset reporting again: #138/#139
+  report 3 lines, #140 reports 9 - the fix covers the UNION
+  (9 lines, 9 distinct modules). Raw-log verbatim (live
+  browser read of the job-logs.txt raw logs, genuine
+  build-output lines only): libsensorserviceaidl needs
+  android.hardware.sensors-V1-convert +
+  android.frameworks.sensorservice-V1-ndk +
+  android.hardware.sensors-V3-ndk (all three runs); libinput
+  needs libeigen + tensorflow_headers + libtflite_static +
+  libkernelconfigs +
+  android.companion.virtualdevice.flags-aconfig-cc +
+  libPlatformProperties (#140 only). No genuine "missing
+  variant" line in any of the three runs. Root causes,
+  verified live at LineageOS lineage-22.2 / AOSP
+  android-15.0.0_r32: android.hardware.sensors-V1-convert +
+  -V3-ndk are generated libs of the aidl_interface
+  android.hardware.sensors in hardware/interfaces/sensors/aidl
+  (versions 1+2, frozen: false so the current version is V3) -
+  that dir is pruned by the closure prune; android.frameworks.
+  sensorservice-V1-ndk is the generated NDK lib of the
+  aidl_interface android.frameworks.sensorservice in
+  frameworks/hardware/interfaces/sensorservice/aidl (frozen
+  v1) - frameworks/hardware/interfaces is NOT synced;
+  libeigen is cc_library_headers in external/eigen (NOT
+  synced); tensorflow_headers is cc_library_headers in
+  external/tensorflow (r32) - external/tensorflow NOT synced;
+  libtflite_static is cc_library_static in external/tensorflow/
+  tensorflow/lite/tflite_static.bp (r32) - same project, NOT
+  synced; libkernelconfigs is cc_library_static in
+  system/libvintf (r32) - NOT kernel/configs, system/libvintf
+  NOT synced; android.companion.virtualdevice.flags-aconfig-cc
+  is cc_aconfig_library in frameworks/base/AconfigFlags.bp
+  (lineage-22.2 lines 957-967) - frameworks/base NOT synced;
+  libPlatformProperties is the cc_library Soong generates from
+  the sysprop_library "PlatformProperties" (defining .bp not
+  traced this round). The fix is workflow-only: 9 new stubs in
+  yuzora-stubs/Android.bp (3 plain cc_library sensor libs, 2
+  cc_library_headers, 2 cc_library_static, 2 plain cc_library).
+  No new projects (still 32). No type changes this round. The
+  cache steps are untouched (see the save-always note below).
+
+  CACHE NOTE (run #140): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took ~11 min, and no "Save repo cache" step ran - same
+  as runs #118/#121/#124/#127/#130/#134/#137. The next run
+  will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
