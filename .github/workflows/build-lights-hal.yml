@@ -1410,6 +1410,33 @@ jobs:
             exit 1
           fi
           echo "runs #75/#76/#77 dropped: dexpreopt_systemserver_check from build/soong/Android.bp."
+          # Runs #96/#97/#98 fix - drop the two kernel_config entries the
+          # synced kernel/configs tree no longer defines. The
+          # vintf_compatibility_matrix modules (hardware/interfaces/
+          # compatibility_matrices/Android.bp, kept for the vintf plugin)
+          # list kernel_configs: [...] and the vintf plugin adds a dep on
+          # each one (it requires each dep to be a real kernel_config
+          # module). kernel_config_p_4.4 / r_4.14 / r_4.19 / r_5.4 / s_4.19 /
+          # s_5.4 / s_5.10 / t_* / u_* / v_* exist (the kernel-config-soong-
+          # rules plugin generates them from the synced kernel/configs
+          # tree), but kernel_config_q_4.9 and kernel_config_s_4.14 do
+          # not (those old kernel versions' config files are gone from
+          # the r32 kernel/configs tree), so Soong reports them
+          # undefined (run #96). Deleting the two list entries removes
+          # the deps; the matrix XMLs keep their <kernel> entries and
+          # the matrices are never built for this HAL-only target.
+          # (A kernel_config stub would need the plugin's required
+          # properties; deleting the list entries is the smaller fix.)
+          sed -i '/"kernel_config_q_4\.9",/d; /"kernel_config_s_4\.14",/d' hardware/interfaces/compatibility_matrices/Android.bp
+          if grep -q 'kernel_config_q_4\.9' hardware/interfaces/compatibility_matrices/Android.bp; then
+            echo "::error::prune failed — kernel_config_q_4.9 still present in hardware/interfaces/compatibility_matrices/Android.bp"
+            exit 1
+          fi
+          if grep -q 'kernel_config_s_4\.14' hardware/interfaces/compatibility_matrices/Android.bp; then
+            echo "::error::prune failed — kernel_config_s_4.14 still present in hardware/interfaces/compatibility_matrices/Android.bp"
+            exit 1
+          fi
+          echo "runs #96/#97/#98 dropped: kernel_config_q_4.9 + kernel_config_s_4.14 from hardware/interfaces/compatibility_matrices/Android.bp."
           # Runs #75/#76/#77 fix — empty-jar SDK shims for the AppInRebootlessApex test app (see
           # the comment block at the top of this step). prebuilts/sdk is NOT synced, so sdk_version
           # "29" + the core-lambda-stubs.jar source fail Soong's existence checks at parse time.
@@ -1426,10 +1453,20 @@ jobs:
           # (test -f below, NOT test -s — an empty file fails -s).
           # Re-creating 29/android.jar is idempotent: zipfile 'w' mode
           # overwrites it, and touch is a no-op for an existing file.
-          mkdir -p prebuilts/sdk/29/public prebuilts/sdk/tools prebuilts/sdk/7/public prebuilts/sdk/8/public prebuilts/sdk/9/public prebuilts/sdk/28/public
-          python3 -c "import zipfile; zipfile.ZipFile('prebuilts/sdk/29/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/tools/core-lambda-stubs.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/7/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/8/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/9/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/28/public/android.jar', 'w').close()"
-          touch prebuilts/sdk/7/public/framework.aidl prebuilts/sdk/8/public/framework.aidl prebuilts/sdk/9/public/framework.aidl prebuilts/sdk/28/public/framework.aidl prebuilts/sdk/29/public/framework.aidl
-          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar', 'prebuilts/sdk/7/public/android.jar', 'prebuilts/sdk/8/public/android.jar', 'prebuilts/sdk/9/public/android.jar', 'prebuilts/sdk/28/public/android.jar')]" \
+          # Runs #96/#97/#98 fix: the same empty-jar + empty-framework.aidl
+          # shims for sdk version 34 - the build's "current" SDK version
+          # (both runs report prebuilts/sdk/34/... missing: 34/public/
+          # android.jar for sdk_version "current" - the PrivAppInRebootlessApex
+          # / AppInRebootlessApex / TestLatency auto-generated RRO vendor
+          # modules - and 34/system/android.jar for sdk_version
+          # "system_current" - IBinderVendorDoubleLoadTest-java in
+          # frameworks/native/libs/binder/ndk/tests). Same form as the
+          # 7/8/9/28/29 shims above: empty jars (parse-time existence
+          # only) + empty framework.aidl files (test -f, NOT test -s).
+          mkdir -p prebuilts/sdk/29/public prebuilts/sdk/tools prebuilts/sdk/7/public prebuilts/sdk/8/public prebuilts/sdk/9/public prebuilts/sdk/28/public prebuilts/sdk/34/public prebuilts/sdk/34/system
+          python3 -c "import zipfile; zipfile.ZipFile('prebuilts/sdk/29/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/tools/core-lambda-stubs.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/7/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/8/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/9/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/28/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/34/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/34/system/android.jar', 'w').close()"
+          touch prebuilts/sdk/7/public/framework.aidl prebuilts/sdk/8/public/framework.aidl prebuilts/sdk/9/public/framework.aidl prebuilts/sdk/28/public/framework.aidl prebuilts/sdk/29/public/framework.aidl prebuilts/sdk/34/public/framework.aidl prebuilts/sdk/34/system/framework.aidl
+          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar', 'prebuilts/sdk/7/public/android.jar', 'prebuilts/sdk/8/public/android.jar', 'prebuilts/sdk/9/public/android.jar', 'prebuilts/sdk/28/public/android.jar', 'prebuilts/sdk/34/public/android.jar', 'prebuilts/sdk/34/system/android.jar')]" \
             || { echo "::error::prune failed — SDK shim jar is not a valid zip"; exit 1; }
           test -s prebuilts/sdk/29/public/android.jar \
             || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/29/public/android.jar"; exit 1; }
@@ -1439,12 +1476,16 @@ jobs:
           test -s prebuilts/sdk/8/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/8/public/android.jar"; exit 1; }
           test -s prebuilts/sdk/9/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/9/public/android.jar"; exit 1; }
           test -s prebuilts/sdk/28/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/28/public/android.jar"; exit 1; }
+          test -s prebuilts/sdk/34/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/34/public/android.jar"; exit 1; }
+          test -s prebuilts/sdk/34/system/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/34/system/android.jar"; exit 1; }
           test -f prebuilts/sdk/7/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/7/public/framework.aidl"; exit 1; }
           test -f prebuilts/sdk/8/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/8/public/framework.aidl"; exit 1; }
           test -f prebuilts/sdk/9/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/9/public/framework.aidl"; exit 1; }
           test -f prebuilts/sdk/28/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/28/public/framework.aidl"; exit 1; }
           test -f prebuilts/sdk/29/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/29/public/framework.aidl"; exit 1; }
-          echo "runs #75/#76/#77 + #87/#88/#89 SDK shims created: prebuilts/sdk/7,8,9,28,29/public/android.jar + prebuilts/sdk/7,8,9,28,29/public/framework.aidl + prebuilts/sdk/tools/core-lambda-stubs.jar (empty jars + empty aidl files, parse-time only)."
+          test -f prebuilts/sdk/34/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/34/public/framework.aidl"; exit 1; }
+          test -f prebuilts/sdk/34/system/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/34/system/framework.aidl"; exit 1; }
+          echo "runs #75/#76/#77 + #87/#88/#89 + #96/#97/#98 SDK shims created: prebuilts/sdk/7,8,9,28,29,34/public/android.jar + prebuilts/sdk/7,8,9,28,29,34/public/framework.aidl + prebuilts/sdk/34/system/android.jar + prebuilts/sdk/34/system/framework.aidl + prebuilts/sdk/tools/core-lambda-stubs.jar (empty jars + empty aidl files, parse-time only)."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
@@ -2496,6 +2537,374 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #96 (45800651582, 14m36s), #97 (45801208075, 12m58s) and
+          // #98 (45801390708, 14m34s) fix - all three FAILED at Soong
+          // ninja-file generation on the SAME fix code (the #93 fix HELD:
+          // prune step + pre-build guard passed in all three), but with
+          // THREE different error sets on one commit (the subset-reporting
+          // lesson at its extreme, again). Run #96's set is the widest;
+          // the fix below covers the UNION of all three runs' errors, so
+          // the next run is not left to rediscover the other runs' subsets.
+          // Verified live (LineageOS lineage-22.2 / AOSP android-15.0.0_r32
+          // unless noted): every module below is in an unsynced project
+          // and is never built for this HAL-only target, so only the NAMES
+          // have to exist for Soong's parse. Types match each module's
+          // real type and how its referencers use it (see the per-stub
+          // notes). Public visibility on purpose: the referencers live
+          // in other packages.
+          //
+          // android_stubs_current / android_test_stubs_current /
+          // android_system_stubs_current - the SDK stubs Soong resolves
+          // sdk_version "current" / "test_current" / "system_current" to
+          // (same family as the already-stubbed
+          // android_module_lib_stubs_current, runs #87/#88/#89, which
+          // HELD - #98 reports no error for it). Referencers: the
+          // java_sdk_library-generated .stubs.from-source modules of
+          // test_framework-apexd / test_service-apexd, libtombstone_proto_java
+          // (sdk_version "current"), libaconfig_java_proto_lite/nano
+          // (sdk_version "current"), aconfig_storage_file.test.java /
+          // aconfig_storage_read_unit (sdk_version "test_current") and the
+          // auto-generated RRO characteristics modules. Empty java_library
+          // stubs, exactly like the #62/#64 ART stubs.
+          //
+          // sysprop-library-stub-platform - the stub library Soong's
+          // sysprop_library codegen (build/soong/sysprop/sysprop_library.go,
+          // AOSP r32, verified live) puts in `libs:` of every generated
+          // java_library for a platform-owned sysprop_library (the <name>
+          // java lib has Sdk_version "core_current" and Libs
+          // [javaSyspropStub]; the <name>_public stub is created the same
+          // way). Referencers: com.android.sysprop.apex_public,
+          // charger_sysprop_public, LibGuiProperties_public,
+          // SurfaceFlingerProperties_public. Empty java_library stub.
+          //
+          // ext + framework - the framework java_library modules
+          // (frameworks/base/Android.bp at AOSP r32: `framework` line 561
+          // and `ext` line 638, both java_library). Referencers: the
+          // java_sdk_library-generated .stubs.source / .impl modules of
+          // test_framework-apexd / test_service-apexd (their impl compiles
+          // against the full framework), libsimpleparcelable_java,
+          // aidl_test_java_* (system/tools/aidl), backported_fixes_proto
+          // and the frameworks/native opengl/binder test apps. Empty
+          // java_library stubs. (The .source vs .from-source naming differs
+          // between runs #96/#97 and #98 - the floating LineageOS pins
+          // moved build/soong between their syncs - so BOTH the stubs
+          // family (this block) and the ext/framework pair are needed.)
+          //
+          // androidx.test.runner + androidx.test.core - java_library in
+          // external/androidx (unsynced). Referencers: the aconfig_storage_*
+          // android_test modules and the aidl_test_java_* modules
+          // (static_libs:). Empty java_library stubs.
+          //
+          // framework-res + org.lineageos.platform-res - the resource
+          // packages the auto-generated RRO product modules overlay:
+          // framework-res is an android_app in frameworks/base/core/res/
+          // Android.bp (verified live: sdk_version "core_platform",
+          // certificate "platform"); org.lineageos.platform-res is the
+          // LineageOS platform resources package (vendor/lineage,
+          // unsynced). Referencers: the AppInRebootlessApex /
+          // PrivAppInRebootlessApex / TestLatency
+          // __auto_generated_rro_product modules (and the aconfig_storage_*
+          // android_test modules). Stubbed as android_app with a dummy
+          // manifest (package "android" / "org.lineageos.platform",
+          // yuzora-stubs/AndroidManifest.xml /
+          // AndroidManifest-lineage.xml, created below) + Empty.java,
+          // sdk_version "none", system_modules "none",
+          // use_resource_processor false (mirrors the real framework-res;
+          // no res/ dir is needed). NOT pruned: the RROs' source apps
+          // live in the kept apexs_testdata file, which the kept
+          // system/apex/apexd/Android.bp references (its ApexTestCases
+          // data lists name the test apexes) - same reason as run #58.
+          //
+          // libz / libgrpc++ / libusb / libusb_platform / libjsoncpp /
+          // libcrypto / libstatssocket - cc_library_shared, all used in
+          // shared_libs: by a synced module: libz by liblibz_sys
+          // (rust_library, external/rust/android-crates-io/crates/libz-sys);
+          // libgrpc++ by libgrpcio_sys (same tree, crates/grpcio-sys);
+          // libusb + libusb_platform by liblibusb1_sys /
+          // liblibusb1_sys_platform (crates/libusb1-sys; the real ones are
+          // cc_library in external/libusb, verified live at r32);
+          // libjsoncpp by aidl_metadata_parser + hidl_metadata_parser
+          // (cc_binary, shared_libs, verified live at r32);
+          // libcrypto by libcrypto_utils (cc_library, shared_libs,
+          // verified live at lineage-22.2); libstatssocket by
+          // libstatslog_express (cc_library, shared_libs - the module is
+          // defined nowhere in the synced tree: system/core/libstats has
+          // only socket_lazy at r32/lineage-22.2). Empty cc_library_shared
+          // stubs with empty.c, host_supported + windows (same form as
+          // the #84 libsqlite stub).
+          //
+          // libprotobuf-cpp-lite / libprotobuf-cpp-full - the C++
+          // protobuf runtimes (external/protobuf, NOT synced - verified
+          // in run #82: no external/protobuf entry in the manifest).
+          // Referencers: the cc_library_static proto modules
+          // (libtombstone_proto, lib_apex_manifest_proto_lite,
+          // lib_apex_blocklist_proto, libvintf_proto,
+          // libaconfig_storage_protos_cc, lib_linker_config_proto_lite,
+          // ota_metadata_proto_cc need -lite; cc_analyzer_proto,
+          // lib_apex_manifest_proto, lib_apex_session_state_proto,
+          // libprocessgroup_proto need -full), all via static_libs:.
+          // Empty cc_library_static stubs with empty.c, host_supported
+          // + windows (same form as the #78 libwinpthread stub).
+          //
+          // libjemalloc5_je_prefixed - cc_library_static in
+          // external/jemalloc (unsynced), used in static_libs: by the
+          // rust_library_host libtikv_jemalloc_sys
+          // (crates/tikv-jemalloc-sys). Empty cc_library_static stub.
+          //
+          // libhardware_headers - cc_library_headers in
+          // hardware/libhardware (unsynced), used in header_libs: by
+          // hwvulkan_headers (frameworks/native/vulkan, cc_library_headers).
+          // Empty cc_library_headers stub (same form as the #84
+          // libchrome-gestures_headers stub).
+          //
+          // gwp_asan_headers - cc_library_headers for GWP-ASan
+          // (external/gwp-asan, unsynced), used in header_libs: by
+          // libc_native_allocator_defaults (bionic/libc/Android.bp - the
+          // MAIN libc defaults, not a test) and by bionic_tests_defaults.
+          // Empty cc_library_headers stub. (Pruning bionic/tests would NOT
+          // fix this: the libc defaults still need it.)
+          //
+          // dex2oatd - art_cc_binary in art/dex2oat (unsynced; verified
+          // live at r32: `art_cc_binary { name: "dex2oatd", ... }`, the
+          // binary dexpreopt depends on). Referencers: the
+          // java_sdk_library-generated .impl modules of
+          // test_framework-apexd / test_service-apexd. art_cc_binary is a
+          // cc_binary subclass and art/ is not synced, so stub as
+          // cc_binary with empty.c, host_supported, device_supported NOT
+          // set to false (BOTH variants, same form as the #87 linkerconfig
+          // stub - dexpreopt needs the host binary and the device variant
+          // must exist too).
+          //
+          // libcxx - the Rust cxx crate (external/rust/crates/cxx,
+          // unsynced; NOT vendored in android-crates-io - the r32
+          // crates/ listing has 389 entries and no cxx). Referencer:
+          // libmoveit (rust_library_host, crates/moveit) via rustlibs:.
+          // Empty rust_library stub (crate_name "cxx", srcs lib.rs,
+          // created below - an empty file is a valid empty crate),
+          // host_supported (libmoveit is host-only).
+          java_library {
+              name: "android_stubs_current",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "android_test_stubs_current",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "android_system_stubs_current",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "sysprop-library-stub-platform",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "ext",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "framework",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "androidx.test.runner",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "androidx.test.core",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          android_app {
+              name: "framework-res",
+              srcs: ["Empty.java"],
+              manifest: "AndroidManifest.xml",
+              sdk_version: "none",
+              system_modules: "none",
+              use_resource_processor: false,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          android_app {
+              name: "org.lineageos.platform-res",
+              srcs: ["Empty.java"],
+              manifest: "AndroidManifest-lineage.xml",
+              sdk_version: "none",
+              system_modules: "none",
+              use_resource_processor: false,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libz",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libgrpc++",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libusb",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libusb_platform",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libjsoncpp",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libcrypto",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libprotobuf-cpp-lite",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libprotobuf-cpp-full",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libjemalloc5_je_prefixed",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libhardware_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "gwp_asan_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_binary {
+              name: "dex2oatd",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          rust_library {
+              name: "libcxx",
+              crate_name: "cxx",
+              srcs: ["lib.rs"],
+              edition: "2018",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -2565,6 +2974,36 @@ jobs:
           cat > yuzora-stubs/empty-api.txt <<'EOF'
           EOF
           test -f yuzora-stubs/empty-api.txt || { echo "::error::stub source missing after creation: yuzora-stubs/empty-api.txt"; exit 1; }
+          # Runs #96/#97/#98 fix: dummy sources for the new stubs above.
+          # lib.rs: an empty Rust crate for the libcxx rust_library stub
+          # (a file with only a comment is a valid empty crate).
+          printf '// Stub source - see the runs #96/#97/#98 comment above.\n' > yuzora-stubs/lib.rs
+          test -f yuzora-stubs/lib.rs || { echo "::error::stub source missing after creation: yuzora-stubs/lib.rs"; exit 1; }
+          # AndroidManifest.xml: dummy manifest for the framework-res
+          # android_app stub (package "android", matching the real
+          # framework-res). AndroidManifest-lineage.xml: the same for
+          # the org.lineageos.platform-res stub (package
+          # "org.lineageos.platform").
+          cat > yuzora-stubs/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="android" />
+          EOF
+          test -f yuzora-stubs/AndroidManifest.xml || { echo "::error::stub source missing after creation: yuzora-stubs/AndroidManifest.xml"; exit 1; }
+          cat > yuzora-stubs/AndroidManifest-lineage.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.lineageos.platform" />
+          EOF
+          test -f yuzora-stubs/AndroidManifest-lineage.xml || { echo "::error::stub source missing after creation: yuzora-stubs/AndroidManifest-lineage.xml"; exit 1; }
+          # frameworks/base/boot/boot-image-profile.txt: the
+          # java_sdk_library-generated .impl modules of test_framework-apexd
+          # / test_service-apexd list it as a source path (frameworks/base
+          # is NOT synced, so the file does not exist in the tree). An empty
+          # file satisfies Soong's parse-time existence check; the profile
+          # is only read by dexpreopt at build time and the .impl modules
+          # are never built for this HAL-only target.
+          mkdir -p frameworks/base/boot
+          touch frameworks/base/boot/boot-image-profile.txt
+          test -f frameworks/base/boot/boot-image-profile.txt || { echo "::error::stub source missing after creation: frameworks/base/boot/boot-image-profile.txt"; exit 1; }
           # Run #84 fix: verify all 24 new stubs are present in yuzora-stubs/Android.bp.
           for stub in conscrypt.module.public.api.stubs i18n.module.public.api.stubs conscrypt.module.platform.api.stubs legacy.i18n.module.platform.api.stubs stable.i18n.module.platform.api.stubs art.module.public.api.stubs.exportable conscrypt.module.public.api.stubs.exportable i18n.module.public.api.stubs.exportable art.module.public.api.stubs.exportable.module_lib conscrypt.module.platform.api.stubs.exportable legacy.i18n.module.platform.api.stubs.exportable stub-annotations junit kotlin-stdlib kotlin-stdlib-jdk7 kotlin-stdlib-jdk8 kotlin-annotations metalava-signature-reader metalava-tools-common-m2-deps art.module.public.api.stubs.source.api.contribution conscrypt.module.public.api.stubs.source.api.contribution i18n.module.public.api.stubs.source.api.contribution libsqlite libchrome-gestures_headers; do
             grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
@@ -2575,6 +3014,15 @@ jobs:
             grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #87/#88/#89 stubs created: guava + jcommander + truth (+ -liteproto-extension + -proto-extension) + android_module_lib_stubs_current + core-lambda-stubs java_library stubs, linkerconfig cc_binary stub."
+          # Runs #96/#97/#98 fix: verify all 23 new stubs are present in
+          # yuzora-stubs/Android.bp. The grep uses the `name: "..."` form
+          # (not a bare-name grep): "ext" and "framework" are substrings
+          # of other stub names (framework-module-defaults, framework-res)
+          # and of comment text, so a bare grep would pass spuriously.
+          for stub in android_stubs_current android_test_stubs_current android_system_stubs_current sysprop-library-stub-platform ext framework androidx.test.runner androidx.test.core framework-res org.lineageos.platform-res libz libgrpc++ libusb libusb_platform libjsoncpp libcrypto libprotobuf-cpp-lite libprotobuf-cpp-full libjemalloc5_je_prefixed libhardware_headers gwp_asan_headers dex2oatd libcxx; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #96/#97/#98 stubs created: android_stubs_current + android_test_stubs_current + android_system_stubs_current + sysprop-library-stub-platform + ext + framework + androidx.test.runner + androidx.test.core java_library stubs; framework-res + org.lineageos.platform-res android_app stubs (+ AndroidManifest.xml + AndroidManifest-lineage.xml); libz + libgrpc++ + libusb + libusb_platform + libjsoncpp + libcrypto cc_library_shared stubs; libprotobuf-cpp-lite + libprotobuf-cpp-full + libjemalloc5_je_prefixed cc_library_static stubs; libhardware_headers + gwp_asan_headers cc_library_headers stubs; dex2oatd cc_binary stub; libcxx rust_library stub (+ lib.rs); boot-image-profile.txt."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -2755,23 +3203,43 @@ jobs:
             echo "::error::pre-build guard: dexpreopt_systemserver_check present at build time"
             exit 1
           fi
+          # Runs #96/#97/#98 fix: the two dropped kernel_config entries
+          # must still be gone at build time.
+          if grep -q 'kernel_config_q_4\.9' hardware/interfaces/compatibility_matrices/Android.bp; then
+            echo "::error::pre-build guard: kernel_config_q_4.9 present at build time"
+            exit 1
+          fi
+          if grep -q 'kernel_config_s_4\.14' hardware/interfaces/compatibility_matrices/Android.bp; then
+            echo "::error::pre-build guard: kernel_config_s_4.14 present at build time"
+            exit 1
+          fi
           # Runs #87/#88/#89 fix: the new SDK shims (empty jars + empty
           # framework.aidl files) are checked here too — test -f, NOT
           # test -s: the framework.aidl shims are empty by design.
-          for shim in prebuilts/sdk/29/public/android.jar prebuilts/sdk/tools/core-lambda-stubs.jar prebuilts/sdk/7/public/android.jar prebuilts/sdk/8/public/android.jar prebuilts/sdk/9/public/android.jar prebuilts/sdk/28/public/android.jar prebuilts/sdk/7/public/framework.aidl prebuilts/sdk/8/public/framework.aidl prebuilts/sdk/9/public/framework.aidl prebuilts/sdk/28/public/framework.aidl prebuilts/sdk/29/public/framework.aidl; do
+          for shim in prebuilts/sdk/29/public/android.jar prebuilts/sdk/tools/core-lambda-stubs.jar prebuilts/sdk/7/public/android.jar prebuilts/sdk/8/public/android.jar prebuilts/sdk/9/public/android.jar prebuilts/sdk/28/public/android.jar prebuilts/sdk/34/public/android.jar prebuilts/sdk/34/system/android.jar prebuilts/sdk/7/public/framework.aidl prebuilts/sdk/8/public/framework.aidl prebuilts/sdk/9/public/framework.aidl prebuilts/sdk/28/public/framework.aidl prebuilts/sdk/29/public/framework.aidl prebuilts/sdk/34/public/framework.aidl prebuilts/sdk/34/system/framework.aidl; do
             test -f "$shim" \
             || { echo "::error::pre-build guard: SDK shim missing at build time: $shim"; exit 1; }
           done
-          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar', 'prebuilts/sdk/7/public/android.jar', 'prebuilts/sdk/8/public/android.jar', 'prebuilts/sdk/9/public/android.jar', 'prebuilts/sdk/28/public/android.jar')]" \
+          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar', 'prebuilts/sdk/7/public/android.jar', 'prebuilts/sdk/8/public/android.jar', 'prebuilts/sdk/9/public/android.jar', 'prebuilts/sdk/28/public/android.jar', 'prebuilts/sdk/34/public/android.jar', 'prebuilts/sdk/34/system/android.jar')]" \
             || { echo "::error::pre-build guard: SDK shim is not a valid zip"; exit 1; }
           # Run #84 fix: the new stubs must be present and the 5 pruned test dirs absent at build time.
           test -f yuzora-stubs/empty-api.txt || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty-api.txt"; exit 1; }
+          test -f yuzora-stubs/lib.rs || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/lib.rs"; exit 1; }
+          test -f yuzora-stubs/AndroidManifest.xml || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/AndroidManifest.xml"; exit 1; }
+          test -f yuzora-stubs/AndroidManifest-lineage.xml || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/AndroidManifest-lineage.xml"; exit 1; }
+          test -f frameworks/base/boot/boot-image-profile.txt || { echo "::error::pre-build guard: stub source missing at build time: frameworks/base/boot/boot-image-profile.txt"; exit 1; }
           for stub in conscrypt.module.public.api.stubs i18n.module.public.api.stubs conscrypt.module.platform.api.stubs legacy.i18n.module.platform.api.stubs stable.i18n.module.platform.api.stubs art.module.public.api.stubs.exportable conscrypt.module.public.api.stubs.exportable i18n.module.public.api.stubs.exportable art.module.public.api.stubs.exportable.module_lib conscrypt.module.platform.api.stubs.exportable legacy.i18n.module.platform.api.stubs.exportable stub-annotations junit kotlin-stdlib kotlin-stdlib-jdk7 kotlin-stdlib-jdk8 kotlin-annotations metalava-signature-reader metalava-tools-common-m2-deps art.module.public.api.stubs.source.api.contribution conscrypt.module.public.api.stubs.source.api.contribution i18n.module.public.api.stubs.source.api.contribution libsqlite libchrome-gestures_headers; do
             grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #87/#88/#89 fix: the new stubs must be present at build time.
           for stub in guava jcommander truth truth-liteproto-extension truth-proto-extension android_module_lib_stubs_current core-lambda-stubs linkerconfig; do
             grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #96/#97/#98 fix: the new stubs + dummy sources must be
+          # present at build time (same `name: "..."` grep form as the
+          # prune-step check - see the comment there).
+          for stub in android_stubs_current android_test_stubs_current android_system_stubs_current sysprop-library-stub-platform ext framework androidx.test.runner androidx.test.core framework-res org.lineageos.platform-res libz libgrpc++ libusb libusb_platform libjsoncpp libcrypto libprotobuf-cpp-lite libprotobuf-cpp-full libjemalloc5_je_prefixed libhardware_headers gwp_asan_headers dex2oatd libcxx; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           if [ -d system/core/fs_mgr/tests ]; then
             echo "::error::pre-build guard: system/core/fs_mgr/tests present at build time"
