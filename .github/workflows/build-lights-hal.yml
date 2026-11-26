@@ -4504,6 +4504,169 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #135/#136/#137 fix: the #131/#132/#133/#134 fix HELD in
+          // all three (prune step passed + pre-build guard passed).
+          // All three fail at Soong ninja generation, tens of seconds
+          // into the build step, on the SAME fix code (head 0a0f080 -
+          // the #131/#132/#133/#134 fix, workflow 6f51f5e; #135 is the
+          // manifest push 475f777, #136 the README push 0a0f080 -
+          // same workflow file in all three, parallel upload).
+          // Subset-reporting again: #137 reports 1 line, #136
+          // reports 5, #135 reports 3 - the fix covers the UNION
+          // (9 lines, 7 distinct modules).
+          // Raw-log verbatim (live browser read of the job-logs.txt
+          // raw logs; genuine build-output lines only - the other
+          // "error:" matches in each log are the runner echoing the
+          // Build step script itself, the pre-build-guard echo
+          // commands that did NOT fire, NOT build errors). The
+          // FAILED line is out/soong/build.yuzora_lights.ninja (not
+          // build.ninja). No genuine "missing variant" line in any
+          // of the three runs.
+          //   #137 (45902430896, 14m43s, manual ~03:35 IST,
+          //   0a0f080) - 1 line: libinput_bindgen
+          //   (frameworks/native/libs/input/Android.bp:78) needs
+          //   flatbuffer_headers.
+          //   #136 (45902061404, 13m32s, auto, README 0a0f080) -
+          //   5 lines: libvibrator
+          //   (frameworks/native/libs/vibrator/Android.bp:49) needs
+          //   libaudio_system_headers; libinput_bindgen (:78) needs
+          //   flatbuffer_headers; libsensor
+          //   (frameworks/native/libs/sensor/Android.bp:37) needs
+          //   android.permission.flags-aconfig-cc + libhardware +
+          //   android.companion.virtual.virtualdevice_aidl-cpp.
+          //   #135 (45901885683, 15m50s, auto, manifest 475f777) -
+          //   3 lines: libinput_bindgen needs flatbuffer_headers;
+          //   binder_rpc_fuzzer
+          //   (frameworks/native/libs/binder/tests/rpc_fuzzer/
+          //   Android.bp:10) needs libssl_fuzz_unsafe +
+          //   libcrypto_fuzz_unsafe.
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all 7 defining projects UNSYNCED):
+          // - flatbuffer_headers: cc_library_headers in
+          //   external/flatbuffers/Android.bp (r32, lines 51-55,
+          //   export_include_dirs ["include"], vendor_available,
+          //   host_supported) - external/flatbuffers NOT synced.
+          //   Used in header_libs by libinput_bindgen (a
+          //   rust_bindgen), libinput and the input tests.
+          // - libaudio_system_headers: cc_library_headers in
+          //   system/media/audio/Android.bp (r32, lines 9-11,
+          //   host_supported, vendor_available, product_available,
+          //   export_include_dirs ["include"], min_sdk_version 29)
+          //   - NOT frameworks/av; system/media NOT synced. Used
+          //   in header_libs by libvibrator.
+          // - android.permission.flags-aconfig-cc: cc_aconfig_library
+          //   in frameworks/base/AconfigFlags.bp (r32, lines
+          //   851-856, aconfig_declarations
+          //   android.permission.flags-aconfig, host_supported) -
+          //   frameworks/base NOT synced. Used in static_libs by
+          //   libsensor; a cc_aconfig_library generates a
+          //   cc_library of the same name, so a plain cc_library
+          //   stub satisfies it (same as the -aconfig-cc stubs in
+          //   #122 / #128).
+          // - libhardware: cc_library_shared in
+          //   hardware/libhardware/Android.bp (r32, lines 90-91,
+          //   srcs hardware.c, host_supported, recovery_available,
+          //   vendor_available, min_sdk_version 29) - NOT plain
+          //   cc_library; hardware/libhardware NOT synced. Used in
+          //   shared_libs (+ export_shared_lib_headers) by
+          //   libsensor, and in shared_libs by the sensor fuzzers,
+          //   sensorprivacy and the hwc test defaults - every known
+          //   use is shared_libs, so cc_library_shared satisfies
+          //   them all (same shape as the libperfetto_c stub #122).
+          //   The sibling libhardware_headers was already stubbed
+          //   in #96.
+          // - android.companion.virtual.virtualdevice_aidl-cpp: the
+          //   generated C++ lib of the aidl_interface
+          //   android.companion.virtual.virtualdevice_aidl (note
+          //   the _aidl suffix) in frameworks/base/core/java/
+          //   Android.bp (r32, lines 818-825, unstable,
+          //   host_supported, srcs android/companion/virtualnative/
+          //   IVirtualDeviceManagerNative.aidl; no explicit cpp
+          //   backend block - cpp is default-on, confirmed by use
+          //   in libmedia_jni shared_libs) - frameworks/base NOT
+          //   synced. Used in shared_libs by libsensor AND in
+          //   static_libs by libsensorserviceaidl_fuzzer (a
+          //   cc_fuzz), so only a plain cc_library stub satisfies
+          //   both - the generated type itself is unconfirmed.
+          // - libssl_fuzz_unsafe: cc_test_library in
+          //   external/boringssl/Android.bp (r32, lines 554-556,
+          //   host_supported, defaults boringssl_fuzz_unsafe_
+          //   defaults, static_libs libcrypto_fuzz_unsafe) -
+          //   external/boringssl NOT synced. Used in static_libs
+          //   by binder_rpc_fuzzer (a cc_fuzz); stubbed as plain
+          //   cc_library, which provides the static variant the
+          //   fuzzer needs.
+          // - libcrypto_fuzz_unsafe: cc_test_library in the same
+          //   file (r32, lines 478-479; host support comes via its
+          //   defaults, boringssl_fuzz_unsafe_defaults and
+          //   libcrypto_defaults) - same project, NOT synced.
+          //   Same use and same stub type as libssl_fuzz_unsafe.
+          // COMPILE-STAGE CAVEAT: the two cc_library_headers stubs
+          // are bare (no export_include_dirs, no real headers), as
+          // all earlier headers stubs were. A bare stub passes
+          // Soong; dummy headers will be needed only if the next
+          // run fails at compile/link because libinput or
+          // libvibrator actually includes flatbuffers/audio
+          // headers (same class as the #111 libgsi caveat).
+          cc_library_headers {
+              name: "flatbuffer_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libaudio_system_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.permission.flags-aconfig-cc",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libhardware",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.companion.virtual.virtualdevice_aidl-cpp",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libssl_fuzz_unsafe",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libcrypto_fuzz_unsafe",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -4740,6 +4903,14 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #131/#132/#133/#134 stubs created: libvintf cc_library stub; libunwindstack_no_dex cc_library_static stub; ILogcatManagerService_aidl aidl_library stub (+ ILogcatManagerService.aidl); debugfs_static + fsck.erofs cc_binary stubs; libpcre2 changed cc_library_static -> cc_library."
+          # Runs #135/#136/#137 fix: verify all 7 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131 loops above).
+          for stub in flatbuffer_headers libaudio_system_headers android.permission.flags-aconfig-cc libhardware android.companion.virtual.virtualdevice_aidl-cpp libssl_fuzz_unsafe libcrypto_fuzz_unsafe; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #135/#136/#137 stubs created: flatbuffer_headers + libaudio_system_headers cc_library_headers stubs; android.permission.flags-aconfig-cc + android.companion.virtual.virtualdevice_aidl-cpp + libssl_fuzz_unsafe + libcrypto_fuzz_unsafe cc_library stubs; libhardware cc_library_shared stub. No type changes this round."
+
 
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
@@ -5014,6 +5185,11 @@ jobs:
           # Runs #131/#132/#133/#134 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in libvintf libunwindstack_no_dex ILogcatManagerService_aidl debugfs_static fsck.erofs; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #135/#136/#137 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in flatbuffer_headers libaudio_system_headers android.permission.flags-aconfig-cc libhardware android.companion.virtual.virtualdevice_aidl-cpp libssl_fuzz_unsafe libcrypto_fuzz_unsafe; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
