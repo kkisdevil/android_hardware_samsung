@@ -989,6 +989,63 @@ jobs:
           # static_libs: / libs: (and now aidl imports: / headers:). Do
           # not chase them unless a run reports one (same standing rule as
           # sensorservice, dumpstate, healthd). NO new projects, still 32.
+          # Runs #75 / #76 / #77 — all three FAILED at Soong ninja-file generation (see README run table).
+          # (#75 = auto-triggered by the manifest push 46b8ba0, 13m39s; #76 = auto-triggered by the
+          # README push 2b9b37f, 13m27s; #77 = 45727199134, manually dispatched 2026-11-26 ~05:43 IST
+          # on commit 2b9b37f, 14m12s, build step 36s.)
+          # All three FAILED at Soong ninja-file generation, ~26s into the build step, with a NEW,
+          # much broader failure: 149 real Soong error lines (168 incl. echoed guard-script lines),
+          # 54 distinct undefined modules + 2 missing source paths, across 21 files.
+          # The #72/#73/#74 fix HELD completely in all three runs (prune step + pre-build guard
+          # passed, zero "licensesPropertyGatherer" / "Fuzzer doesn't exist" in the build output —
+          # those strings occur only in this step's own echoed comments) and the #68/#69/#70/#71
+          # fix HELD too (zero "HardwareBuffer_aidl" / "android.frameworks.stats"). Every earlier
+          # fix held as well. Root cause: the #72 panic died in the PreArch mutator phase, BEFORE
+          # the deps/ninja validation ever ran — with the panic fixed, Soong reaches full whole-tree
+          # validation and reports the entire backlog of unsynced-project references at once. This
+          # is the #38/#39 "surface is much larger than reported" lesson, now fully visible — and
+          # the reporting is STILL a subset: system/core/debuggerd/proto's libtombstone_proto_java
+          # references libprotobuf-java-lite (verified live at lineage-22.2) but #77 reports no
+          # error for it. So this fix stubs/prunes the COMPLETE layer, not just the reported names.
+          # The 149 errors fall into seven classes, all in modules the lights HAL never builds:
+          # (1) dexpreopt_systemserver_check (build/soong/Android.bp:135, 26 errors): a bare
+          # singleton (`dexpreopt_systemserver_check { name: ... }`, no srcs/libs — verified live
+          # at LineageOS lineage-22.2); its deps are computed by Go code (java/dexpreopt_check.go)
+          # from unsynced frameworks/base — 22 service-* modules + services +
+          # com.android.location.provider + org.lineageos.platform + source
+          # frameworks/base/boot/boot-image-profile.txt. No stub can fix it (the source-path error
+          # proves it); the singleton is deleted from the synced build/soong/Android.bp below.
+          # Within android_build_soong only java/dexpreopt_check.go + Android.bp mention it, and
+          # the check only runs when dexpreopting the system server, which this HAL-only target
+          # never does. (2) system/apex/tests + testdata (84 errors): host test cases
+          # (VendorApexHostTestCases, apex_*_tests, sharedlibs_host_tests) + apkinapex/maxsdk test
+          # apps referencing tradefed/truth/testng/hamcrest/cts-*/frameworks-base-hostutils +
+          # android.test.base/mock, org.apache.http.legacy, android.hidl.*-java + sdk 31 android.jar
+          # + prebuilts/sdk/tools/core-lambda-stubs.jar. All 25 modules in tests/Android.bp are host
+          # tests / test apps / keys / testdata; VendorApexHostTestCases has no referencer outside
+          # tests/ (verified live). Pruned whole. (3) system/core/init/test_upgrade_mte +
+          # system/core/debuggerd/test_permissive_mte (6 errors): MTE host tests referencing the
+          # same tradefed family. Pruned whole. (4) build/make/tools/* host tools + system/apex/proto
+          # (22 errors): signapk/signtos/apicheck/aconfig/releasetools/backported_fixes/apex_manifest_proto_java
+          # referencing java libs in unsynced external/* + frameworks/base — stubbed as empty java_library
+          # (all referenced via static_libs, except where noted). (5) system/tools/xsdc (1 error): xsdc host tool
+          # references commons-cli-1.2 via static_libs (AOSP r32) — stubbed as java_library. The
+          # xsdc plugin itself (system/tools/xsdc/build, run #33) is untouched. (6)
+          # frameworks/native/libs/math libmath_headers (1 error): implicit Windows-host dep on
+          # libwinpthread (no such property in the file at lineage-22.2 — the dep is added by Soong
+          # for windows-enabled cc modules; HOST_CROSS_OS=windows) — stubbed as empty
+          # cc_library_static + empty.c. (7) system/apex/apexd/apexd_testdata AppInRebootlessApex
+          # (9 errors): android_app, sdk_version "29", no srcs/libs (verified live) — sdk 29
+          # android.jar missing + core-lambda-stubs.jar missing + 5 implicit java libs. NOT pruning
+          # apexs_testdata: system/apex/apexd/Android.bp references its modules in srcs (verified
+          # live, run #58). Fix: empty-jar SDK shims (parse-time existence only — the test app is
+          # never built) + the 5 java stubs. NOT syncing frameworks/base or prebuilts/sdk (gigabytes,
+          # for test/host modules the HAL never builds). NOT setting ALLOW_MISSING_DEPENDENCIES.
+          # NOTE: "test_dtb" is NOT an undefined module — it occurs only in Soong's "Or did you
+          # mean [... test_dtb]" suggestions. The browser status summary for #77 quoted extra errors
+          # (service-aconfigd/adbd, SensorProps.aidl, art-profile.txt, DisplayAreaPolicy.java,
+          # config.xml) that do NOT occur in #77's downloaded raw log — the counts above are from
+          # the raw log, which is authoritative.
           echo "=== trees before prune (for forensics) ==="
           ls -d hardware/interfaces/*/ 2>/dev/null | sort
           ls -d hardware/google/interfaces/*/ 2>/dev/null | sort
@@ -1094,6 +1151,14 @@ jobs:
           # HAL closure; both go whole.
           rm -rf frameworks/native/libs/bufferstreams/aidl
           rm -rf system/core/trusty/stats
+          # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
+          # block at the top of this step). system/apex/tests holds only host test cases +
+          # testdata (see the comment block); the MTE dirs hold host tests referencing the same
+          # tradefed family. Test/host modules are never built for this HAL-only target.
+          # system/apex/apexd/apexd_testdata is NOT pruned (run #58): system/apex/apexd/Android.bp
+          # references its modules in srcs.
+          rm -rf system/apex/tests
+          rm -rf system/core/init/test_upgrade_mte system/core/debuggerd/test_permissive_mte
 
           # Kept paths must still exist (the prune must not have eaten them).
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
@@ -1155,9 +1220,22 @@ jobs:
             echo "::error::prune failed — system/core/trusty/stats present"
             exit 1
           fi
+          if [ -d system/apex/tests ]; then
+            echo "::error::prune failed — system/apex/tests present"
+            exit 1
+          fi
+          if [ -d system/core/init/test_upgrade_mte ]; then
+            echo "::error::prune failed — system/core/init/test_upgrade_mte present"
+            exit 1
+          fi
+          if [ -d system/core/debuggerd/test_permissive_mte ]; then
+            echo "::error::prune failed — system/core/debuggerd/test_permissive_mte present"
+            exit 1
+          fi
           echo "Unneeded subtrees pruned."
           echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
           echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats."
+          echo "runs #75/#76/#77 pruned: system/apex/tests + system/core/init/test_upgrade_mte + system/core/debuggerd/test_permissive_mte."
           # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
           # bindings map (run #74, 45715506626, 12m40s, build step 33s;
           # run #73, 45715395273, 12m14s, 50s; run #72, 45714883089,
@@ -1242,6 +1320,32 @@ jobs:
           grep -q "YUZORA_EMPTY_FUZZER_BINDINGS" system/sepolicy/build/soong/service_fuzzer_bindings.go \
             || { echo "::error::prune failed — fuzzer bindings stub not written"; exit 1; }
           echo "runs #72/#73/#74 stubbed: system/sepolicy/build/soong/service_fuzzer_bindings.go emptied."
+          # Runs #75/#76/#77 fix — drop the dexpreopt_systemserver_check singleton from the
+          # synced build/soong/Android.bp (see the comment block at the top of this step). It is
+          # a bare 3-line block; the sed range deletes exactly those lines. The Go implementation
+          # (java/dexpreopt_check.go) stays — only the module instance goes, so no check runs.
+          sed -i '/^dexpreopt_systemserver_check {/,/^}/d' build/soong/Android.bp
+          if grep -q "dexpreopt_systemserver_check" build/soong/Android.bp; then
+            echo "::error::prune failed — dexpreopt_systemserver_check still present in build/soong/Android.bp"
+            exit 1
+          fi
+          echo "runs #75/#76/#77 dropped: dexpreopt_systemserver_check from build/soong/Android.bp."
+          # Runs #75/#76/#77 fix — empty-jar SDK shims for the AppInRebootlessApex test app (see
+          # the comment block at the top of this step). prebuilts/sdk is NOT synced, so sdk_version
+          # "29" + the core-lambda-stubs.jar source fail Soong's existence checks at parse time.
+          # An empty JAR is a valid empty ZIP (22 bytes); the files are never read because the test
+          # app is never built for this HAL-only target. Created with python3 zipfile (no zip/jar
+          # tool needed on the runner) and verified below. Do NOT "fix" these by syncing
+          # prebuilts/sdk (gigabytes).
+          mkdir -p prebuilts/sdk/29/public prebuilts/sdk/tools
+          python3 -c "import zipfile; zipfile.ZipFile('prebuilts/sdk/29/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/tools/core-lambda-stubs.jar', 'w').close()"
+          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar')]" \
+            || { echo "::error::prune failed — SDK shim jar is not a valid zip"; exit 1; }
+          test -s prebuilts/sdk/29/public/android.jar \
+            || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/29/public/android.jar"; exit 1; }
+          test -s prebuilts/sdk/tools/core-lambda-stubs.jar \
+            || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/tools/core-lambda-stubs.jar"; exit 1; }
+          echo "runs #75/#76/#77 SDK shims created: prebuilts/sdk/29/public/android.jar + prebuilts/sdk/tools/core-lambda-stubs.jar (empty jars, parse-time only)."
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
@@ -1593,6 +1697,103 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #75/#76/#77 fix: the build/make host tools' java deps (see the comment block at
+          // the top of this step). All are referenced via `static_libs:` (signapk, signtos,
+          // apicheck, aconfig_protos, releasetools) except where noted, so the stubs are empty
+          // java_library with the dummy source Empty.java — NOT cc_defaults or java_defaults —
+          // exactly like the runs #62/#63/#64 ART stubs. The referencers are host tools
+          // (signapk/signtos/apicheck/aconfig/releasetools/backported_fixes) that are never built
+          // for this HAL-only target, so only the NAMES have to exist for Soong's parse. Two of
+          // the deps are implicit, not explicit properties: backported_fixes_proto gets
+          // libprotobuf-java-lite from its .proto src, and apex_manifest_proto_java gets
+          // libprotobuf-java-full from `proto: { type: "full" }` — the stubs cover those too.
+          // libtombstone_proto_java (system/core/debuggerd/proto) also references
+          // libprotobuf-java-lite although #77 never reported it — the stubs cover the complete
+          // layer, not just the reported subset (see the comment block). Public visibility on
+          // purpose (see the VTS helper stub above): the known users live in build/make + system,
+          // different packages from yuzora-stubs, and an unknown user elsewhere must not turn
+          // into a visibility error. Upstream homes (all unsynced): external/protobuf
+          // (libprotobuf-java-*), external/bouncycastle, external/conscrypt, external/apksig,
+          // external/doclava, external/jsilver, prebuilts/misc/common/commons-cli (Make prebuilt).
+          java_library {
+            name: "libprotobuf-java-full",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "libprotobuf-java-lite",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "libprotobuf-java-nano",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "bouncycastle-unbundled",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "bouncycastle-bcpkix-unbundled",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "conscrypt-unbundled",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "apksig",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "doclava",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -1622,7 +1823,96 @@ jobs:
           if grep -q 'name: "core-module-lib-stubs-for-system-modules"' build/soong/java/core-libraries/Android.bp; then
             echo "core-module-lib-stubs-for-system-modules already defined in synced build/soong — no stub needed."
           else
-            cat >> yuzora-stubs/Android.bp <<'EOF'
+            cat >> yuzora-stubs/Android.bp <<'
+          java_library {
+            name: "jsilver",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "commons-cli-1.2",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          // Runs #75/#76/#77 fix: "unsupportedappusage", referenced via `libs:` by
+          // aconfig_storage_reader_java (build/make/tools/aconfig/aconfig_storage_read_api).
+          // Upstream it is a java_library in frameworks/base (unsynced) — same stub form.
+          java_library {
+            name: "unsupportedappusage",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          // Runs #75/#76/#77 fix: the five implicit java libs of the AppInRebootlessApex test
+          // app (system/apex/apexd/apexd_testdata). The android_app module has no srcs/libs of
+          // its own — Soong adds these as implicit app deps. Upstream homes (all unsynced):
+          // frameworks/base (android.test.base, android.test.mock, org.apache.http.legacy) and
+          // the HIDL-generated -java libs (android.hidl.base/manager-V1.0-java, whose
+          // hidl_interface generators live in pruned hardware/interfaces dirs). Same stub form.
+          java_library {
+            name: "android.test.base",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "android.test.mock",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "org.apache.http.legacy",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "android.hidl.base-V1.0-java",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          java_library {
+            name: "android.hidl.manager-V1.0-java",
+            srcs: ["Empty.java"],
+            sdk_version: "none",
+            system_modules: "none",
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+          EOF'
           java_library {
               name: "core-module-lib-stubs-for-system-modules",
               srcs: ["Empty.java"],
@@ -1632,11 +1922,56 @@ jobs:
                   "//visibility:public",
               ],
           }
+          
+          // Runs #75/#76/#77 fix: "core-all-system-modules", referenced via the scalar
+          // `system_modules:` property by fake_device_config + aconfig_storage_stub_none
+          // (build/make/tools/aconfig/fake_device_config) and aconfig_storage_file
+          // (build/make/tools/aconfig/aconfig_storage_file). The property requires a
+          // java_system_modules module — a java_library stub would fail Soong's type check —
+          // so this stub IS a java_system_modules. Its libs list holds our own empty
+          // core-lambda-stubs-for-system-modules stub (defined above) so the list is non-empty
+          // and always resolves. Upstream it aggregates frameworks/base's system modules
+          // (unsynced); the referencers are host tools never built here, so the aggregation is
+          // irrelevant — only the NAME and the TYPE have to exist for Soong's parse.
+          java_system_modules {
+            name: "core-all-system-modules",
+            libs: ["core-lambda-stubs-for-system-modules"],
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          // Runs #75/#76/#77 fix: "libwinpthread", the implicit Windows-host dep of
+          // frameworks/native/libs/math libmath_headers (no such property in the file at
+          // lineage-22.2 — Soong adds it for windows-enabled cc modules; HOST_CROSS_OS=windows).
+          // Linked statically, so this stub is an (empty) cc_library_static with the dummy source
+          // empty.c — same form as the hintmanager/skia stubs. The defining project is unsynced
+          // and libmath_headers is never built here, so the empty lib never links into anything.
+          cc_library_static {
+            name: "libwinpthread",
+            srcs: ["empty.c"],
+            visibility: [
+              "//visibility:public",
+            ],
+          }
+
+          // Runs #75/#76/#77 fix: "libconscrypt_openjdk_jni", referenced via `jni_libs:` by
+          // signapk (build/make/tools/signapk). Upstream it is the shared JNI library of
+          // external/conscrypt (unsynced), so this stub is an (empty) cc_library_shared with the
+          // dummy source empty.c — NOT a cc_library_static and NOT a java_library. signapk is
+          // never built here, so the empty .so never links into anything.
+          cc_library_shared {
+            name: "libconscrypt_openjdk_jni",
+            srcs: ["empty.c"],
+            visibility: [
+              "//visibility:public",
+            ],
+          }
           EOF
             echo "core-module-lib-stubs-for-system-modules stub created (not defined in synced build/soong)."
           fi
 
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules libprotobuf-java-full libprotobuf-java-lite libprotobuf-java-nano bouncycastle-unbundled bouncycastle-bcpkix-unbundled conscrypt-unbundled apksig doclava jsilver commons-cli-1.2 unsupportedappusage android.test.base android.test.mock org.apache.http.legacy android.hidl.base-V1.0-java android.hidl.manager-V1.0-java core-all-system-modules libwinpthread libconscrypt_openjdk_jni; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
@@ -1649,6 +1984,7 @@ jobs:
           echo "runs #51/#52/#53 stubs created: skia_renderengine_deps + libskia_renderengine (+ empty.c)."
           echo "run #58 stubs created: framework-module-defaults + framework-system-server-module-defaults (empty java_defaults)."
           echo "runs #62/#63/#64 stubs created: art.module.public.api.stubs (+.module_lib), art.module.intra.core.api.stubs (+ -lib), art.module.api.annotations.for.system.modules, core-lambda-stubs-for-system-modules (empty java_library + Empty.java)."
+          echo "runs #75/#76/#77 stubs created: libprotobuf-java-full/-lite/-nano, bouncycastle(-bcpkix)-unbundled, conscrypt-unbundled, apksig, doclava, jsilver, commons-cli-1.2, unsupportedappusage, android.test.base/mock, org.apache.http.legacy, android.hidl.base/manager-V1.0-java (empty java_library + Empty.java); core-all-system-modules (empty java_system_modules); libwinpthread (cc_library_static + empty.c); libconscrypt_openjdk_jni (cc_library_shared + empty.c)."
           # core-module-lib-stubs-for-system-modules (runs #62/#63/#64):
           # the stub is created conditionally above, so it must exist
           # in EITHER yuzora-stubs/Android.bp (stub created) OR the
@@ -1770,7 +2106,7 @@ jobs:
             || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.c"; exit 1; }
           test -f yuzora-stubs/Empty.java \
             || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/Empty.java"; exit 1; }
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules; do
+          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules libprotobuf-java-full libprotobuf-java-lite libprotobuf-java-nano bouncycastle-unbundled bouncycastle-bcpkix-unbundled conscrypt-unbundled apksig doclava jsilver commons-cli-1.2 unsupportedappusage android.test.base android.test.mock org.apache.http.legacy android.hidl.base-V1.0-java android.hidl.manager-V1.0-java core-all-system-modules libwinpthread libconscrypt_openjdk_jni; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
@@ -1795,6 +2131,28 @@ jobs:
           # the prune-step comment) must still be the stub at build time.
           grep -q "YUZORA_EMPTY_FUZZER_BINDINGS" system/sepolicy/build/soong/service_fuzzer_bindings.go \
             || { echo "::error::pre-build guard: fuzzer bindings stub missing at build time"; exit 1; }
+          if [ -d system/apex/tests ]; then
+            echo "::error::pre-build guard: system/apex/tests present at build time"
+            exit 1
+          fi
+          if [ -d system/core/init/test_upgrade_mte ]; then
+            echo "::error::pre-build guard: system/core/init/test_upgrade_mte present at build time"
+            exit 1
+          fi
+          if [ -d system/core/debuggerd/test_permissive_mte ]; then
+            echo "::error::pre-build guard: system/core/debuggerd/test_permissive_mte present at build time"
+            exit 1
+          fi
+          if grep -q "dexpreopt_systemserver_check" build/soong/Android.bp; then
+            echo "::error::pre-build guard: dexpreopt_systemserver_check present at build time"
+            exit 1
+          fi
+          for shim in prebuilts/sdk/29/public/android.jar prebuilts/sdk/tools/core-lambda-stubs.jar; do
+            test -f "$shim" \
+            || { echo "::error::pre-build guard: SDK shim missing at build time: $shim"; exit 1; }
+          done
+          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar')]" \
+            || { echo "::error::pre-build guard: SDK shim is not a valid zip"; exit 1; }
           echo "Pre-build guard passed: pruned paths absent, stubs present."
           # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
           # dep must fail here, not be silently skipped.
