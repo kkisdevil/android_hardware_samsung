@@ -248,6 +248,26 @@ still 32 projects.
   (still 32). The cache steps are untouched (save-always flip still
   needs the user's word).
 
+  Run #110 (45830147379, 14m5s, manual dispatch ~19:02 IST
+  2026-11-26, head 4e111f9 - the runs #105/#106/#107 fix, README
+  push): FAILED in the "Prune unneeded subtrees + stub missing
+  defaults" step, 2s, exit code 1 - NOT at Soong. The "Build lights
+  HAL" step never ran (0s, skipped), so there are ZERO Soong build
+  errors in this run and the #105/#106/#107 fix was never exercised.
+  Raw-log verbatim: exactly two ##[error] lines, both from the prune
+  step - "common-ndk_shared defaults missing V6-ndk shared_libs" and
+  "Process completed with exit code 1." Root cause: the prune-step
+  check (and its pre-build-guard twin) used grep -A5 on the
+  name: "android.hardware.graphics.common-ndk_shared" line, but the
+  quoted "android.hardware.graphics.common-V6-ndk" line sits 12
+  lines below it (a 10-line comment sits between), outside the -A5
+  window - the stub itself was correct; the check false-negatived.
+  The fix is workflow-only: both checks now scope the grep to the
+  whole defaults block with sed -n '/name:
+  "android.hardware.graphics.common-ndk_shared"/,/^ *}/p' instead of
+  grep -A5. No new projects (still 32). The cache steps are untouched
+  (save-always flip still needs the user's word).
+
   -->
 
 <manifest>
