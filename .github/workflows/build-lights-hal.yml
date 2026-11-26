@@ -1417,15 +1417,34 @@ jobs:
           # app is never built for this HAL-only target. Created with python3 zipfile (no zip/jar
           # tool needed on the runner) and verified below. Do NOT "fix" these by syncing
           # prebuilts/sdk (gigabytes).
-          mkdir -p prebuilts/sdk/29/public prebuilts/sdk/tools
-          python3 -c "import zipfile; zipfile.ZipFile('prebuilts/sdk/29/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/tools/core-lambda-stubs.jar', 'w').close()"
-          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar')]" \
+          # Runs #87/#88/#89 fix: the same empty-jar shim, plus an empty
+          # framework.aidl shim, for every other sdk_version the Soong
+          # parse needs: 7/8 (android_app in frameworks/native/opengl/tests),
+          # 9 (ota_metadata_proto_java), 28 (apex_aidl_interface java
+          # backend) and 29 (AppInRebootlessApex/PrivAppInRebootlessApex
+          # framework.aidl). The framework.aidl files are empty by design
+          # (test -f below, NOT test -s — an empty file fails -s).
+          # Re-creating 29/android.jar is idempotent: zipfile 'w' mode
+          # overwrites it, and touch is a no-op for an existing file.
+          mkdir -p prebuilts/sdk/29/public prebuilts/sdk/tools prebuilts/sdk/7/public prebuilts/sdk/8/public prebuilts/sdk/9/public prebuilts/sdk/28/public
+          python3 -c "import zipfile; zipfile.ZipFile('prebuilts/sdk/29/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/tools/core-lambda-stubs.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/7/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/8/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/9/public/android.jar', 'w').close(); zipfile.ZipFile('prebuilts/sdk/28/public/android.jar', 'w').close()"
+          touch prebuilts/sdk/7/public/framework.aidl prebuilts/sdk/8/public/framework.aidl prebuilts/sdk/9/public/framework.aidl prebuilts/sdk/28/public/framework.aidl prebuilts/sdk/29/public/framework.aidl
+          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar', 'prebuilts/sdk/7/public/android.jar', 'prebuilts/sdk/8/public/android.jar', 'prebuilts/sdk/9/public/android.jar', 'prebuilts/sdk/28/public/android.jar')]" \
             || { echo "::error::prune failed — SDK shim jar is not a valid zip"; exit 1; }
           test -s prebuilts/sdk/29/public/android.jar \
             || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/29/public/android.jar"; exit 1; }
           test -s prebuilts/sdk/tools/core-lambda-stubs.jar \
             || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/tools/core-lambda-stubs.jar"; exit 1; }
-          echo "runs #75/#76/#77 SDK shims created: prebuilts/sdk/29/public/android.jar + prebuilts/sdk/tools/core-lambda-stubs.jar (empty jars, parse-time only)."
+          test -s prebuilts/sdk/7/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/7/public/android.jar"; exit 1; }
+          test -s prebuilts/sdk/8/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/8/public/android.jar"; exit 1; }
+          test -s prebuilts/sdk/9/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/9/public/android.jar"; exit 1; }
+          test -s prebuilts/sdk/28/public/android.jar || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/28/public/android.jar"; exit 1; }
+          test -f prebuilts/sdk/7/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/7/public/framework.aidl"; exit 1; }
+          test -f prebuilts/sdk/8/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/8/public/framework.aidl"; exit 1; }
+          test -f prebuilts/sdk/9/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/9/public/framework.aidl"; exit 1; }
+          test -f prebuilts/sdk/28/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/28/public/framework.aidl"; exit 1; }
+          test -f prebuilts/sdk/29/public/framework.aidl || { echo "::error::prune failed — SDK shim missing after creation: prebuilts/sdk/29/public/framework.aidl"; exit 1; }
+          echo "runs #75/#76/#77 + #87/#88/#89 SDK shims created: prebuilts/sdk/7,8,9,28,29/public/android.jar + prebuilts/sdk/7,8,9,28,29/public/framework.aidl + prebuilts/sdk/tools/core-lambda-stubs.jar (empty jars + empty aidl files, parse-time only).""
           mkdir -p yuzora-stubs
           cat > yuzora-stubs/Android.bp <<'EOF'
           // Stub — see the "Prune unneeded subtrees + stub missing
@@ -2373,6 +2392,110 @@ jobs:
                   "//visibility:public",
               ],
           }
+
+          // Runs #87/#88/#89 fix: empty java_library stubs for the
+          // host-test deps of build/make/backported_fixes (guava,
+          // jcommander, truth, truth-liteproto-extension,
+          // truth-proto-extension) and the java stubs the Soong
+          // parse needs (android_module_lib_stubs_current,
+          // core-lambda-stubs). core-lambda-stubs is NOT the
+          // already-stubbed core-lambda-stubs-for-system-modules:
+          // the real one is a java_library in libcore/JavaLibrary.bp.
+          // Empty.java (created below); never built for this HAL-only
+          // target, so only the NAMES have to exist. Public visibility
+          // on purpose: the referencers live in other packages.
+          java_library {
+              name: "guava",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "jcommander",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "truth",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "truth-liteproto-extension",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "truth-proto-extension",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "android_module_lib_stubs_current",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "core-lambda-stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          // Runs #87/#88/#89 fix: empty cc_binary stub for
+          // linkerconfig (a cc_binary in system/linkerconfig).
+          // The com.android.runtime apex wants the device binary
+          // and runtime-module-host-exports wants the host binary,
+          // so this stub MUST have both variants: host_supported
+          // is true and device_supported is NOT set to false.
+          // empty.c (created below); never built for this target.
+          cc_binary {
+              name: "linkerconfig",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -2447,6 +2570,11 @@ jobs:
             grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "run #84 stubs created: conscrypt/i18n core-library + kotlin + metalava + junit java_library stubs, 3 java_api_contribution stubs, libsqlite + libchrome-gestures_headers (+ empty-api.txt)."
+          # Runs #87/#88/#89 fix: verify all 8 new stubs are present in yuzora-stubs/Android.bp.
+          for stub in guava jcommander truth truth-liteproto-extension truth-proto-extension android_module_lib_stubs_current core-lambda-stubs linkerconfig; do
+            grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #87/#88/#89 stubs created: guava + jcommander + truth (+ -liteproto-extension + -proto-extension) + android_module_lib_stubs_current + core-lambda-stubs java_library stubs, linkerconfig cc_binary stub." conscrypt/i18n core-library + kotlin + metalava + junit java_library stubs, 3 java_api_contribution stubs, libsqlite + libchrome-gestures_headers (+ empty-api.txt)."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -2627,15 +2755,22 @@ jobs:
             echo "::error::pre-build guard: dexpreopt_systemserver_check present at build time"
             exit 1
           fi
-          for shim in prebuilts/sdk/29/public/android.jar prebuilts/sdk/tools/core-lambda-stubs.jar; do
+          # Runs #87/#88/#89 fix: the new SDK shims (empty jars + empty
+          # framework.aidl files) are checked here too — test -f, NOT
+          # test -s: the framework.aidl shims are empty by design.
+          for shim in prebuilts/sdk/29/public/android.jar prebuilts/sdk/tools/core-lambda-stubs.jar prebuilts/sdk/7/public/android.jar prebuilts/sdk/8/public/android.jar prebuilts/sdk/9/public/android.jar prebuilts/sdk/28/public/android.jar prebuilts/sdk/7/public/framework.aidl prebuilts/sdk/8/public/framework.aidl prebuilts/sdk/9/public/framework.aidl prebuilts/sdk/28/public/framework.aidl prebuilts/sdk/29/public/framework.aidl; do
             test -f "$shim" \
             || { echo "::error::pre-build guard: SDK shim missing at build time: $shim"; exit 1; }
           done
-          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar')]" \
+          python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar', 'prebuilts/sdk/7/public/android.jar', 'prebuilts/sdk/8/public/android.jar', 'prebuilts/sdk/9/public/android.jar', 'prebuilts/sdk/28/public/android.jar')]" \
             || { echo "::error::pre-build guard: SDK shim is not a valid zip"; exit 1; }
           # Run #84 fix: the new stubs must be present and the 5 pruned test dirs absent at build time.
           test -f yuzora-stubs/empty-api.txt || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty-api.txt"; exit 1; }
           for stub in conscrypt.module.public.api.stubs i18n.module.public.api.stubs conscrypt.module.platform.api.stubs legacy.i18n.module.platform.api.stubs stable.i18n.module.platform.api.stubs art.module.public.api.stubs.exportable conscrypt.module.public.api.stubs.exportable i18n.module.public.api.stubs.exportable art.module.public.api.stubs.exportable.module_lib conscrypt.module.platform.api.stubs.exportable legacy.i18n.module.platform.api.stubs.exportable stub-annotations junit kotlin-stdlib kotlin-stdlib-jdk7 kotlin-stdlib-jdk8 kotlin-annotations metalava-signature-reader metalava-tools-common-m2-deps art.module.public.api.stubs.source.api.contribution conscrypt.module.public.api.stubs.source.api.contribution i18n.module.public.api.stubs.source.api.contribution libsqlite libchrome-gestures_headers; do
+            grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #87/#88/#89 fix: the new stubs must be present at build time.
+          for stub in guava jcommander truth truth-liteproto-extension truth-proto-extension android_module_lib_stubs_current core-lambda-stubs linkerconfig; do
             grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           if [ -d system/core/fs_mgr/tests ]; then
