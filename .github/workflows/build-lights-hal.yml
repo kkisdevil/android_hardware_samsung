@@ -2068,8 +2068,7 @@ jobs:
           <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           </xs:schema>
           EOF
-          test -f yuzora-stubs/compatibility_matrix.xsd \ 
-          || { echo "::error::stub source missing after creation: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
+          test -f yuzora-stubs/compatibility_matrix.xsd || { echo "::error::stub source missing after creation: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -2265,8 +2264,7 @@ jobs:
           fi
           # Runs #78/#79/#80 fix: the new stub file and the pruned hidl
           # test dirs must still be in the expected state at build time.
-          test -f yuzora-stubs/compatibility_matrix.xsd \ 
-            || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
+          test -f yuzora-stubs/compatibility_matrix.xsd || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
