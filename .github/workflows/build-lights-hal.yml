@@ -3559,7 +3559,13 @@ jobs:
           # The common-ndk_shared defaults must forward V6-ndk into
           # shared_libs (runs #105/#106/#107 fix) or libgralloctypes'
           # export_shared_lib_headers check fails again.
-          grep -A5 'name: "android.hardware.graphics.common-ndk_shared"' yuzora-stubs/Android.bp | grep -Fq '"android.hardware.graphics.common-V6-ndk"' || { echo "::error::common-ndk_shared defaults missing V6-ndk shared_libs"; exit 1; }
+          # Run #110 fix: this check used grep -A5, but the quoted
+          # V6-ndk line sits 12 lines below the name: line (a 10-line
+          # comment sits between), so the -A5 window never saw it and
+          # the check false-negatived, killing run #110 in the prune
+          # step before the build ran. Scope the grep to the whole
+          # defaults block (name: line to its closing brace) instead.
+          sed -n '/name: "android.hardware.graphics.common-ndk_shared"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq '"android.hardware.graphics.common-V6-ndk"' || { echo "::error::common-ndk_shared defaults missing V6-ndk shared_libs"; exit 1; }
           echo "runs #105/#106/#107 stubs created: androidx.test.rules + testng + frameworks-base-testutils java_library stubs; libstagefright_headers + libstagefright_foundation_headers cc_library_headers stubs; pyfakefs + asuite_cc_client python_library stubs + watchdog python_library_host stub (+ empty.py); libssl + libtinyxml2 + libgtest_isolated + libprocinfo + libjsonpbverify + libjsonpbparse + libhidlbase cc_library stubs; libcrypto_static + libgoogle-benchmark cc_library_static stubs; android.hardware.graphics.common-V6-ndk + android.hardware.graphics.mapper@4.0 cc_library_shared stubs; libjsoncpp changed cc_library_shared -> cc_library; android.hardware.graphics.common-ndk_shared defaults gains shared_libs V6-ndk."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
@@ -3805,7 +3811,10 @@ jobs:
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
           # Runs #105/#106/#107 fix: the common-ndk_shared defaults must
           # forward V6-ndk at build time (same check as the prune step).
-          grep -A5 'name: "android.hardware.graphics.common-ndk_shared"' yuzora-stubs/Android.bp | grep -Fq '"android.hardware.graphics.common-V6-ndk"' || { echo "::error::pre-build guard: common-ndk_shared defaults missing V6-ndk shared_libs"; exit 1; }
+          # Run #110 fix: grep -A5 false-negatived here too (the V6-ndk
+          # line is 12 lines below the name: line) - use the whole-block
+          # sed range, as in the prune step.
+          sed -n '/name: "android.hardware.graphics.common-ndk_shared"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq '"android.hardware.graphics.common-V6-ndk"' || { echo "::error::pre-build guard: common-ndk_shared defaults missing V6-ndk shared_libs"; exit 1; }
           if [ -d system/core/fs_mgr/tests ]; then
             echo "::error::pre-build guard: system/core/fs_mgr/tests present at build time"
             exit 1
