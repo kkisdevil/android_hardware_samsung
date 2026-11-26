@@ -2164,7 +2164,7 @@ jobs:
               ],
           }
 
-          cc_library_static {
+          cc_library {
               name: "libpcre2",
               srcs: ["empty.c"],
               host_supported: true,
@@ -4369,6 +4369,141 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #131/#132/#133/#134 fix: the #128/#129/#130 fix HELD in
+          // all four (prune step passed + pre-build guard passed).
+          // All four fail at Soong ninja generation, 34-51s into the
+          // build step, on the SAME fix code (head d1733a2 - the
+          // #128/#129/#130 fix, workflow f608a53; #131 is the
+          // manifest push 94840c1, #132 the README push 038d421 -
+          // same content, parallel upload). Subset-reporting
+          // again: #134 reports 6 lines, #133 reports 4, #132
+          // reports 3, #131 reports 3 - the fix covers the UNION
+          // (7 distinct error lines, 6 distinct modules).
+          // Raw-log verbatim (live browser read of the job-logs.txt
+          // raw logs; genuine build-output lines only - the other
+          // "error:" matches in each log are the runner echoing the
+          // Build step script itself, the pre-build-guard echo
+          // commands that did NOT fire, NOT build errors). The
+          // FAILED line is out/soong/build.yuzora_lights.ninja (not
+          // build.ninja).
+          //   #134 (45895348416, 13m39s, manual ~02:32 IST,
+          //   d1733a2) - 6 lines: servicemanager_test
+          //   (frameworks/native/cmds/servicemanager/Android.bp:94)
+          //   + servicemanager_unittest (:105) need libvintf;
+          //   libutils_test (system/core/libutils/Android.bp:329)
+          //   needs libunwindstack_no_dex; host-apex-verifier
+          //   (system/apex/tools/Android.bp:122) needs
+          //   debugfs_static + fsck.erofs + the libpcre2 SHARED
+          //   variant (only static available).
+          //   #133 (45894592352, 14m42s, manual ~02:26 IST,
+          //   038d421) - 4 lines: libutils_test needs
+          //   libunwindstack_no_dex; liblogd
+          //   (system/logging/logd/Android.bp:57) needs
+          //   ILogcatManagerService_aidl; servicemanager_test +
+          //   servicemanager_unittest need libvintf.
+          //   #132 (45894278812, 14m59s, auto, README 038d421) -
+          //   3 lines: host-apex-verifier needs debugfs_static +
+          //   fsck.erofs + the libpcre2 SHARED variant.
+          //   #131 (45894154470, 14m40s, auto, manifest 94840c1) -
+          //   3 lines: libutils_test needs libunwindstack_no_dex;
+          //   servicemanager_test + servicemanager_unittest need
+          //   libvintf.
+          // PHANTOM CORRECTION: the first browser read of #134
+          // reported ILights.aidl / types.aidl /
+          // android.hardware.light@2.0 / vendor.qti.hardware.display
+          // lines - NONE occur in any of the four raw logs (a raw-log
+          // text search returns zero matches for ILights,
+          // types.aidl, vendor.qti.hardware.display and
+          // android.hardware.light@2.0; the light aidl_api has no
+          // types.aidl at lineage-22.2 and ILights.aidl has no
+          // imports). Same class as the #30/#33/#84/#96/#107
+          // misreads: UI-log reads invent error lines; the raw log
+          // is authoritative.
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all 6 defining projects UNSYNCED):
+          // - libvintf: plain cc_library in system/libvintf/
+          //   Android.bp (r32, host_supported) - system/libvintf
+          //   NOT synced. Used in shared_libs by
+          //   servicemanager_defaults, which both test modules
+          //   inherit (neither names it directly).
+          // - libunwindstack_no_dex: cc_library_static in
+          //   system/unwinding/libunwindstack/Android.bp (r32,
+          //   static lib without DEX support, no libdexfile dep) -
+          //   system/unwinding NOT synced. Used in
+          //   target.host.static_libs by libutils_test (on Android
+          //   it uses shared libunwindstack instead, already
+          //   stubbed #128).
+          // - ILogcatManagerService_aidl: aidl_library in
+          //   frameworks/base/core/java/Android.bp (r32, lines
+          //   256-259, srcs android/os/logcat/
+          //   ILogcatManagerService.aidl) - frameworks/base NOT
+          //   synced. Used in aidl.libs by liblogd (a
+          //   cc_library_static), NOT in shared/static_libs - so
+          //   the stub must be a real aidl_library (a cc_library
+          //   stub would fail Soong's aidl.libs type check), with
+          //   a minimal valid .aidl source (empty interface;
+          //   liblogd is never compiled for this HAL-only target,
+          //   so only the module name has to exist for the parse).
+          // - debugfs_static: cc_binary (static_executable,
+          //   host_supported) in external/e2fsprogs/debugfs/
+          //   Android.bp (r32) - external/e2fsprogs NOT synced.
+          //   Used in data_bins by the sh_test_host
+          //   host-apex-verifier (NOT the cc_binary_host
+          //   host_apex_verifier) and in required: by deapexer /
+          //   apex_elf_checker / apexd_host in the same file.
+          // - fsck.erofs: cc_binary (host_supported) in
+          //   external/erofs-utils/Android.bp (r32) -
+          //   external/erofs-utils NOT synced. Same use as
+          //   debugfs_static.
+          // - libpcre2: the #78 cc_library_static stub provides
+          //   only the static variant, but host-apex-verifier
+          //   lists it in data_libs, which needs the SHARED
+          //   variant (os:linux_glibc,arch:x86_64,link:shared).
+          //   Upstream libpcre2 is plain cc_library in
+          //   external/pcre/Android.bp (r32, host_supported) -
+          //   external/pcre NOT synced. The stub changes type
+          //   (same fix as libz #119, libcrypto/libselinux #122).
+          cc_library {
+              name: "libvintf",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libunwindstack_no_dex",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          aidl_library {
+              name: "ILogcatManagerService_aidl",
+              srcs: ["android/os/logcat/ILogcatManagerService.aidl"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_binary {
+              name: "debugfs_static",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_binary {
+              name: "fsck.erofs",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -4391,6 +4526,15 @@ jobs:
           printf '# Stub source - see the runs #99/#100/#101 comment above.\n' > yuzora-stubs/empty.py
           test -f yuzora-stubs/empty.py \
             || { echo "::error::stub source missing after creation: yuzora-stubs/empty.py"; exit 1; }
+          # Dummy source for the runs #131/#132/#133/#134 aidl_library stub
+          # above: an aidl_library needs at least one .aidl source, and the
+          # path must match the declared package. liblogd is never compiled
+          # for this HAL-only target, so the interface body is empty by
+          # design - only the module name has to exist for Soong's parse.
+          mkdir -p yuzora-stubs/android/os/logcat
+          printf '// Stub AIDL - see the runs #131/#132/#133/#134 comment above.\npackage android.os.logcat;\ninterface ILogcatManagerService {\n}\n' > yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl
+          test -f yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl \
+            || { echo "::error::stub source missing after creation: yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl"; exit 1; }
           # Runs #78/#79/#80 fix: minimal valid XSD skeleton for the
           # compatibility_matrix_schema filegroup above. The .xml matrix
           # modules are never built here, so this file is never read by
@@ -4532,6 +4676,10 @@ jobs:
           # shared-only / static-only stub.
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libcrypto"' || { echo "::error::libcrypto stub is not a plain cc_library"; exit 1; }
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libselinux"' || { echo "::error::libselinux stub is not a plain cc_library"; exit 1; }
+          # Runs #131/#132/#133/#134 fix: libpcre2 must be a plain cc_library
+          # at creation time (same check as the libz/libcrypto/libselinux
+          # checks above) - host-apex-verifier needs the shared variant.
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libpcre2"' || { echo "::error::libpcre2 stub is not a plain cc_library"; exit 1; }
           # The common-ndk_shared defaults must forward V6-ndk into
           # shared_libs (runs #105/#106/#107 fix) or libgralloctypes'
           # export_shared_lib_headers check fails again.
@@ -4585,6 +4733,14 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #128/#129/#130 stubs created: update_payload + care_map_proto_py + libavbtool python_library_host stubs (+ empty.py); libunwindstack + android.os.vibrator.flags-aconfig-cc cc_library stubs. No type changes this round."
+          # Runs #131/#132/#133/#134 fix: verify all 5 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128 loops above).
+          for stub in libvintf libunwindstack_no_dex ILogcatManagerService_aidl debugfs_static fsck.erofs; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #131/#132/#133/#134 stubs created: libvintf cc_library stub; libunwindstack_no_dex cc_library_static stub; ILogcatManagerService_aidl aidl_library stub (+ ILogcatManagerService.aidl); debugfs_static + fsck.erofs cc_binary stubs; libpcre2 changed cc_library_static -> cc_library."
+
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -4793,6 +4949,7 @@ jobs:
           test -f yuzora-stubs/empty-api.txt || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty-api.txt"; exit 1; }
           test -f yuzora-stubs/lib.rs || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/lib.rs"; exit 1; }
           test -f yuzora-stubs/empty.py || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.py"; exit 1; }
+          test -f yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl"; exit 1; }
           test -f yuzora-stubs/AndroidManifest.xml || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/AndroidManifest.xml"; exit 1; }
           test -f yuzora-stubs/AndroidManifest-lineage.xml || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/AndroidManifest-lineage.xml"; exit 1; }
           test -f frameworks/base/boot/boot-image-profile.txt || { echo "::error::pre-build guard: stub source missing at build time: frameworks/base/boot/boot-image-profile.txt"; exit 1; }
@@ -4854,6 +5011,11 @@ jobs:
           for stub in update_payload care_map_proto_py libavbtool libunwindstack android.os.vibrator.flags-aconfig-cc; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
+          # Runs #131/#132/#133/#134 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libvintf libunwindstack_no_dex ILogcatManagerService_aidl debugfs_static fsck.erofs; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
@@ -4864,6 +5026,9 @@ jobs:
           # cc_library stubs at build time (same check as the prune step).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libcrypto"' || { echo "::error::pre-build guard: libcrypto stub is not a plain cc_library"; exit 1; }
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libselinux"' || { echo "::error::pre-build guard: libselinux stub is not a plain cc_library"; exit 1; }
+          # Runs #131/#132/#133/#134 fix: libpcre2 must be a plain cc_library
+          # at build time (same check as the prune step above).
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libpcre2"' || { echo "::error::pre-build guard: libpcre2 stub is not a plain cc_library"; exit 1; }
           # Runs #105/#106/#107 fix: the common-ndk_shared defaults must
           # forward V6-ndk at build time (same check as the prune step).
           # Run #110 fix: grep -A5 false-negatived here too (the V6-ndk
