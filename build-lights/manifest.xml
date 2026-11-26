@@ -505,6 +505,40 @@ has to satisfy Soong's parse. NO new projects: project count stays 32. -->
        (libstatshidl shared_libs android.frameworks.stats@1.0 + -V2-ndk —
        shared_libs *-ndk/@1.0 references have never surfaced as errors).
        NO new projects: project count stays 32. -->
+<!--Runs #72(45714883089, 13m51s) / #73 (12m14s) / #74 (45715506626,
+12m40s) — all three FAILED at Soong bootstrap, 22-33s into the build
+step, with a NEW error class, one step EARLIER than the #68-#71
+undefined-module errors (soong_build dies in the PreArch mutator
+phase, before the deps mutator ever reports): `internal error: panic
+in bottom up mutator "licensesPropertyGatherer" for module
+"fuzzer_bindings_test"` + `Fuzzer doesn't exist : ot_daemon_service_fuzzer`
+(#74), `Fuzzer doesn't exist: update_engine_service_fuzzer` (#72),
+`Fuzzer doesn't exist: libcodec2-aidl-fuzzer` (#73) — a DIFFERENT
+first-missing fuzzer in each run. The #68/#69/#70/#71 fix HELD
+completely (prune + pre-build guard passed, zero "depends on
+undefined module" errors, zero "HardwareBuffer_aidl" /
+"android.frameworks.stats" mentions). Root cause: the PreArch
+BottomUp mutator addFuzzerConfigDeps
+(system/sepolicy/build/soong/validate_bindings.go) runs for the
+fuzzer_bindings_test module (defined in
+system/sepolicy/contexts/Android.bp, srcs plat_service_contexts)
+and panics unless EVERY fuzzer named in ServiceFuzzerBindings
+(system/sepolicy/build/soong/service_fuzzer_bindings.go, pinned to
+the AOSP r32 tag) exists as a Soong module; the map names ~44
+fuzzers, most in unsynced projects (external/openthread,
+system/update_engine, frameworks/av) or in dirs the closure prune
+deletes, so the reported name is whichever the parallel mutator
+traversal hits first. Fix: the workflow now OVERWRITES the synced
+service_fuzzer_bindings.go with an empty map (same names/types, so
+package selinux still compiles) — the mutator iterates zero entries
+and cannot panic. The fuzzer_bindings_test module still exists, so
+the selinux_policy_system phony's required entry still resolves.
+NOT stubbing the ~44 fuzzers one by one (the missing set is large,
+the name varies per run, and a stub would collide if a floating pin
+later added the real module); NOT pruning contexts/Android.bp (it
+defines many other needed modules); NOT setting
+ALLOW_MISSING_DEPENDENCIES (it would mask real missing deps). NO new
+projects: project count stays 32. -->
 <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
