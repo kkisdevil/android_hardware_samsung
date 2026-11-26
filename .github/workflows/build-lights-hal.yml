@@ -85,11 +85,11 @@ jobs:
           key: lights-repo-${{ hashFiles('build-lights/manifest.xml') }}
           restore-keys: |
             lights-repo-
-        save-always: true
+          save-always: true
       - name: Init + sync minimal manifest
         run: |
           set -euo pipefail
-            mkdir -p lights-build && cd lights-build
+          mkdir -p lights-build && cd lights-build
           git config --global user.email "yuzora-ci@aoisora.codes"
           git config --global user.name "YuZora CI"
           git config --global color.ui false
