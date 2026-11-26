@@ -141,6 +141,34 @@ still 32 projects.
   to different cache/prune state, not different code. The fix covers the union
   regardless.
 
+  Runs #99 (45809283943, 14m10s, manifest push c3d6286), #100
+  (45809420121, 13m59s, README push 4bfc9b1) and #101 (45809493983,
+  13m50s, manual dispatch ~16:49 IST, same commit 4bfc9b1) ALL FAILED at
+  Soong ninja-file generation, ~36-38s into the build step, on the #96
+  fix code (workflow b63f50a). The #96 fix HELD in all three (prune step
+  + pre-build guard passed). The three runs report THREE different error
+  sets on one commit - the subset-reporting lesson again: #99 has 1 error
+  line, #100 has 6, #101 has 29. The fix covers the UNION: 5 new stubs in
+  yuzora-stubs/Android.bp (1 java_library: aconfig-annotations-lib -
+  java_library in frameworks/libs/modules-utils/java/Android.bp,
+  host_supported; Soong's java_aconfig_library adds the dep implicitly,
+  so the synced aconfig Android.bp never names it; 1 cc_library_shared:
+  libstatssocket - the #96 round documented it in a comment but never
+  created the stub block; 3 python: libprotobuf-python as python_library
+  + typing_extensions as python_library, both host_supported, and
+  fsverity_digests_proto_python as python_library_host - all with srcs
+  empty.py, a comment-only .py file, because Soong requires Srcs
+  non-empty for python_library) + the two libprotobuf-cpp-lite/-full
+  stubs change type from cc_library_static to plain cc_library (upstream
+  type at r32: external/protobuf/Android.bp - run #101 reports "missing
+  variant ... link:shared (only static available)", a shared variant a
+  static stub can never provide) + deletion of kernel_config_p_4.4 from
+  the kernel_configs: lists (the #96 comment wrongly listed it as
+  existing - kernel/configs/p/android-4.4 404s at r32, verified live;
+  after this deletion every remaining entry in both matrices exists at
+  r32). No new projects (still 32). The cache steps are untouched
+  (save-always flip still needs the user's word).
+
   -->
 
 <manifest>
