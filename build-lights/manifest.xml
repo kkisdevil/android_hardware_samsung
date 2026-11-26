@@ -375,6 +375,101 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #119 (45857356942, 15m45s, auto, manifest 02209e6),
+  #120 (45857551439, 16m25s, auto, README 5a83c08) and #121
+  (45857942449, 12m43s, manual dispatch ~21:51 IST 2026-11-26,
+  head 5a83c08 - the runs #116/#117/#118 fix, workflow fa506ff):
+  ALL FAILED at Soong ninja-file generation, ~35-53s into the
+  "Build lights HAL" step. The #116/#117/#118 fix HELD in all
+  three (prune step passed + pre-build guard passed). Subset
+  reporting again: #119 reports 10 lines, #120 reports 15,
+  #121 reports 7 - all different subsets of one commit. The fix
+  covers the UNION (12 distinct modules, 15 error lines -
+  #120's 15 lines are the full union; #119's 10 and #121's 7
+  are subsets of them). Raw-log verbatim (job logs, genuine
+  build-output lines only): libsnapshot_cow (system/core/
+  fs_mgr/libsnapshot/Android.bp:201:1, via
+  libsnapshot_cow_defaults) depends on undefined modules
+  libupdate_engine_headers + libbrotli + liblz4 + libzstd,
+  and libz "missing variant"; liblog-host-test (system/
+  logging/liblog/tests/Android.bp:139:1) depends on undefined
+  module libgtest_isolated_main; libinput_from_rust_to_cpp
+  (frameworks/native/libs/input/Android.bp:176:1) depends on
+  undefined module cxx-bridge-header; libexpresslog (system/
+  core/libstats/expresslog/Android.bp:29:1) depends on
+  undefined modules libtextclassifier_hash_headers +
+  libtextclassifier_hash_static; run_dex2oat_test (frameworks/
+  native/cmds/installd/Android.bp:126:1) depends on undefined
+  module server_configurable_flags; libaconfig_flags_rust
+  (build/make/tools/aconfig/aconfig_flags/Android.bp:36:1) +
+  libaconfig_test_rust_library (build/make/tools/aconfig/
+  aconfig/Android.bp:241:1) depend on undefined module
+  libflags_rust; libaconfig_storage_read_api_cc (aconfig/
+  aconfig_storage_read_api/Android.bp:80:1) +
+  libaconfig_storage_file_cc (aconfig/aconfig_storage_file/
+  Android.bp:121:1) depend on undefined module
+  cxx-bridge-header; libfs_avb (system/core/fs_mgr/libfs_avb/
+  Android.bp:27:1) depends on undefined module libavb.
+  CORRECTION: an early browser read of #121 reported two
+  vendor/qcom/opensource/power/config/Android.bp
+  "power.qcom / power.qcom.rc is not a module name" lines -
+  PHANTOM. A second exhaustive read of the same job log found
+  no such lines in any of the three runs, and the manifest
+  syncs no vendor/qcom project, so that file cannot exist in
+  the synced tree (same class as the #30/#33/#84 phantom
+  reads). Root causes, verified live at LineageOS lineage-22.2
+  / AOSP android-15.0.0_r32: all 12 defining projects are
+  UNSYNCED. libupdate_engine_headers is cc_library_headers in
+  system/update_engine (r32 lines 1313-1314), used in
+  header_libs by libsnapshot_cow_defaults; libbrotli is
+  cc_library_static in external/brotli (r32 lines 49-50),
+  liblz4 is plain cc_library in external/lz4/lib (r32 lines
+  19-20), libzstd is plain cc_library in external/zstd (r32
+  lines 44-45), all used in static_libs by the same defaults
+  block; libz is plain cc_library in external/zlib (r32 lines
+  180-181), used in static_libs by the same block - the #96
+  cc_library_shared stub provides no static variant, so the
+  stub changes type (same fix as libjsoncpp #105 and the
+  protobuf stubs #99); libgtest_isolated_main is
+  cc_library_static in system/testing/gtest_extras/
+  gtest_isolated (r32 lines 59-60) - it is NOT named in the
+  consumer file, Soong's cc/test.go appends it to any test
+  with isolated: true; cxx-bridge-header is a genrule in
+  external/rust/cxx (r32 lines 93-98, tools cxxbridge, out
+  rust/cxx.h), used in generated_headers by the three
+  consumers - stubbed as a genrule with the same out and a
+  touch cmd, tools omitted (cxxbridge unsynced), never runs;
+  libtextclassifier_hash_headers is cc_library_headers and
+  libtextclassifier_hash_static is cc_library_static in
+  external/libtextclassifier/native (r32 lines 24-25 and
+  62-63), used in header_libs / static_libs by libexpresslog
+  (the same-file sibling libtextclassifier_hash is NOT
+  stubbed - no synced file references it); server_configurable_
+  flags is plain cc_library in system/server_configurable_flags/
+  libflags (r32 lines 5-6), used in shared_libs by
+  run_dex2oat_test; libflags_rust is rust_library in the same
+  file (r32 lines 75-77, crate_name flags_rust) - it is NOT
+  named in either consumer file, Soong's rust_aconfig_library
+  SourceProviderDeps appends it to every rust_aconfig_library;
+  libavb is cc_library_static in external/avb (r32 lines
+  195-196), used in static_libs by libfs_avb. The fix is
+  workflow-only: 11 new stubs in yuzora-stubs/Android.bp
+  (2 cc_library_headers, 4 cc_library_static, 3 plain
+  cc_library, 1 genrule, 1 rust_library) + the libz stub
+  changed cc_library_shared -> plain cc_library. No new
+  projects (still 32). The cache steps are untouched (see the
+  save-always note below).
+
+  CACHE NOTE (run #121): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took 9m02s, and the "Save repo cache" step was SKIPPED
+  (0s, job failed), so no cache was saved for the next run -
+  same as run #118. The next run will also restore-miss and
+  sync ~9-12 min. The upstream-recommended fix is separate
+  restore + save steps (the save step with `if: always()`),
+  which touches the cache steps and needs his word - not
+  changed in this fix round.
+
   -->
 
 <manifest>
