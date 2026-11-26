@@ -1416,18 +1416,30 @@ jobs:
           # compatibility_matrices/Android.bp, kept for the vintf plugin)
           # list kernel_configs: [...] and the vintf plugin adds a dep on
           # each one (it requires each dep to be a real kernel_config
-          # module). kernel_config_p_4.4 / r_4.14 / r_4.19 / r_5.4 / s_4.19 /
-          # s_5.4 / s_5.10 / t_* / u_* / v_* exist (the kernel-config-soong-
-          # rules plugin generates them from the synced kernel/configs
-          # tree), but kernel_config_q_4.9 and kernel_config_s_4.14 do
-          # not (those old kernel versions' config files are gone from
-          # the r32 kernel/configs tree), so Soong reports them
-          # undefined (run #96). Deleting the two list entries removes
-          # the deps; the matrix XMLs keep their <kernel> entries and
-          # the matrices are never built for this HAL-only target.
+          # module). kernel_config_r_4.14 / r_4.19 / r_5.4 / s_4.19 /
+          # s_5.4 / s_5.10 exist (the kernel-config-soong-rules plugin
+          # generates them from the synced kernel/configs tree), but
+          # kernel_config_q_4.9 and kernel_config_s_4.14 do not (those
+          # old kernel versions' config files are gone from the r32
+          # kernel/configs tree), so Soong reports them undefined
+          # (run #96). Deleting the two list entries removes the deps;
+          # the matrix XMLs keep their <kernel> entries and the
+          # matrices are never built for this HAL-only target.
           # (A kernel_config stub would need the plugin's required
           # properties; deleting the list entries is the smaller fix.)
-          sed -i '/"kernel_config_q_4\.9",/d; /"kernel_config_s_4\.14",/d' hardware/interfaces/compatibility_matrices/Android.bp
+          # Runs #99/#100/#101 fix - the #96 comment above wrongly
+          # listed kernel_config_p_4.4 as existing: it does NOT
+          # (kernel/configs/p/android-4.4 404s at r32, verified live;
+          # runs #99/#100/#101 all report it undefined), so it is
+          # deleted here too. After this deletion every remaining
+          # entry in both matrices exists at r32 (.5: r_4.14, r_4.19,
+          # r_5.4; .6: s_4.19, s_5.4, s_5.10), so no further
+          # deletions are needed for these two matrices.
+          sed -i '/"kernel_config_p_4\.4",/d; /"kernel_config_q_4\.9",/d; /"kernel_config_s_4\.14",/d' hardware/interfaces/compatibility_matrices/Android.bp
+          if grep -q 'kernel_config_p_4\.4' hardware/interfaces/compatibility_matrices/Android.bp; then
+            echo "::error::prune failed — kernel_config_p_4.4 still present in hardware/interfaces/compatibility_matrices/Android.bp"
+            exit 1
+          fi
           if grep -q 'kernel_config_q_4\.9' hardware/interfaces/compatibility_matrices/Android.bp; then
             echo "::error::prune failed — kernel_config_q_4.9 still present in hardware/interfaces/compatibility_matrices/Android.bp"
             exit 1
@@ -1436,7 +1448,7 @@ jobs:
             echo "::error::prune failed — kernel_config_s_4.14 still present in hardware/interfaces/compatibility_matrices/Android.bp"
             exit 1
           fi
-          echo "runs #96/#97/#98 dropped: kernel_config_q_4.9 + kernel_config_s_4.14 from hardware/interfaces/compatibility_matrices/Android.bp."
+          echo "runs #96/#97/#98 dropped: kernel_config_q_4.9 + kernel_config_s_4.14 from hardware/interfaces/compatibility_matrices/Android.bp; runs #99/#100/#101 dropped: kernel_config_p_4.4."
           # Runs #75/#76/#77 fix — empty-jar SDK shims for the AppInRebootlessApex test app (see
           # the comment block at the top of this step). prebuilts/sdk is NOT synced, so sdk_version
           # "29" + the core-lambda-stubs.jar source fail Soong's existence checks at parse time.
@@ -2631,7 +2643,11 @@ jobs:
           // defined nowhere in the synced tree: system/core/libstats has
           // only socket_lazy at r32/lineage-22.2). Empty cc_library_shared
           // stubs with empty.c, host_supported + windows (same form as
-          // the #84 libsqlite stub).
+          // the #84 libsqlite stub). Runs #99/#100/#101 fix: the #96
+          // round wrote this comment but never created the
+          // libstatssocket stub block - run #101 reports it undefined
+          // (system/core/libstats/expresslog/Android.bp:76). Stub added
+          // below.
           //
           // libprotobuf-cpp-lite / libprotobuf-cpp-full - the C++
           // protobuf runtimes (external/protobuf, NOT synced - verified
@@ -2643,8 +2659,19 @@ jobs:
           // ota_metadata_proto_cc need -lite; cc_analyzer_proto,
           // lib_apex_manifest_proto, lib_apex_session_state_proto,
           // libprocessgroup_proto need -full), all via static_libs:.
-          // Empty cc_library_static stubs with empty.c, host_supported
-          // + windows (same form as the #78 libwinpthread stub).
+          // Runs #99/#100/#101 fix - the #96 round stubbed these as
+          // cc_library_static, but upstream both are plain cc_library
+          // (verified live at r32: external/protobuf/Android.bp,
+          // host_supported, min_sdk_version "29"), which builds BOTH
+          // the static and the shared variant. Run #101 reports
+          // "missing variant os:linux_glibc,arch:x86_64,link:shared
+          // (only static available)" for both - a consumer needs the
+          // shared variant, which a cc_library_static stub can never
+          // provide. Changed to plain cc_library stubs with empty.c,
+          // host_supported + windows. (Upstream disables the static
+          // variant of -full on device, but a cc_library stub still
+          // satisfies every name reference; consumers link -full via
+          // shared_libs upstream.)
           //
           // libjemalloc5_je_prefixed - cc_library_static in
           // external/jemalloc (unsynced), used in static_libs: by the
@@ -2770,6 +2797,29 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // aconfig-annotations-lib - java_library in
+          // frameworks/libs/modules-utils/java/Android.bp (unsynced;
+          // verified live at r32: sdk_version "core_current",
+          // host_supported, srcs com/android/aconfig/annotations/*.java).
+          // NOT in the synced tree: build/make/tools/aconfig/aconfig/
+          // Android.bp never names it - Soong's java_aconfig_library
+          // adds the dep implicitly. Referencers (run #100):
+          // aconfig_host_test_java_library,
+          // aconfig_test_java_library_exported, aconfig_flags_java,
+          // aconfig_test_java_library,
+          // aconfig_test_java_library_forcereadonly. Empty java_library
+          // stub (same form as the other java_library stubs above).
+          java_library {
+              name: "aconfig-annotations-lib",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           android_app {
               name: "framework-res",
               srcs: ["Empty.java"],
@@ -2846,7 +2896,16 @@ jobs:
                   "//visibility:public",
               ],
           }
-          cc_library_static {
+          cc_library_shared {
+              name: "libstatssocket",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
               name: "libprotobuf-cpp-lite",
               srcs: ["empty.c"],
               host_supported: true,
@@ -2855,7 +2914,7 @@ jobs:
                   "//visibility:public",
               ],
           }
-          cc_library_static {
+          cc_library {
               name: "libprotobuf-cpp-full",
               srcs: ["empty.c"],
               host_supported: true,
@@ -2905,6 +2964,52 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // libprotobuf-python / fsverity_digests_proto_python /
+          // typing_extensions - python libraries (external/protobuf,
+          // system/security/fsverity, external/python/
+          // typing_extensions - all NOT synced, verified live at r32).
+          // libprotobuf-python is python_library, host_supported
+          // (external/protobuf/Android.bp); referencers (run #101, 14
+          // lines): soong-metrics-proto-py, apex_build_info_proto,
+          // provenance_metadata_proto, tool_event_proto, config_proto,
+          // linker_config_proto, edit_event_proto, snapshot_proto_python,
+          // ota_metadata_proto, teams-proto-py, metadata_file_proto_py,
+          // apex_manifest_proto, libaconfig_python_proto,
+          // py_proto_pkg_path_test. fsverity_digests_proto_python is
+          // python_library_host (system/security/fsverity/Android.bp:
+          // srcs fsverity_digests.proto + proto block); referencer
+          // (run #101): releasetools_fsverity_metadata_generator.
+          // typing_extensions is python_library, host_supported
+          // (external/python/typing_extensions/Android.bp); referencer
+          // (run #101): pdl_python_generator_test. Empty python stubs
+          // with srcs empty.py (created below - Soong requires Srcs
+          // non-empty for python_library; a comment-only .py file is
+          // valid), host_supported where upstream has it, visibility
+          // public. No proto: block needed - the stubs only have to
+          // resolve the libs: edge; they are never built or imported.
+          python_library {
+              name: "libprotobuf-python",
+              srcs: ["empty.py"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          python_library_host {
+              name: "fsverity_digests_proto_python",
+              srcs: ["empty.py"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          python_library {
+              name: "typing_extensions",
+              srcs: ["empty.py"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -2921,6 +3026,12 @@ jobs:
           printf '// Stub source — see the runs #62/#63/#64 comment above.\npackage yuzora.stubs;\npublic class Empty {\n}\n' > yuzora-stubs/Empty.java
           test -f yuzora-stubs/Empty.java \
             || { echo "::error::stub source missing after creation: yuzora-stubs/Empty.java"; exit 1; }
+          # Dummy source for the runs #99/#100/#101 python stubs
+          # above: Soong requires Srcs non-empty for python_library /
+          # python_library_host - a comment-only .py file is valid.
+          printf '# Stub source - see the runs #99/#100/#101 comment above.\n' > yuzora-stubs/empty.py
+          test -f yuzora-stubs/empty.py \
+            || { echo "::error::stub source missing after creation: yuzora-stubs/empty.py"; exit 1; }
           # Runs #78/#79/#80 fix: minimal valid XSD skeleton for the
           # compatibility_matrix_schema filegroup above. The .xml matrix
           # modules are never built here, so this file is never read by
@@ -3022,7 +3133,14 @@ jobs:
           for stub in android_stubs_current android_test_stubs_current android_system_stubs_current sysprop-library-stub-platform ext framework androidx.test.runner androidx.test.core framework-res org.lineageos.platform-res libz libgrpc++ libusb libusb_platform libjsoncpp libcrypto libprotobuf-cpp-lite libprotobuf-cpp-full libjemalloc5_je_prefixed libhardware_headers gwp_asan_headers dex2oatd libcxx; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
-          echo "runs #96/#97/#98 stubs created: android_stubs_current + android_test_stubs_current + android_system_stubs_current + sysprop-library-stub-platform + ext + framework + androidx.test.runner + androidx.test.core java_library stubs; framework-res + org.lineageos.platform-res android_app stubs (+ AndroidManifest.xml + AndroidManifest-lineage.xml); libz + libgrpc++ + libusb + libusb_platform + libjsoncpp + libcrypto cc_library_shared stubs; libprotobuf-cpp-lite + libprotobuf-cpp-full + libjemalloc5_je_prefixed cc_library_static stubs; libhardware_headers + gwp_asan_headers cc_library_headers stubs; dex2oatd cc_binary stub; libcxx rust_library stub (+ lib.rs); boot-image-profile.txt."
+          echo "runs #96/#97/#98 stubs created: android_stubs_current + android_test_stubs_current + android_system_stubs_current + sysprop-library-stub-platform + ext + framework + androidx.test.runner + androidx.test.core java_library stubs; framework-res + org.lineageos.platform-res android_app stubs (+ AndroidManifest.xml + AndroidManifest-lineage.xml); libz + libgrpc++ + libusb + libusb_platform + libjsoncpp + libcrypto cc_library_shared stubs; libprotobuf-cpp-lite + libprotobuf-cpp-full cc_library stubs (runs #99/#100/#101 fix: was cc_library_static) + libjemalloc5_je_prefixed cc_library_static stub; libhardware_headers + gwp_asan_headers cc_library_headers stubs; dex2oatd cc_binary stub; libcxx rust_library stub (+ lib.rs); boot-image-profile.txt."
+          # Runs #99/#100/#101 fix: verify all 5 new stubs are present in
+          # yuzora-stubs/Android.bp (same `name: "..."` grep form as the
+          # #96 loop above).
+          for stub in aconfig-annotations-lib libstatssocket libprotobuf-python fsverity_digests_proto_python typing_extensions; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #99/#100/#101 stubs created: aconfig-annotations-lib java_library stub; libstatssocket cc_library_shared stub; libprotobuf-python python_library stub + fsverity_digests_proto_python python_library_host stub + typing_extensions python_library stub (+ empty.py); kernel_config_p_4.4 deleted."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -3204,7 +3322,12 @@ jobs:
             exit 1
           fi
           # Runs #96/#97/#98 fix: the two dropped kernel_config entries
-          # must still be gone at build time.
+          # must still be gone at build time. Runs #99/#100/#101 fix:
+          # kernel_config_p_4.4 must be gone too.
+          if grep -q 'kernel_config_p_4\.4' hardware/interfaces/compatibility_matrices/Android.bp; then
+            echo "::error::pre-build guard: kernel_config_p_4.4 present at build time"
+            exit 1
+          fi
           if grep -q 'kernel_config_q_4\.9' hardware/interfaces/compatibility_matrices/Android.bp; then
             echo "::error::pre-build guard: kernel_config_q_4.9 present at build time"
             exit 1
@@ -3225,6 +3348,7 @@ jobs:
           # Run #84 fix: the new stubs must be present and the 5 pruned test dirs absent at build time.
           test -f yuzora-stubs/empty-api.txt || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty-api.txt"; exit 1; }
           test -f yuzora-stubs/lib.rs || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/lib.rs"; exit 1; }
+          test -f yuzora-stubs/empty.py || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.py"; exit 1; }
           test -f yuzora-stubs/AndroidManifest.xml || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/AndroidManifest.xml"; exit 1; }
           test -f yuzora-stubs/AndroidManifest-lineage.xml || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/AndroidManifest-lineage.xml"; exit 1; }
           test -f frameworks/base/boot/boot-image-profile.txt || { echo "::error::pre-build guard: stub source missing at build time: frameworks/base/boot/boot-image-profile.txt"; exit 1; }
@@ -3239,6 +3363,11 @@ jobs:
           # present at build time (same `name: "..."` grep form as the
           # prune-step check - see the comment there).
           for stub in android_stubs_current android_test_stubs_current android_system_stubs_current sysprop-library-stub-platform ext framework androidx.test.runner androidx.test.core framework-res org.lineageos.platform-res libz libgrpc++ libusb libusb_platform libjsoncpp libcrypto libprotobuf-cpp-lite libprotobuf-cpp-full libjemalloc5_je_prefixed libhardware_headers gwp_asan_headers dex2oatd libcxx; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #99/#100/#101 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in aconfig-annotations-lib libstatssocket libprotobuf-python fsverity_digests_proto_python typing_extensions; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           if [ -d system/core/fs_mgr/tests ]; then
