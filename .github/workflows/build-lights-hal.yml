@@ -2574,7 +2574,7 @@ jobs:
           for stub in guava jcommander truth truth-liteproto-extension truth-proto-extension android_module_lib_stubs_current core-lambda-stubs linkerconfig; do
             grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
-          echo "runs #87/#88/#89 stubs created: guava + jcommander + truth (+ -liteproto-extension + -proto-extension) + android_module_lib_stubs_current + core-lambda-stubs java_library stubs, linkerconfig cc_binary stub." conscrypt/i18n core-library + kotlin + metalava + junit java_library stubs, 3 java_api_contribution stubs, libsqlite + libchrome-gestures_headers (+ empty-api.txt)."
+          echo "runs #87/#88/#89 stubs created: guava + jcommander + truth (+ -liteproto-extension + -proto-extension) + android_module_lib_stubs_current + core-lambda-stubs java_library stubs, linkerconfig cc_binary stub."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
