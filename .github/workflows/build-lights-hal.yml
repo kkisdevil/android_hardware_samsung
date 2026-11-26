@@ -57,6 +57,35 @@ jobs:
           export PATH="$HOME/.bin:$PATH"
           repo --version
 
+      # The fork is checked out ONLY so the cache key can hash the
+      # manifest. No build input comes from this checkout; repo init
+      # below fetches the manifest itself.
+      - name: Check out fork (for cache key)
+        uses: actions/checkout@v4
+        with:
+          ref: lineage-22.2
+          fetch-depth: 1
+
+      # Cache ONLY lights-build/.repo (the git objects), never the
+      # worktree: the prune step deletes dirs and overwrites files in
+      # the worktree, and a cached worktree would restore pruned state.
+      # repo sync --force-sync rebuilds the worktree from these objects
+      # and reconciles any manifest change, so the key only needs to
+      # change when the manifest does. Key is manifest-only on purpose:
+      # the workflow file changes on nearly every fix commit, and
+      # hashing it would force a full ~5 GB re-upload after each fix.
+      # Restore-key fallback still covers a manifest change (sync
+      # fetches the delta). Save runs in the post step even when the
+      # build step fails, so the first run on this code saves the cache
+      # and the saving shows on the NEXT run.
+      - name: Restore repo cache
+        uses: actions/cache@v4
+        with:
+          path: lights-build/.repo
+          key: lights-repo-${{ hashFiles('build-lights/manifest.xml') }}
+          restore-keys: |
+            lights-repo-
+
       - name: Init + sync minimal manifest
         run: |
           set -euo pipefail
