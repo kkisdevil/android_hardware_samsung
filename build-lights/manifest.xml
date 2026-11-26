@@ -647,6 +647,56 @@ still 32 projects.
   `if: always()`), which touches the cache steps and needs his
   word - not changed in this fix round.
 
+  Runs #131 (45894154470, auto, manifest 94840c1),
+  #132 (45894278812, auto, README 038d421), #133
+  (45894592352, manual dispatch ~02:26 IST 2026-11-27,
+  head 038d421) and #134 (45895348416, 13m39s, manual
+  dispatch ~02:32 IST 2026-11-27, head d1733a2 - the runs
+  #128/#129/#130 fix, workflow f608a53): ALL FAILED at
+  Soong ninja-file generation, 34-51s into the "Build lights
+  HAL" step. The #128/#129/#130 fix HELD in all four (prune
+  step passed + pre-build guard passed). Subset reporting
+  again: #134 reports 6 lines, #133 reports 4, #132 reports
+  3, #131 reports 3 - the fix covers the UNION (7 distinct
+  lines, 6 distinct modules). Raw-log verbatim (live browser
+  read of the job-logs.txt raw logs, genuine build-output
+  lines only): servicemanager_test +
+  servicemanager_unittest need libvintf; libutils_test needs
+  libunwindstack_no_dex; liblogd needs
+  ILogcatManagerService_aidl; host-apex-verifier needs
+  debugfs_static + fsck.erofs + the libpcre2 SHARED variant
+  (only static available). PHANTOM CORRECTION: the first
+  browser read of #134 invented ILights.aidl / types.aidl /
+  android.hardware.light@2.0 / vendor.qti lines - none occur
+  in any of the four raw logs. Root causes, verified live at
+  LineageOS lineage-22.2 / AOSP android-15.0.0_r32 (all 6
+  defining projects UNSYNCED): libvintf is plain cc_library
+  in system/libvintf - system/libvintf NOT synced;
+  libunwindstack_no_dex is cc_library_static in
+  system/unwinding/libunwindstack - system/unwinding NOT
+  synced; ILogcatManagerService_aidl is aidl_library in
+  frameworks/base/core/java - frameworks/base NOT synced;
+  debugfs_static is cc_binary in external/e2fsprogs/debugfs -
+  external/e2fsprogs NOT synced; fsck.erofs is cc_binary in
+  external/erofs-utils - external/erofs-utils NOT synced;
+  libpcre2 is plain cc_library in external/pcre -
+  external/pcre NOT synced (the #78 cc_library_static stub
+  provides only the static variant). The fix is
+  workflow-only: 5 new stubs in yuzora-stubs/Android.bp (1
+  plain cc_library, 1 cc_library_static, 1 aidl_library, 2
+  cc_binary) + the libpcre2 stub changes cc_library_static
+  to plain cc_library. No new projects (still 32). The cache
+  steps are untouched (see the save-always note below).
+
+  CACHE NOTE (run #134): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took 10m34s, and no "Save repo cache" step ran - same as
+  runs #118/#121/#124/#127/#130. The next run will also
+  restore-miss and sync ~9-12 min. The upstream-recommended
+  fix is separate restore + save steps (the save step with
+  `if: always()`), which touches the cache steps and needs his
+  word - not changed in this fix round.
+
   -->
 
 <manifest>
