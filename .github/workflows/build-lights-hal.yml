@@ -4270,6 +4270,105 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #128/#129/#130 fix: the #125/#126/#127 fix HELD in
+          // all three (prune step passed + pre-build guard passed).
+          // All three fail at Soong ninja generation, ~36-52s into
+          // the build step, on the SAME fix code (head 5ae5a26 - the
+          // #125/#126/#127 fix, workflow bbb3ce6). Subset-reporting
+          // again: #130 reports 7 lines, #128/#129 add 2 lines
+          // naming one more module - the fix covers the UNION
+          // (8 distinct error lines, 5 distinct modules).
+          // Raw-log verbatim (live browser read of the job log;
+          // genuine build-output lines only - the other "error:"
+          // matches in each log are the runner echoing the Build
+          // step script itself, the pre-build-guard echo commands
+          // that did NOT fire, NOT build errors). The FAILED line is
+          // out/soong/build.yuzora_lights.ninja (not build.ninja).
+          // No genuine "missing variant" line in any of the three
+          // runs.
+          //   #130 (45883094436, 14m3s, manual ~00:51 IST,
+          //   5ae5a26) - 7 lines: merge_ota
+          //   (build/make/tools/releasetools/Android.bp:339) needs
+          //   update_payload + care_map_proto_py;
+          //   releasetools_add_img_to_target_files (:189) +
+          //   add_img_to_target_files (:319) need libavbtool;
+          //   ota_from_target_files (:491) +
+          //   releasetools_ota_from_target_files (:263) need
+          //   care_map_proto_py; libutilscallstack
+          //   (system/core/libutils/Android.bp:220) needs
+          //   libunwindstack.
+          //   #128 (45881593027, auto, manifest ad496c8) + #129
+          //   (45882824033, auto, README 5ae5a26) - 2 lines, both
+          //   naming android.os.vibrator.flags-aconfig-cc (one new
+          //   module).
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all 5 defining projects UNSYNCED):
+          // - update_payload: python_library_host in
+          //   system/update_engine/scripts/Android.bp -
+          //   system/update_engine NOT synced. Same project as
+          //   libupdate_engine_headers (#119).
+          // - care_map_proto_py: python_library_host in
+          //   bootable/recovery/update_verifier/Android.bp -
+          //   bootable/recovery NOT synced.
+          // - libavbtool: python_library_host in external/avb/
+          //   Android.bp - external/avb NOT synced. Same file as
+          //   libavb (#119, cc_library_static),
+          //   libavb_host_sysdeps (#122, cc_library_host_static)
+          //   and avb_headers (#125, cc_library_headers) - four
+          //   different modules, all stubbed now.
+          // - libunwindstack: plain cc_library in
+          //   system/unwinding/libunwindstack/Android.bp -
+          //   system/unwinding NOT synced. Stub is plain cc_library
+          //   (upstream type; covers both shared_libs and
+          //   static_libs use - same precedent as libz #119,
+          //   libjsoncpp #105, libcrypto #122).
+          // - android.os.vibrator.flags-aconfig-cc: cc_aconfig_library
+          //   in frameworks/base/AconfigFlags.bp - frameworks/base
+          //   NOT synced; explicitly declared (like
+          //   android.os.flags-aconfig-cc-host #122), and a
+          //   cc_aconfig_library generates a cc_library of the same
+          //   name, so a plain cc_library stub satisfies it. Siblings
+          //   -cc / -cc-test NOT stubbed - no synced file references
+          //   them.
+          python_library_host {
+              name: "update_payload",
+              srcs: ["empty.py"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          python_library_host {
+              name: "care_map_proto_py",
+              srcs: ["empty.py"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          python_library_host {
+              name: "libavbtool",
+              srcs: ["empty.py"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libunwindstack",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.os.vibrator.flags-aconfig-cc",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -4479,6 +4578,13 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #125/#126/#127 stubs created: libcap + libzopfli + liblzma cc_library stubs; avb_headers + bootimg_headers cc_library_headers stubs; libadb_host cc_library_host_static stub; platform_tools_version genrule stub; libaconfigd_protos_rust rust_library stub (+ lib.rs). No type changes this round."
+          # Runs #128/#129/#130 fix: verify all 5 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125 loops above).
+          for stub in update_payload care_map_proto_py libavbtool libunwindstack android.os.vibrator.flags-aconfig-cc; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #128/#129/#130 stubs created: update_payload + care_map_proto_py + libavbtool python_library_host stubs (+ empty.py); libunwindstack + android.os.vibrator.flags-aconfig-cc cc_library stubs. No type changes this round."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -4741,6 +4847,11 @@ jobs:
           # Runs #125/#126/#127 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in libcap libzopfli avb_headers bootimg_headers libadb_host liblzma platform_tools_version libaconfigd_protos_rust; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #128/#129/#130 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in update_payload care_map_proto_py libavbtool libunwindstack android.os.vibrator.flags-aconfig-cc; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
