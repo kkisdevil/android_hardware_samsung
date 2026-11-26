@@ -316,6 +316,65 @@ still 32 projects.
   #111/#112/#113 fix was rebased onto 65709cd (one-line rebase, no
   other change to the fix).
 
+  Run #116 (45850213901, 14m10s, auto, manifest e0636fa),
+  Run #117 (45850361596, 13m04s, auto, README 81f5407) and
+  Run #118 (45850678030, 15m10s, manual dispatch ~21:05 IST
+  2026-11-26, head 81f5407 - the runs #111/#112/#113 fix, workflow
+  8aeb025): ALL FAILED at Soong ninja-file generation, ~33-37s
+  into the "Build lights HAL" step. The #111/#112/#113 fix HELD in
+  all three (prune step passed in 1-2s + pre-build guard passed).
+  Subset reporting again: #116 reports 1 line, #117 reports 2,
+  #118 reports 3 - all different subsets of one commit. The fix
+  covers the UNION (4 lines, 6 instances). Raw-log verbatim
+  (job-logs.txt, genuine build-output lines only): external/rust/
+  android-crates-io/crates/gbm/Android.bp:16:1 "libgbm_rust"
+  depends on undefined module "libgbm_sys" (all three runs);
+  external/rust/android-crates-io/crates/rusqlite/Android.bp:16:1
+  "librusqlite" depends on undefined module "liblibsqlite3_sys"
+  (#117 only); external/rust/android-crates-io/crates/tokio-openssl/
+  Android.bp:16:1 "libtokio_openssl" depends on undefined module
+  "libbssl_sys" and on undefined module "libopenssl" (#118 only).
+  No genuine "missing variant" line in any of the three (the 14
+  "depends on undefined module" + 3 "missing variant" matches in
+  each raw log are the runner echoing the Build step script itself).
+  Root causes, verified live at LineageOS lineage-22.2 / AOSP
+  android-15.0.0_r32: libbssl_sys is rust_library in
+  external/boringssl/Android.bp:913-914 (crate_name bssl_sys,
+  host_supported; external/boringssl NOT synced), used in rustlibs
+  by the rust_library libtokio_openssl; libopenssl is rust_library
+  in external/rust/crates/openssl (external/rust/crates NOT
+  synced), used in rustlibs by the same libtokio_openssl;
+  libgbm_sys has NO defining file at r32 or on main (upstream gap,
+  same pattern as libdrm_sys - no crates/gbm-sys in
+  external/rust/crates or in android-crates-io), used in rustlibs
+  by the rust_library libgbm_rust; liblibsqlite3_sys is
+  rust_library in external/rust/crates/libsqlite3-sys
+  (external/rust/crates NOT synced), used in rustlibs by the
+  rust_library librusqlite. The fix is workflow-only: 4 new
+  rust_library stubs in yuzora-stubs/Android.bp (libbssl_sys
+  crate_name bssl_sys, libopenssl crate_name openssl, libgbm_sys
+  crate_name gbm_sys, liblibsqlite3_sys crate_name libsqlite3_sys,
+  all with srcs lib.rs reused from the #96 libcxx stub). No new
+  projects (still 32). The cache steps are untouched (see the
+  save-always finding below).
+
+  CACHE FINDING (run #118): the save-always flip did NOT save the
+  cache. "Restore repo cache" took 1s - a cache MISS ("Cache not
+  found for input keys: lights-repo-8a4b246d40743eed391212ad5ad6e4db
+  40eacddbffb e511a280ae48beba202b, lights-repo-"), sync took
+  12m15s, and the "Post Restore repo cache" step was SKIPPED (0s),
+  so no cache was saved for the next run. The log warns the
+  save-always input is deprecated, and actions/cache v4.3.0 (the
+  version actions/cache@v4 resolves to) says so in its action.yml:
+  "save-always does not work as intended and will be removed in a
+  future release. A separate `actions/cache/restore` step should be
+  used instead." The standing claim that "the cache now saves even
+  when the build fails" is therefore FALSE on this cache version;
+  the next run will also restore-miss and sync ~12 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
