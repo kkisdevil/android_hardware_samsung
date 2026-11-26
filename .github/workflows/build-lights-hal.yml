@@ -3520,6 +3520,113 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #116/#117/#118 fix: the #111/#112/#113 fix HELD in
+          // all three (prune step passed in 1-2s + pre-build guard
+          // passed). All three fail at Soong ninja generation,
+          // ~33-37s into the build step, on the SAME fix code (head
+          // 81f5407 - the #111/#112/#113 fix, workflow 8aeb025,
+          // rebased onto the save-always head 65709cd).
+          // Subset-reporting again: #116 reports 1 line, #117
+          // reports 2, #118 reports 3 - all different subsets of
+          // one commit. The fix covers the UNION (4 lines, 6
+          // instances). Raw-log verbatim (job-logs.txt, genuine
+          // build-output lines only - the 14 other "depends on
+          // undefined module" + 3 "missing variant" matches in each
+          // raw log are the runner echoing the Build step script
+          // itself, the comment block + the pre-build-guard echo
+          // commands that did NOT fire, NOT build errors):
+          //   #116 (45850213901, 14m10s, auto, manifest e0636fa) -
+          //   1 line: external/rust/android-crates-io/crates/gbm/
+          //   Android.bp:16:1 libgbm_rust depends on undefined
+          //   module libgbm_sys.
+          //   #117 (45850361596, 13m04s, auto, README 81f5407) -
+          //   2 lines: external/rust/android-crates-io/crates/
+          //   rusqlite/Android.bp:16:1 librusqlite depends on
+          //   undefined module liblibsqlite3_sys; + the libgbm_sys
+          //   line above.
+          //   #118 (45850678030, 15m10s, manual ~21:05 IST,
+          //   81f5407) - 3 lines: external/rust/android-crates-io/
+          //   crates/tokio-openssl/Android.bp:16:1 libtokio_openssl
+          //   depends on undefined module libbssl_sys; same file
+          //   depends on undefined module libopenssl; + the
+          //   libgbm_sys line above.
+          //   No genuine "missing variant" line in any of the three.
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32:
+          // - libbssl_sys: rustlibs of the rust_library
+          //   libtokio_openssl (android-crates-io/crates/
+          //   tokio-openssl/Android.bp:16, r32; tokio-openssl 0.6.5,
+          //   rustlibs libbssl_sys + libopenssl + libtokio).
+          //   Upstream rust_library in external/boringssl/
+          //   Android.bp:913-914 (r32, crate_name bssl_sys,
+          //   host_supported, via rust_defaults libbssl_sys_defaults)
+          //   - external/boringssl is NOT synced (not in the
+          //   32-project manifest; only its cc stubs libssl /
+          //   libcrypto_static were stubbed in #105). Stubbed as
+          //   rust_library with crate_name bssl_sys.
+          // - libopenssl: rustlibs of the same libtokio_openssl.
+          //   Upstream rust_library in external/rust/crates/openssl
+          //   (r32, crate_name openssl) - external/rust/crates is
+          //   NOT synced. Stubbed as rust_library with crate_name
+          //   openssl.
+          // - libgbm_sys: rustlibs of the rust_library libgbm_rust
+          //   (android-crates-io/crates/gbm/Android.bp:16, r32). NO
+          //   defining file exists at r32 or on main: no crates/
+          //   gbm-sys repo under external/rust/crates and no
+          //   crates/gbm-sys dir in android-crates-io at r32 (its
+          //   tree has crates/gbm but no gbm-sys) - an upstream gap
+          //   (the gbm crate upgrade references a crate never
+          //   vendored), same pattern as libdrm_sys (#113). Stubbed
+          //   as rust_library with crate_name gbm_sys.
+          // - liblibsqlite3_sys: rustlibs of the rust_library
+          //   librusqlite (android-crates-io/crates/rusqlite/
+          //   Android.bp:16, r32). Upstream rust_library in
+          //   external/rust/crates/libsqlite3-sys (r32, crate_name
+          //   libsqlite3_sys, the rusqlite FFI crate) -
+          //   external/rust/crates is NOT synced. Stubbed as
+          //   rust_library with crate_name libsqlite3_sys.
+          // All four stubs use srcs lib.rs (reused from the #96
+          // libcxx stub), mirroring the libdrm_sys stub.
+          rust_library {
+              name: "libbssl_sys",
+              crate_name: "bssl_sys",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          rust_library {
+              name: "libopenssl",
+              crate_name: "openssl",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          rust_library {
+              name: "libgbm_sys",
+              crate_name: "gbm_sys",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          rust_library {
+              name: "liblibsqlite3_sys",
+              crate_name: "libsqlite3_sys",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -3688,6 +3795,13 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #111/#112/#113 stubs created: libext2_uuid cc_library stub; libgsi_headers cc_library_headers stub; libgsi + libgsid cc_library stubs (same-file siblings, referenced by synced fs_mgr code); libdrm_sys rust_library stub (+ lib.rs)."
+          # Runs #116/#117/#118 fix: verify all 4 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111 loops above).
+          for stub in libbssl_sys libopenssl libgbm_sys liblibsqlite3_sys; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #116/#117/#118 stubs created: libbssl_sys + libopenssl + libgbm_sys + liblibsqlite3_sys rust_library stubs (+ lib.rs)."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -3930,6 +4044,11 @@ jobs:
           # Runs #111/#112/#113 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in libext2_uuid libgsi_headers libgsi libgsid libdrm_sys; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #116/#117/#118 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libbssl_sys libopenssl libgbm_sys liblibsqlite3_sys; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
