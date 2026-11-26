@@ -539,6 +539,59 @@ later added the real module); NOT pruning contexts/Android.bp (it
 defines many other needed modules); NOT setting
 ALLOW_MISSING_DEPENDENCIES (it would mask real missing deps). NO new
 projects: project count stays 32. -->
+<!--Runs #75 (13m39s, auto-triggered by manifest push 46b8ba0) / #76
+(13m27s, auto-triggered by README push 2b9b37f) / #77 (45727199134,
+14m12s, manually dispatched 2026-11-26 ~05:43 IST on 2b9b37f) — all
+three FAILED at Soong ninja-file generation, ~26s into the build
+step, with a NEW, much broader failure: 149 real Soong error lines
+(168 incl. echoed guard-script lines), 54 distinct undefined
+modules + 2 missing source paths, across 21 files. The #72/#73/#74
+fix HELD completely in all three runs (prune step + pre-build guard
+passed, zero "licensesPropertyGatherer" / "Fuzzer doesn't exist" in
+the build output) and the #68/#69/#70/#71 fix HELD too (zero
+"HardwareBuffer_aidl" / "android.frameworks.stats"). Every earlier
+fix held as well. Root cause: the #72 panic died in the PreArch
+mutator phase, BEFORE the deps/ninja validation ever ran — with the
+panic fixed, Soong reaches full whole-tree validation and reports
+the entire backlog of unsynced-project references at once. The
+reporting is STILL a subset: system/core/debuggerd/proto's
+libtombstone_proto_java references libprotobuf-java-lite (verified
+live at lineage-22.2) but #77 reports no error for it. So this fix
+stubs/prunes the COMPLETE layer, not just the reported names. The
+149 errors fall into seven classes, all in modules the lights HAL
+never builds: (1) dexpreopt_systemserver_check (build/soong/Android.bp:135,
+26 errors): a bare singleton (no srcs/libs); its deps are computed by
+Go code from unsynced frameworks/base (22 service-* modules +
+services + com.android.location.provider + org.lineageos.platform +
+source frameworks/base/boot/boot-image-profile.txt). No stub can fix
+it (the source-path error proves it); the singleton is deleted from
+the synced build/soong/Android.bp. (2) system/apex/tests + testdata
+(84 errors): host test cases + apkinapex/maxsdk test apps referencing
+tradefed/truth/testng/hamcrest/cts-*/frameworks-base-hostutils +
+android.test.base/mock, org.apache.http.legacy, android.hidl.*-java +
+sdk 31 android.jar + core-lambda-stubs.jar. All 25 modules in
+tests/Android.bp are host tests / test apps / keys / testdata; pruned
+whole. (3) system/core/init/test_upgrade_mte +
+system/core/debuggerd/test_permissive_mte (6 errors): MTE host tests
+referencing the same tradefed family. Pruned whole. (4)
+build/make/tools/* host tools + system/apex/proto (22 errors):
+signapk/signtos/apicheck/aconfig/releasetools/backported_fixes/
+apex_manifest_proto_java referencing java libs in unsynced
+external/* + frameworks/base — stubbed as empty java_library.
+(5) system/tools/xsdc (1 error): xsdc host tool references
+commons-cli-1.2 via static_libs (AOSP r32) — stubbed as java_library.
+The xsdc plugin itself (system/tools/xsdc/build, run #33) is untouched.
+(6) frameworks/native/libs/math libmath_headers (1 error): implicit
+Windows-host dep on libwinpthread — stubbed as empty cc_library_static
++ empty.c. (7) system/apex/apexd/apexd_testdata AppInRebootlessApex
+(9 errors): android_app, sdk_version "29", no srcs/libs — sdk 29
+android.jar missing + core-lambda-stubs.jar missing + 5 implicit java
+libs. Fix: empty-jar SDK shims (parse-time existence only) + the 5
+java stubs. NOT pruning apexs_testdata: system/apex/apexd/Android.bp
+references its modules in srcs (run #58). NOT syncing frameworks/base
+or prebuilts/sdk (gigabytes, for test/host modules the HAL never
+builds). NOT setting ALLOW_MISSING_DEPENDENCIES. NO new projects:
+project count stays 32. -->
 <!-- external/fmtlib: fmtlib (whole-static dep of libbase).
        AOSP tag android-15.0.0_r32. -->
 
