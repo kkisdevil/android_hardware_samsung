@@ -2173,7 +2173,7 @@ jobs:
               ],
           }
 
-          cc_library_static {
+          cc_library {
               name: "libselinux",
               srcs: ["empty.c"],
               host_supported: true,
@@ -2913,7 +2913,7 @@ jobs:
                   "//visibility:public",
               ],
           }
-          cc_library_shared {
+          cc_library {
               name: "libcrypto",
               srcs: ["empty.c"],
               host_supported: true,
@@ -3882,6 +3882,212 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #122/#123/#124 fix: the #119/#120/#121 fix HELD in
+          // all three (prune step passed + pre-build guard passed).
+          // All three fail at Soong ninja generation, ~36-54s into
+          // the build step, on the SAME fix code (head a5b3730 - the
+          // #119/#120/#121 fix, workflow d0b8b17). Subset-reporting
+          // again: #122 reports 11 lines, #123 reports 10, #124
+          // reports 15 - all different subsets of one commit. The fix
+          // covers the UNION (17 distinct lines, 10 distinct modules;
+          // #122's 11 lines are all inside the #124+#123 union).
+          // Raw-log verbatim (job-logs.txt, genuine build-output
+          // lines only - the other "error:" matches in each log are
+          // the runner echoing the Build step script itself, the
+          // pre-build-guard echo commands that did NOT fire, NOT
+          // build errors). The FAILED line is
+          // out/soong/build.yuzora_lights.ninja (not build.ninja),
+          // and Soong prints no "N errors" total line this round.
+          //   #122 (45867347789, 15m0s, auto, manifest b35b3cd) -
+          //   11 lines: liblp needs libext4_utils; inspect_cow +
+          //   create_snapshot need libgflags; libfs_avb_test_util
+          //   needs libavb_host_sysdeps + libchrome; write_cow
+          //   needs libgflags; create_snapshot needs libext4_utils;
+          //   libhidl-gen needs libhwbinder_headers; libvbmeta_test
+          //   + create_snapshot + libhidl-gen need libcrypto static
+          //   variant.
+          //   #123 (45867671751, 15m22s, auto, README a5b3730) -
+          //   10 lines: the #122 set minus libvbmeta_test/libcrypto
+          //   and the libfs_avb pair, plus libsnapuserd needs
+          //   libext4_utils + liburing.
+          //   #124 (45867963752, 15m59s, manual ~22:58 IST,
+          //   a5b3730) - 15 lines: the #122 set (same 11) + 4 more:
+          //   libtracing_perfetto needs libperfetto_c +
+          //   android.os.flags-aconfig-cc-host; libapex needs
+          //   libziparchive + libselinux shared variant.
+          //   NOTE on paths: the raw logs cite the consumers as
+          //   system/core/liblp/Android.bp:31:1 and
+          //   system/apex/apexd/Android.bp:271:1, but at
+          //   lineage-22.2 liblp lives at system/core/fs_mgr/liblp/
+          //   and libapex starts at apexd/Android.bp:527
+          //   (libapex-deps at 492) - Soong attributes through the
+          //   defaults: expansion, so the :line numbers do not
+          //   reproduce in the raw files. Key the fix off module
+          //   names, not :line numbers (same caveat as the #96
+          //   "librusb_platform" and #107 aconfig-path misreads).
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all defining projects UNSYNCED):
+          // - libext4_utils: shared_libs (liblp, via the
+          //   liblp_lib_deps variable), static_libs (create_snapshot,
+          //   libsnapuserd, liblp_test_defaults) and whole_static_libs
+          //   (libsnaphot_defaults) - only plain cc_library satisfies
+          //   all three. Upstream plain cc_library in
+          //   system/extras/ext4_utils/Android.bp (r32 ~lines 41-45,
+          //   host_supported) - system/extras NOT synced.
+          // - libgflags: static_libs of inspect_cow, create_snapshot
+          //   (host-only binary) and write_cow. Upstream plain
+          //   cc_library in external/gflags/Android.bp (r32 ~line
+          //   107, host_supported via gflags_defaults) - external/
+          //   gflags NOT synced. (Not cc_library_static: the 2017
+          //   port was static; at r32 it is plain cc_library.)
+          // - libavb_host_sysdeps: static_libs of libfs_avb_test_util
+          //   (via libfs_avb_host_test_defaults). Upstream
+          //   cc_library_host_static in external/avb/Android.bp
+          //   (r32 ~line 627, host-only by type, no host_supported
+          //   property upstream - the stub mirrors that) -
+          //   external/avb NOT synced. Different module from libavb
+          //   (cc_library_static, same file, stubbed in #119).
+          // - libchrome: shared_libs of libfs_avb_test_util (via
+          //   libfs_avb_host_test_defaults). Upstream plain
+          //   cc_library in external/libchrome/Android.bp (r32
+          //   ~line 1657, host_supported, min_sdk_version 30;
+          //   its visibility list names //system/core/fs_mgr/libfs_avb)
+          //   - external/libchrome NOT synced. NOT
+          //   libchrome-gestures_headers (already stubbed, different
+          //   module). Caveat: upstream libchrome is the full
+          //   Chromium base; a bare stub passes Soong only - if a
+          //   later run fails at compile/link on libchrome symbols,
+          //   that is a new layer (same caveat as libdm/libfstab #111).
+          // - libhwbinder_headers: header_libs of libhidl-gen.
+          //   Upstream cc_library_headers in system/libhwbinder/
+          //   Android.bp (r32 ~line 67, host_supported,
+          //   export_include_dirs include) - system/libhwbinder
+          //   NOT synced.
+          // - libperfetto_c: shared_libs of libtracing_perfetto
+          //   (cc_library_shared, host_supported). Upstream
+          //   cc_library_shared in external/perfetto/Android.bp
+          //   (r32; on main it is plain cc_library - r32 is
+          //   authoritative, do not copy the main-branch type) -
+          //   external/perfetto NOT synced.
+          // - android.os.flags-aconfig-cc-host: shared_libs of
+          //   libtracing_perfetto. Upstream cc_aconfig_library in
+          //   frameworks/base/AconfigFlags.bp (lineage-22.2 lines
+          //   918-926, aconfig_declarations android.os.flags-aconfig,
+          //   host_supported) - frameworks/base NOT synced. It is
+          //   explicitly declared (unlike libflags_rust #119, which
+          //   Soong appends implicitly); a cc_aconfig_library
+          //   generates a cc_library of the same name, so a plain
+          //   cc_library stub satisfies it. Siblings -cc / -cc-test
+          //   are NOT stubbed - no synced file references them;
+          //   stub them if a run reports one.
+          // - libziparchive: shared_libs of libapex (via
+          //   libapex-deps). Upstream plain cc_library in
+          //   system/libziparchive/Android.bp (lineage-22.2 lines
+          //   284-300, host_supported via libziparchive_lib_defaults)
+          //   - system/libziparchive NOT synced (its own project,
+          //   not under system/core).
+          // - liburing: static_libs of libsnapuserd (also
+          //   snapuserd_defaults/_test_defaults/_extractor).
+          //   Upstream cc_library_static in external/liburing/
+          //   Android.bp (r32, host_supported) - external/liburing
+          //   NOT synced.
+          // - libcrypto: the #96 cc_library_shared stub provides no
+          //   static variant; the host consumers (libvbmeta_test,
+          //   create_snapshot, libhidl-gen, all static_libs on
+          //   linux_glibc) need it. Upstream plain cc_library in
+          //   external/boringssl/Android.bp (r32 ~line 497,
+          //   host_supported via libcrypto_defaults) - the device
+          //   static variant is disabled upstream (FIPS; static
+          //   users take libcrypto_static, already stubbed), but
+          //   the HOST static variant is built, so plain cc_library
+          //   is the fix - same as libjsoncpp (#105), libz (#119)
+          //   and the protobuf stubs (#99). The stub changes
+          //   from cc_library_shared to plain cc_library above.
+          // - libselinux: the #78 cc_library_static stub provides no
+          //   shared variant; libapex needs the shared host variant
+          //   (shared_libs via libapex-deps). Upstream plain
+          //   cc_library in external/selinux/libselinux/Android.bp
+          //   (r32, host_supported) - external/selinux NOT synced.
+          //   The stub changes from cc_library_static to plain
+          //   cc_library above (same fix as libcrypto).
+          cc_library {
+              name: "libext4_utils",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libgflags",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_host_static {
+              name: "libavb_host_sysdeps",
+              srcs: ["empty.c"],
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libchrome",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libhwbinder_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_shared {
+              name: "libperfetto_c",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.os.flags-aconfig-cc-host",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libziparchive",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "liburing",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -4038,6 +4244,13 @@ jobs:
           # stub. (No comment line in the generated file contains
           # `cc_library {`, so the grep is exact.)
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libz"' || { echo "::error::libz stub is not a plain cc_library"; exit 1; }
+          # libcrypto + libselinux must be plain cc_library stubs now
+          # (runs #122/#123/#124 fix): same check as libz/libjsoncpp
+          # above - the static variant (libcrypto) / shared variant
+          # (libselinux) the new consumers need cannot come from a
+          # shared-only / static-only stub.
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libcrypto"' || { echo "::error::libcrypto stub is not a plain cc_library"; exit 1; }
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libselinux"' || { echo "::error::libselinux stub is not a plain cc_library"; exit 1; }
           # The common-ndk_shared defaults must forward V6-ndk into
           # shared_libs (runs #105/#106/#107 fix) or libgralloctypes'
           # export_shared_lib_headers check fails again.
@@ -4070,6 +4283,13 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #119/#120/#121 stubs created: libupdate_engine_headers + libtextclassifier_hash_headers cc_library_headers stubs; libbrotli + libgtest_isolated_main + libtextclassifier_hash_static + libavb cc_library_static stubs; liblz4 + libzstd + server_configurable_flags cc_library stubs; cxx-bridge-header genrule stub; libflags_rust rust_library stub (+ lib.rs); libz changed cc_library_shared -> cc_library."
+          # Runs #122/#123/#124 fix: verify all 9 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119 loops above).
+          for stub in libext4_utils libgflags libavb_host_sysdeps libchrome libhwbinder_headers libperfetto_c android.os.flags-aconfig-cc-host libziparchive liburing; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #122/#123/#124 stubs created: libext4_utils + libgflags + libchrome + libziparchive + android.os.flags-aconfig-cc-host cc_library stubs; libavb_host_sysdeps cc_library_host_static stub; libhwbinder_headers cc_library_headers stub; libperfetto_c cc_library_shared stub; liburing cc_library_static stub; libcrypto changed cc_library_shared -> cc_library; libselinux changed cc_library_static -> cc_library."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -4324,12 +4544,21 @@ jobs:
           for stub in libupdate_engine_headers libbrotli liblz4 libzstd libgtest_isolated_main cxx-bridge-header libtextclassifier_hash_headers libtextclassifier_hash_static server_configurable_flags libflags_rust libavb; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
+          # Runs #122/#123/#124 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libext4_utils libgflags libavb_host_sysdeps libchrome libhwbinder_headers libperfetto_c android.os.flags-aconfig-cc-host libziparchive liburing; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
           # Runs #119/#120/#121 fix: libz must be a plain cc_library at
           # build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libz"' || { echo "::error::pre-build guard: libz stub is not a plain cc_library"; exit 1; }
+          # Runs #122/#123/#124 fix: libcrypto + libselinux must be plain
+          # cc_library stubs at build time (same check as the prune step).
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libcrypto"' || { echo "::error::pre-build guard: libcrypto stub is not a plain cc_library"; exit 1; }
+          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libselinux"' || { echo "::error::pre-build guard: libselinux stub is not a plain cc_library"; exit 1; }
           # Runs #105/#106/#107 fix: the common-ndk_shared defaults must
           # forward V6-ndk at build time (same check as the prune step).
           # Run #110 fix: grep -A5 false-negatived here too (the V6-ndk
