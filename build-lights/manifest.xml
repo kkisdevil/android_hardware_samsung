@@ -205,6 +205,49 @@ still 32 projects.
   subset). No new projects (still 32). The cache steps are untouched
   (save-always flip still needs the user's word).
 
+  Runs #105 (45818724942, 15m25s, manifest push fab59cc), #106
+  (45818868390, 14m41s, README push f8e598c) and #107 (45819014190,
+  13m58s, manual dispatch ~17:52 IST, same commit f8e598c) ALL FAILED
+  at Soong ninja-file generation, ~35-53s into the build step, on the
+  #102/#103/#104 fix code (workflow b07b32d). The #102/#103/#104 fix
+  HELD in all three (prune step + pre-build guard passed). The three
+  runs report THREE different error sets on one commit
+  (subset-reporting at its extreme, again): #105 the widest (28
+  lines), #106 (4), #107 (2) - the fix covers the UNION (30 lines).
+  Raw-log verbatim: #107 = aconfig.test.java
+  (build/make/tools/aconfig/aconfig/Android.bp:105) needs
+  androidx.test.rules + testng; #106 = aidl_test_java_*_permission
+  need frameworks-base-testutils + media_plugin_headers needs
+  libstagefright_headers + libstagefright_foundation_headers; #105
+  adds pyfakefs, asuite_cc_client, watchdog, the libgralloctypes
+  triple (android.hardware.graphics.common-V6-ndk export,
+  android.hardware.graphics.mapper@4.0, libhidlbase), libssl /
+  libcrypto_static (quiche), libgoogle-benchmark / libtinyxml2,
+  libgtest_isolated, libprocinfo, and the libprocessgroup_proto_test
+  triple (libjsoncpp missing static variant, libjsonpbverify,
+  libjsonpbparse). Root causes, verified live at lineage-22.2 / AOSP
+  r32: testng is java_library in external/testng; libstagefright_headers
+  is cc_library_headers in frameworks/av media/libstagefright; pyfakefs
+  is python_library in external/python/pyfakefs; watchdog is
+  python_library_host in external/python/watchdog; libssl is plain
+  cc_library and libcrypto_static is cc_library_static in
+  external/boringssl; libgoogle-benchmark is cc_library_static in
+  external/google-benchmark; libtinyxml2 and libjsoncpp are plain
+  cc_library (external/tinyxml2, external/jsoncpp); libhidlbase is
+  plain cc_library in system/libhidl; mapper@4.0 (hidl_interface) and
+  the graphics.common aidl_interface (V6-ndk) live in
+  hardware/interfaces/graphics/*, which the closure prune deletes, so
+  neither exists in this tree. The fix is workflow-only: 19 new stubs
+  in yuzora-stubs/Android.bp (3 java_library, 2 cc_library_headers, 2
+  python_library + 1 python_library_host, 7 plain cc_library, 2
+  cc_library_static, 2 cc_library_shared) + libjsoncpp stub changed
+  cc_library_shared -> plain cc_library + shared_libs V6-ndk added to
+  the android.hardware.graphics.common-ndk_shared cc_defaults stub
+  (the empty stub is what makes Soong report V6-ndk as "not in
+  shared_libs" on libgralloctypes' export check). No new projects
+  (still 32). The cache steps are untouched (save-always flip still
+  needs the user's word).
+
   -->
 
 <manifest>
