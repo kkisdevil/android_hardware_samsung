@@ -1159,6 +1159,26 @@ jobs:
           # references its modules in srcs.
           rm -rf system/apex/tests
           rm -rf system/core/init/test_upgrade_mte system/core/debuggerd/test_permissive_mte
+          # system/tools/hidl/test + system/tools/hidl/hidl2aidl/test
+          # (runs #78/#79/#80 fix). Run #78 failed with 91 Soong errors,
+          # 86 "depends on undefined module" for 4 hidl interfaces
+          # (android.hidl.base@1.0_interface x60,
+          # android.hardware.tests.baz@1.0_interface x11,
+          # android.hidl.tests.safe_union@1.0_interface x10,
+          # android.frameworks.displayservice@1.0_interface x5) - ALL in
+          # these two test-only dirs. The hidl-soong-rules plugin lives in
+          # build/ and the hidl2aidl tool itself parses clean; only test/
+          # goes. Test/host modules are never built for this HAL-only target.
+          rm -rf system/tools/hidl/test system/tools/hidl/hidl2aidl/test
+          if [ -e system/tools/hidl/test ]; then
+            echo "::error::prune failed - system/tools/hidl/test still present"
+            exit 1
+          fi
+          if [ -e system/tools/hidl/hidl2aidl/test ]; then
+            echo "::error::prune failed - system/tools/hidl/hidl2aidl/test still present"
+            exit 1
+          fi
+          echo "runs #78/#79/#80 pruned: system/tools/hidl/test + hidl2aidl/test."
 
           # Kept paths must still exist (the prune must not have eaten them).
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
@@ -1556,6 +1576,7 @@ jobs:
           cc_library_static {
               name: "android.os.hintmanager_aidl-ndk",
               srcs: ["empty.c"],
+              host_supported: true,
               visibility: [
                   "//visibility:public",
               ],
@@ -1591,6 +1612,7 @@ jobs:
           cc_library_static {
               name: "libskia_renderengine",
               srcs: ["empty.c"],
+              host_supported: true,
               visibility: [
                   "//visibility:public",
               ],
@@ -1643,6 +1665,8 @@ jobs:
               srcs: ["Empty.java"],
               sdk_version: "none",
               system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
               visibility: [
                   "//visibility:public",
               ],
@@ -1653,6 +1677,8 @@ jobs:
               srcs: ["Empty.java"],
               sdk_version: "none",
               system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
               visibility: [
                   "//visibility:public",
               ],
@@ -1663,6 +1689,8 @@ jobs:
               srcs: ["Empty.java"],
               sdk_version: "none",
               system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
               visibility: [
                   "//visibility:public",
               ],
@@ -1673,6 +1701,8 @@ jobs:
               srcs: ["Empty.java"],
               sdk_version: "none",
               system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
               visibility: [
                   "//visibility:public",
               ],
@@ -1683,6 +1713,8 @@ jobs:
               srcs: ["Empty.java"],
               sdk_version: "none",
               system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
               visibility: [
                   "//visibility:public",
               ],
@@ -1693,6 +1725,8 @@ jobs:
               srcs: ["Empty.java"],
               sdk_version: "none",
               system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
               visibility: [
                   "//visibility:public",
               ],
@@ -1720,6 +1754,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1730,6 +1766,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1740,6 +1778,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1750,6 +1790,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1760,6 +1802,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1770,6 +1814,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1780,6 +1826,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1790,6 +1838,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1800,6 +1850,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1810,6 +1862,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1823,6 +1877,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1839,6 +1895,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1849,6 +1907,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1859,6 +1919,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1869,6 +1931,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1879,6 +1943,8 @@ jobs:
             srcs: ["Empty.java"],
             sdk_version: "none",
             system_modules: "none",
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1911,6 +1977,8 @@ jobs:
           cc_library_static {
             name: "libwinpthread",
             srcs: ["empty.c"],
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
@@ -1924,9 +1992,56 @@ jobs:
           cc_library_shared {
             name: "libconscrypt_openjdk_jni",
             srcs: ["empty.c"],
+            host_supported: true,
+            target: { windows: { enabled: true } },
             visibility: [
               "//visibility:public",
             ],
+          }
+
+          // Runs #78/#79/#80 fix: libsepol / libpcre2 / libselinux are
+          // HOST tools (system/sepolicy/tools: libsepol via the
+          // sepolicy_tools_defaults static_libs, libpcre2 via checkseapp
+          // whole_static_libs, libselinux via checkfc static_libs), and
+          // compatibility_matrix_schema is a filegroup in
+          // system/libvintf/xsd/compatibilityMatrix/Android.bp (not synced).
+          // The vintf plugin adds it implicitly and reads Srcs()[0] as
+          // --xsd, but the .xml matrix modules are never built here (not
+          // in the HAL closure), so the XSD content is never read; a
+          // minimal valid XSD skeleton (created below) suffices.
+          cc_library_static {
+              name: "libsepol",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_library_static {
+              name: "libpcre2",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          cc_library_static {
+              name: "libselinux",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+
+          filegroup {
+              name: "compatibility_matrix_schema",
+              srcs: ["compatibility_matrix.xsd"],
+              visibility: [
+                  "//visibility:public",
+              ],
           }
           EOF
 
@@ -1944,6 +2059,17 @@ jobs:
           printf '// Stub source — see the runs #62/#63/#64 comment above.\npackage yuzora.stubs;\npublic class Empty {\n}\n' > yuzora-stubs/Empty.java
           test -f yuzora-stubs/Empty.java \
             || { echo "::error::stub source missing after creation: yuzora-stubs/Empty.java"; exit 1; }
+          # Runs #78/#79/#80 fix: minimal valid XSD skeleton for the
+          # compatibility_matrix_schema filegroup above. The .xml matrix
+          # modules are never built here, so this file is never read by
+          # Soong; it only has to exist for the filegroup's Srcs()[0].
+          cat > yuzora-stubs/compatibility_matrix.xsd <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          </xs:schema>
+          EOF
+          test -f yuzora-stubs/compatibility_matrix.xsd \ 
+          || { echo "::error::stub source missing after creation: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -1963,6 +2089,8 @@ jobs:
               srcs: ["Empty.java"],
               sdk_version: "none",
               system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
               visibility: [
                   "//visibility:public",
               ],
@@ -1971,7 +2099,7 @@ jobs:
             echo "core-module-lib-stubs-for-system-modules stub created (not defined in synced build/soong)."
           fi
 
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules libprotobuf-java-full libprotobuf-java-lite libprotobuf-java-nano bouncycastle-unbundled bouncycastle-bcpkix-unbundled conscrypt-unbundled apksig doclava jsilver commons-cli-1.2 unsupportedappusage android.test.base android.test.mock org.apache.http.legacy android.hidl.base-V1.0-java android.hidl.manager-V1.0-java core-all-system-modules libwinpthread libconscrypt_openjdk_jni; do
+          for stub in libsepol libpcre2 libselinux compatibility_matrix_schema apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules libprotobuf-java-full libprotobuf-java-lite libprotobuf-java-nano bouncycastle-unbundled bouncycastle-bcpkix-unbundled conscrypt-unbundled apksig doclava jsilver commons-cli-1.2 unsupportedappusage android.test.base android.test.mock org.apache.http.legacy android.hidl.base-V1.0-java android.hidl.manager-V1.0-java core-all-system-modules libwinpthread libconscrypt_openjdk_jni; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
@@ -2106,7 +2234,7 @@ jobs:
             || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty.c"; exit 1; }
           test -f yuzora-stubs/Empty.java \
             || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/Empty.java"; exit 1; }
-          for stub in apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules libprotobuf-java-full libprotobuf-java-lite libprotobuf-java-nano bouncycastle-unbundled bouncycastle-bcpkix-unbundled conscrypt-unbundled apksig doclava jsilver commons-cli-1.2 unsupportedappusage android.test.base android.test.mock org.apache.http.legacy android.hidl.base-V1.0-java android.hidl.manager-V1.0-java core-all-system-modules libwinpthread libconscrypt_openjdk_jni; do
+          for stub in libsepol libpcre2 libselinux compatibility_matrix_schema apex-lowest-min-sdk-version use_libaidlvintf_gtest_helper_static neuralnetworks_utils_defaults keymint_use_latest_hal_aidl_ndk_shared avf_build_flags_cc libvintf_static_user_defaults android.hardware.power-ndk_shared android.hardware.power-ndk_export_shared android.hardware.power-ndk_static android.hardware.graphics.common-ndk_shared android.hardware.graphics.common-ndk_static android.hardware.graphics.composer3-ndk_shared android.hardware.graphics.composer3-ndk_static android.hardware.graphics.allocator-ndk_shared cts_defaults android.os.hintmanager_aidl-ndk skia_renderengine_deps libskia_renderengine framework-module-defaults framework-system-server-module-defaults art.module.public.api.stubs art.module.public.api.stubs.module_lib art.module.intra.core.api.stubs art-module-intra-core-api-stubs-system-modules-lib art.module.api.annotations.for.system.modules core-lambda-stubs-for-system-modules libprotobuf-java-full libprotobuf-java-lite libprotobuf-java-nano bouncycastle-unbundled bouncycastle-bcpkix-unbundled conscrypt-unbundled apksig doclava jsilver commons-cli-1.2 unsupportedappusage android.test.base android.test.mock org.apache.http.legacy android.hidl.base-V1.0-java android.hidl.manager-V1.0-java core-all-system-modules libwinpthread libconscrypt_openjdk_jni; do
             grep -q "$stub" yuzora-stubs/Android.bp \
               || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
@@ -2133,6 +2261,18 @@ jobs:
             || { echo "::error::pre-build guard: fuzzer bindings stub missing at build time"; exit 1; }
           if [ -d system/apex/tests ]; then
             echo "::error::pre-build guard: system/apex/tests present at build time"
+            exit 1
+          fi
+          # Runs #78/#79/#80 fix: the new stub file and the pruned hidl
+          # test dirs must still be in the expected state at build time.
+          test -f yuzora-stubs/compatibility_matrix.xsd \ 
+            || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
+          if [ -d system/tools/hidl/test ]; then
+            echo "::error::pre-build guard: system/tools/hidl/test present at build time"
+            exit 1
+          fi
+          if [ -d system/tools/hidl/hidl2aidl/test ]; then
+            echo "::error::pre-build guard: system/tools/hidl/hidl2aidl/test present at build time"
             exit 1
           fi
           if [ -d system/core/init/test_upgrade_mte ]; then
