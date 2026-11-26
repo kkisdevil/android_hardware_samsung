@@ -4088,6 +4088,188 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #125/#126/#127 fix: the #122/#123/#124 fix HELD in
+          // all three (prune step passed + pre-build guard passed).
+          // All three fail at Soong ninja generation, ~35-37s into
+          // the build step, on the SAME fix code (head 205ec0a - the
+          // #122/#123/#124 fix, workflow aa3581b). Subset-reporting
+          // again, at its extreme: #125 reports 10 lines, #126
+          // reports 4, #127 reports 2 - all different subsets of one
+          // commit. The fix covers the UNION (12 distinct error
+          // lines, 8 distinct modules; #127's 2 lines are a subset
+          // of #126's 4; #126's 4 are #125's libcap pair plus the
+          // new libaconfigd_protos_rust pair).
+          // Raw-log verbatim (job-logs.txt, genuine build-output
+          // lines only - the other "error:" matches in each log are
+          // the runner echoing the Build step script itself, the
+          // pre-build-guard echo commands that did NOT fire, NOT
+          // build errors). The FAILED line is
+          // out/soong/build.yuzora_lights.ninja (not build.ninja).
+          // No genuine "missing variant" line in any of the three
+          // runs - "missing variant" appears only inside the quoted
+          // comment blocks in the build script.
+          //   #125 (45875772540, 15m16s, auto, manifest ce8b2b9) -
+          //   10 lines: libinit_host + host_init_verifier need
+          //   libcap; libzipalign needs libzopfli; libfastboot2
+          //   needs avb_headers + bootimg_headers + libadb_host;
+          //   libutils_binder_test needs liblzma; libfastboot needs
+          //   bootimg_headers + avb_headers + platform_tools_version.
+          //   #126 (45875913306, 13m52s, auto, README 205ec0a) -
+          //   4 lines: libinit_host + host_init_verifier need
+          //   libcap; aflags + aflags.test need
+          //   libaconfigd_protos_rust.
+          //   #127 (45876399917, 14m53s, manual ~00:00 IST,
+          //   205ec0a) - 2 lines: aflags + aflags.test need
+          //   libaconfigd_protos_rust.
+          //   NOTE on :line numbers: Soong's reported lines do NOT
+          //   reproduce in the live files - fastboot :47/:280 vs
+          //   live libfastboot2 at 89/91 and libfastboot at 521/523;
+          //   init :661/:631 vs live libinit_host at 1269/1271 and
+          //   host_init_verifier at 1211/1213; zipalign :21 vs live
+          //   libzipalign at 37/39. Verified at lineage-22.2 tip AND
+          //   the manifest-pinned HEAD bcb8623 (byte-identical for
+          //   both files), so this is Soong attributing through the
+          //   defaults: expansion, not version drift. Key the fix
+          //   off module names, not :line numbers (same caveat as
+          //   the #122 liblp/libapex paths and the #96/#107 misreads).
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all 8 defining projects UNSYNCED):
+          // - libcap: whole_static_libs of init_host_defaults (used
+          //   by libinit_host + host_init_verifier) and
+          //   libinit_defaults. Upstream plain cc_library in
+          //   external/libcap/Android.bp (r32 ~lines 48-91,
+          //   host_supported, min_sdk_version 29) - external/libcap
+          //   NOT synced. Plain cc_library matches upstream and
+          //   covers any future shared_libs use (same precedent as
+          //   libz #119, libjsoncpp #105, libcrypto #122).
+          // - libzopfli: whole_static_libs of libzipalign
+          //   (cc_library_host_static). Upstream plain cc_library in
+          //   external/zopfli/Android.bp (r32 ~lines 20-50,
+          //   host_supported, export_include_dirs src) -
+          //   external/zopfli NOT synced.
+          // - avb_headers: header_libs of libfastboot2 + libfastboot
+          //   (via fastboot_host_defaults). Upstream
+          //   cc_library_headers in external/avb/Android.bp
+          //   (lineage-22.2 lines 838-870, host_supported,
+          //   export_include_dirs ".") - external/avb NOT synced.
+          //   Same file as libavb (#119, cc_library_static) and
+          //   libavb_host_sysdeps (#122, cc_library_host_static) -
+          //   three different modules, all stubbed now.
+          // - bootimg_headers: header_libs of libfastboot2 +
+          //   libfastboot (+ export_header_lib_headers) and of
+          //   libinit_defaults (line 449, not cited by any run -
+          //   subset reporting). Upstream cc_library_headers in
+          //   system/tools/mkbootimg/Android.bp (r32 ~lines 7-22,
+          //   export_include_dirs include/bootimg, host_supported)
+          //   - system/tools/mkbootimg NOT synced (only
+          //   system/tools/aidl, hidl, xsdc are synced). NOT
+          //   system/core/mkbootimg - mkbootimg lives under
+          //   system/tools/.
+          // - libadb_host: static_libs of libfastboot2. Upstream
+          //   cc_library_host_static in packages/modules/adb/
+          //   Android.bp (r32 lines 536-538) - packages/modules/adb
+          //   NOT synced. NOT a prune casualty: system/core has no
+          //   adb/ dir at all at r32 or lineage-22.2 - adb moved out
+          //   of system/core to its own project. Stub mirrors the
+          //   upstream type (host-only by type, no host_supported -
+          //   same pattern as libavb_host_sysdeps #122).
+          // - liblzma: shared_libs (target.android) AND static_libs
+          //   (target.host) of libutils_binder_test - only plain
+          //   cc_library satisfies both. Upstream plain cc_library
+          //   in external/lzma/Android.bp (r32 ~lines 40-44,
+          //   host_supported) - external/lzma NOT synced.
+          // - platform_tools_version: generated_headers of
+          //   libfastboot. Upstream genrule in development/sdk/
+          //   Android.bp (r32 lines 42-52, out
+          //   platform_tools_version.h, seds
+          //   plat_tools_source.prop_template) - development NOT
+          //   synced. Stub genrule with the same out and a dummy
+          //   header cmd; it must NOT reference the template as a
+          //   src (that file is not in the tree). Same pattern as
+          //   the cxx-bridge-header genrule stub (#119).
+          // - libaconfigd_protos_rust: rustlibs of aflags.defaults
+          //   (inherited by rust_binary aflags + rust_test_host
+          //   aflags.test). Upstream rust_library in
+          //   packages/modules/ConfigInfrastructure/aconfigd/proto/
+          //   Android.bp (r32 lines 108-126, crate_name
+          //   aconfigd_protos, defaults aconfigd_protos.defaults,
+          //   host_supported) - that project NOT synced. The daemon
+          //   lives under packages/modules/ConfigInfrastructure/
+          //   aconfigd/ (NOT build/make/tools/aconfig/aconfigd or
+          //   system/aconfigd - neither exists). Do NOT stub the
+          //   rust_protobuf libaconfigd_rust_proto separately - no
+          //   synced file references it; the stub carries no
+          //   rustlibs, so its generated-proto dep never surfaces.
+          //   Stub is rust_library with crate_name aconfigd_protos,
+          //   srcs lib.rs (reused from the #96 libcxx stub),
+          //   edition 2021.
+          cc_library {
+              name: "libcap",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libzopfli",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "avb_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "bootimg_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_host_static {
+              name: "libadb_host",
+              srcs: ["empty.c"],
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "liblzma",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          genrule {
+              name: "platform_tools_version",
+              out: ["platform_tools_version.h"],
+              cmd: "echo '#define PLATFORM_TOOLS_VERSION \"34.0.0\"' > $(out)",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          rust_library {
+              name: "libaconfigd_protos_rust",
+              crate_name: "aconfigd_protos",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -4290,6 +4472,13 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #122/#123/#124 stubs created: libext4_utils + libgflags + libchrome + libziparchive + android.os.flags-aconfig-cc-host cc_library stubs; libavb_host_sysdeps cc_library_host_static stub; libhwbinder_headers cc_library_headers stub; libperfetto_c cc_library_shared stub; liburing cc_library_static stub; libcrypto changed cc_library_shared -> cc_library; libselinux changed cc_library_static -> cc_library."
+          # Runs #125/#126/#127 fix: verify all 8 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122 loops above).
+          for stub in libcap libzopfli avb_headers bootimg_headers libadb_host liblzma platform_tools_version libaconfigd_protos_rust; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #125/#126/#127 stubs created: libcap + libzopfli + liblzma cc_library stubs; avb_headers + bootimg_headers cc_library_headers stubs; libadb_host cc_library_host_static stub; platform_tools_version genrule stub; libaconfigd_protos_rust rust_library stub (+ lib.rs). No type changes this round."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -4547,6 +4736,11 @@ jobs:
           # Runs #122/#123/#124 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in libext4_utils libgflags libavb_host_sysdeps libchrome libhwbinder_headers libperfetto_c android.os.flags-aconfig-cc-host libziparchive liburing; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #125/#126/#127 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libcap libzopfli avb_headers bootimg_headers libadb_host liblzma platform_tools_version libaconfigd_protos_rust; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
