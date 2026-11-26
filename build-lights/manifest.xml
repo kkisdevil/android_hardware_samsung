@@ -697,6 +697,59 @@ still 32 projects.
   `if: always()`), which touches the cache steps and needs his
   word - not changed in this fix round.
 
+  Runs #135 (45901885683, 15m50s, auto, manifest 475f777),
+  #136 (45902061404, 13m32s, auto, README 0a0f080) and #137
+  (45902430896, 14m43s, manual dispatch ~03:35 IST 2026-11-27,
+  head 0a0f080 - the runs #131/#132/#133/#134 fix, workflow
+  6f51f5e): ALL FAILED at Soong ninja-file generation, tens of
+  seconds into the "Build lights HAL" step. The
+  #131/#132/#133/#134 fix HELD in all three (prune step passed
+  + pre-build guard passed). Subset reporting again: #137
+  reports 1 line, #136 reports 5, #135 reports 3 - the fix
+  covers the UNION (9 lines, 7 distinct modules). Raw-log
+  verbatim (live browser read of the job-logs.txt raw logs,
+  genuine build-output lines only): libinput_bindgen needs
+  flatbuffer_headers (all three runs); libvibrator needs
+  libaudio_system_headers; libsensor needs
+  android.permission.flags-aconfig-cc + libhardware +
+  android.companion.virtual.virtualdevice_aidl-cpp;
+  binder_rpc_fuzzer needs libssl_fuzz_unsafe +
+  libcrypto_fuzz_unsafe. No genuine "missing variant" line in
+  any of the three runs. Root causes, verified live at
+  LineageOS lineage-22.2 / AOSP android-15.0.0_r32 (all 7
+  defining projects UNSYNCED): flatbuffer_headers is
+  cc_library_headers in external/flatbuffers (r32 lines 51-55)
+  - external/flatbuffers NOT synced; libaudio_system_headers
+  is cc_library_headers in system/media/audio (r32 lines 9-11,
+  NOT frameworks/av) - system/media NOT synced;
+  android.permission.flags-aconfig-cc is cc_aconfig_library in
+  frameworks/base/AconfigFlags.bp (r32 lines 851-856) -
+  frameworks/base NOT synced; libhardware is cc_library_shared
+  in hardware/libhardware (r32 lines 90-91, NOT plain
+  cc_library) - hardware/libhardware NOT synced;
+  android.companion.virtual.virtualdevice_aidl-cpp is the
+  generated C++ lib of aidl_interface
+  android.companion.virtual.virtualdevice_aidl in
+  frameworks/base/core/java (r32 lines 818-825) -
+  frameworks/base NOT synced;
+  libssl_fuzz_unsafe + libcrypto_fuzz_unsafe are
+  cc_test_library in external/boringssl (r32 lines 554-556 /
+  478-479) - external/boringssl NOT synced. The fix is
+  workflow-only: 7 new stubs in yuzora-stubs/Android.bp (2
+  cc_library_headers, 4 plain cc_library, 1
+  cc_library_shared). No new projects (still 32). No type
+  changes this round. The cache steps are untouched (see the
+  save-always note below).
+
+  CACHE NOTE (run #137): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took 11m42s, and no "Save repo cache" step ran - same as
+  runs #118/#121/#124/#127/#130/#134. The next run will also
+  restore-miss and sync ~9-12 min. The upstream-recommended
+  fix is separate restore + save steps (the save step with
+  `if: always()`), which touches the cache steps and needs his
+  word - not changed in this fix round.
+
   -->
 
 <manifest>
