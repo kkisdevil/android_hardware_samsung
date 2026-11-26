@@ -1794,36 +1794,7 @@ jobs:
               "//visibility:public",
             ],
           }
-          EOF
-
-          # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
-          # libskia_renderengine stub (runs #51/#52/#53 fix): a cc_library_static
-          # needs at least one source file.
-          printf '/* Stub source — see the runs #48/#49/#50 comment above. */\nint yuzora_stub_empty;\n' > yuzora-stubs/empty.c
-          test -f yuzora-stubs/empty.c \
-            || { echo "::error::stub source missing after creation: yuzora-stubs/empty.c"; exit 1; }
-          # Dummy source for the runs #62/#63/#64 java_library stubs
-          # above: a java_library stub needs at least one source file.
-          # (The cc stubs above use empty.c for the same reason.)
-          # The file must be named Empty.java: javac requires a public
-          # class to live in a file of the same name.
-          printf '// Stub source — see the runs #62/#63/#64 comment above.\npackage yuzora.stubs;\npublic class Empty {\n}\n' > yuzora-stubs/Empty.java
-          test -f yuzora-stubs/Empty.java \
-            || { echo "::error::stub source missing after creation: yuzora-stubs/Empty.java"; exit 1; }
-          # Runs #62/#63/#64 fix, conditional part: see the comment
-          # block at the top of this step. The synced
-          # build/soong/java/core-libraries/Android.bp is checked
-          # for a `name: "core-module-lib-stubs-for-system-modules"`
-          # definition line — a bare-name grep would also match
-          # the `libs:` reference, so the `name:` prefix is required.
-          # If the definition exists, no stub is created (an
-          # unconditional stub would be a duplicate module). If it
-          # does not exist, the stub is appended to the file the
-          # heredoc above just created.
-          if grep -q 'name: "core-module-lib-stubs-for-system-modules"' build/soong/java/core-libraries/Android.bp; then
-            echo "core-module-lib-stubs-for-system-modules already defined in synced build/soong — no stub needed."
-          else
-            cat >> yuzora-stubs/Android.bp <<'
+          
           java_library {
             name: "jsilver",
             srcs: ["Empty.java"],
@@ -1912,17 +1883,7 @@ jobs:
               "//visibility:public",
             ],
           }
-          EOF'
-          java_library {
-              name: "core-module-lib-stubs-for-system-modules",
-              srcs: ["Empty.java"],
-              sdk_version: "none",
-              system_modules: "none",
-              visibility: [
-                  "//visibility:public",
-              ],
-          }
-          
+
           // Runs #75/#76/#77 fix: "core-all-system-modules", referenced via the scalar
           // `system_modules:` property by fake_device_config + aconfig_storage_stub_none
           // (build/make/tools/aconfig/fake_device_config) and aconfig_storage_file
@@ -1966,6 +1927,45 @@ jobs:
             visibility: [
               "//visibility:public",
             ],
+          }
+          EOF
+
+          # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
+          # libskia_renderengine stub (runs #51/#52/#53 fix): a cc_library_static
+          # needs at least one source file.
+          printf '/* Stub source — see the runs #48/#49/#50 comment above. */\nint yuzora_stub_empty;\n' > yuzora-stubs/empty.c
+          test -f yuzora-stubs/empty.c \
+            || { echo "::error::stub source missing after creation: yuzora-stubs/empty.c"; exit 1; }
+          # Dummy source for the runs #62/#63/#64 java_library stubs
+          # above: a java_library stub needs at least one source file.
+          # (The cc stubs above use empty.c for the same reason.)
+          # The file must be named Empty.java: javac requires a public
+          # class to live in a file of the same name.
+          printf '// Stub source — see the runs #62/#63/#64 comment above.\npackage yuzora.stubs;\npublic class Empty {\n}\n' > yuzora-stubs/Empty.java
+          test -f yuzora-stubs/Empty.java \
+            || { echo "::error::stub source missing after creation: yuzora-stubs/Empty.java"; exit 1; }
+          # Runs #62/#63/#64 fix, conditional part: see the comment
+          # block at the top of this step. The synced
+          # build/soong/java/core-libraries/Android.bp is checked
+          # for a `name: "core-module-lib-stubs-for-system-modules"`
+          # definition line — a bare-name grep would also match
+          # the `libs:` reference, so the `name:` prefix is required.
+          # If the definition exists, no stub is created (an
+          # unconditional stub would be a duplicate module). If it
+          # does not exist, the stub is appended to the file the
+          # heredoc above just created.
+          if grep -q 'name: "core-module-lib-stubs-for-system-modules"' build/soong/java/core-libraries/Android.bp; then
+            echo "core-module-lib-stubs-for-system-modules already defined in synced build/soong — no stub needed."
+          else
+            cat >> yuzora-stubs/Android.bp <<'EOF'
+          java_library {
+              name: "core-module-lib-stubs-for-system-modules",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              visibility: [
+                  "//visibility:public",
+              ],
           }
           EOF
             echo "core-module-lib-stubs-for-system-modules stub created (not defined in synced build/soong)."
