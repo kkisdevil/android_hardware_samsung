@@ -39,6 +39,26 @@
   NO manifest change: no project added, none removed, still 32 projects.
   Do NOT sync frameworks/base, libcore, external/conscrypt, external/icu or
   external/sqlite for these stubs, and do NOT set ALLOW_MISSING_DEPENDENCIES.
+
+  Runs #87 (45778454848, 14m59s), #88 (45779068699, 12m8s) and #89
+  (45779199983, 16m7s), all 2026-11-26: FAILED at Soong ninja-file
+  generation in the "Build lights HAL" step, on the same fix code
+  (head 7b3b96f). The run #84 fix HELD in all three (prune step +
+  pre-build guard passed). The errors were "depends on undefined
+  module" for guava, linkerconfig and android.adpf.sessionmanager_aidl-java
+  (android_module_lib_stubs_current + core-lambda-stubs), plus invalid
+  sdk_version 29 and 9: the files under prebuilts/sdk/<ver>/public/
+  are NOT synced (only prebuilts/sdk/29/public/android.jar existed).
+  The fix is workflow-only: 8 empty stubs (guava, jcommander, truth,
+  truth-liteproto-extension, truth-proto-extension,
+  android_module_lib_stubs_current, core-lambda-stubs as java_library;
+  linkerconfig as cc_binary, device + host variants) and SDK shims
+  for versions 7, 8, 9, 28, 29 (empty android.jar + empty
+  framework.aidl) in .github/workflows/build-lights-hal.yml (see that
+  file's runs #87/#88/#89 comments). NO manifest change: no project
+  added, none removed, still 32 projects. Do NOT sync external/guava,
+  system/linkerconfig, libcore or prebuilts/sdk for these stubs, and do
+  NOT set ALLOW_MISSING_DEPENDENCIES.
 -->
 
 <manifest>
