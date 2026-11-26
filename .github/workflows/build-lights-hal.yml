@@ -4667,6 +4667,211 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #138/#139/#140 fix: the #135/#136/#137 fix HELD in
+          // all three (prune step passed + pre-build guard passed).
+          // All three fail at Soong ninja generation, tens of seconds
+          // into the build step, on the SAME fix code (head 8603eb6 -
+          // the #135/#136/#137 fix, workflow 3a06e37; #138 is the
+          // manifest push 03a736c, #139 the README push 8603eb6 -
+          // same workflow file in all three, #140 a manual dispatch
+          // ~04:25 IST on 8603eb6). Subset-reporting again: #138/#139
+          // report 3 lines, #140 reports 9 - the fix covers the UNION
+          // (9 lines, 9 distinct modules).
+          // Raw-log verbatim (live browser read of the job-logs.txt
+          // raw logs; genuine build-output lines only - the other
+          // "error:" matches in each log are the runner echoing the
+          // Build step script itself, the pre-build-guard echo
+          // commands that did NOT fire, NOT build errors). The
+          // FAILED line is out/soong/build.yuzora_lights.ninja (not
+          // build.ninja). No genuine "missing variant" line in any
+          // of the three runs.
+          //   #138 (45907425555, 14m34s, auto, manifest 03a736c) +
+          //   #139 (45907515196, 14m47s, auto, README 8603eb6) - 3
+          //   lines each, byte-identical: libsensorserviceaidl
+          //   (frameworks/native/services/sensorservice/aidl/
+          //   Android.bp:10) needs android.hardware.sensors-
+          //   V1-convert + android.frameworks.sensorservice-V1-ndk
+          //   + android.hardware.sensors-V3-ndk.
+          //   #140 (45907764291, 14m40s, manual ~04:25 IST, 8603eb6)
+          //   - 9 lines: the same 3 sensor lines PLUS libinput
+          //   (frameworks/native/libs/input/Android.bp:203) needs
+          //   libeigen + tensorflow_headers + libtflite_static +
+          //   libkernelconfigs +
+          //   android.companion.virtualdevice.flags-aconfig-cc +
+          //   libPlatformProperties.
+          // NOTE on :line numbers: Soong reports libinput at
+          // :203:1 but the live file has libinput at line 387
+          // (:203 is inside libinput_bindgen's bindgen_flags) -
+          // Soong attributes through the defaults expansion again,
+          // so key the fix off module names, not :line numbers
+          // (same caveat as the #122 liblp/libapex paths and the
+          // #125 fastboot/init lines).
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all defining projects UNSYNCED
+          // unless noted):
+          // - android.hardware.sensors-V1-convert: the generated
+          //   version-conversion C++ lib of the aidl_interface
+          //   android.hardware.sensors in hardware/interfaces/
+          //   sensors/aidl/Android.bp (lineage-22.2, versions_with_
+          //   info 1 + 2, frozen: false, cpp/java backends disabled,
+          //   ndk default-on, stability vintf) - hardware/interfaces
+          //   is synced but the closure prune keeps ONLY light/aidl
+          //   + compatibility_matrices + common/aidl + input/common/
+          //   aidl, so sensors/aidl is pruned. Used in static_libs
+          //   by libsensorserviceaidl (a plain cc_library), so a
+          //   plain cc_library stub satisfies it.
+          // - android.frameworks.sensorservice-V1-ndk: the generated
+          //   NDK lib of the aidl_interface
+          //   android.frameworks.sensorservice in frameworks/
+          //   hardware/interfaces/sensorservice/aidl/Android.bp
+          //   (aosp monorepo main: frozen version 1, cpp/java
+          //   backends disabled, ndk default-on, stability vintf,
+          //   srcs android/frameworks/sensorservice/*.aidl) -
+          //   frameworks/hardware/interfaces is NOT synced. Used in
+          //   shared_libs by libsensorserviceaidl, so a plain
+          //   cc_library stub satisfies it. (The interface imports
+          //   android.hardware.sensors-V2 - no stub for that: imports
+          //   of an unsynced interface never surface, only the three
+          //   modules synced code names directly.)
+          // - android.hardware.sensors-V3-ndk: the generated NDK lib
+          //   of the same android.hardware.sensors interface - with
+          //   frozen: false the current (unfrozen) version is V3.
+          //   Same project/prune story as -V1-convert. Used in
+          //   shared_libs by libsensorserviceaidl, so a plain
+          //   cc_library stub satisfies it.
+          // - libeigen: cc_library_headers in external/eigen/
+          //   Android.bp (export_include_dirs ["."]) - external/eigen
+          //   NOT synced. Used in header_libs (+ export_header_lib_
+          //   headers) by libinput; libtflite_framework also lists
+          //   it in header_libs, same stub covers both.
+          // - tensorflow_headers: cc_library_headers in external/
+          //   tensorflow/Android.bp (r32, export_include_dirs ["."],
+          //   vendor_available, host_supported, sdk_version current)
+          //   - external/tensorflow NOT synced. Used in header_libs
+          //   by libinput.
+          // - libtflite_static: cc_library_static in external/
+          //   tensorflow/tensorflow/lite/tflite_static.bp (r32,
+          //   host_supported, vendor_available, sdk_version current,
+          //   min_sdk_version 30, srcs :tflite_src) - external/
+          //   tensorflow NOT synced. Used in static_libs by libinput
+          //   (and by libtensorflowlite_jni); libinput's ldflags
+          //   reference libtflite_static.a, confirming the static
+          //   archive.
+          // - libkernelconfigs: cc_library_static in system/libvintf/
+          //   Android.bp (r32, defaults libvintf-defaults, host_
+          //   supported, recovery_available, srcs KernelConfigs.cpp
+          //   + KernelConfigParser.cpp, shared_libs libbase + libz)
+          //   - NOT kernel/configs: the synced kernel/configs tree
+          //   holds only config fragments + build rules, while
+          //   libkernelconfigs lives in system/libvintf, which is
+          //   NOT synced. Used in static_libs by libinput (and in
+          //   whole_static_libs by libvintf, stubbed plain in #131
+          //   - that stub does not reference it).
+          // - android.companion.virtualdevice.flags-aconfig-cc:
+          //   cc_aconfig_library in frameworks/base/AconfigFlags.bp
+          //   (lineage-22.2, lines 957-967, aconfig_declarations
+          //   android.companion.virtualdevice.flags-aconfig,
+          //   host_supported, mode test) - frameworks/base NOT
+          //   synced. Used in shared_libs by libinput; a
+          //   cc_aconfig_library generates a cc_library of the same
+          //   name, so a plain cc_library stub satisfies it (same as
+          //   the -aconfig-cc stubs in #122 / #128 / #135). The
+          //   sibling -java libs are NOT stubbed - no synced file
+          //   references them.
+          // - libPlatformProperties: Soong generates the cc_library
+          //   libPlatformProperties from the sysprop_library
+          //   "PlatformProperties" (android/sysprop/Platform-
+          //   Properties.sysprop, owner Platform) - one rust_library,
+          //   one java_library and one cc_library per sysprop_library
+          //   (source.android.com sysprops-apis doc). The defining
+          //   .bp file was NOT traced to a file this round (same
+          //   class as the #105 libgtest_isolated / libprocinfo
+          //   stubs - home not traced); a plain cc_library stub
+          //   satisfies the shared_libs use by libinput regardless
+          //   of which project defines it.
+          // COMPILE-STAGE CAVEAT: the two cc_library_headers stubs
+          // are bare (no export_include_dirs, no real headers), as
+          // all earlier headers stubs were. A bare stub passes
+          // Soong; dummy headers will be needed only if the next
+          // run fails at compile/link because libinput actually
+          // includes Eigen / tensorflow/lite headers (TfLiteMotion-
+          // Predictor.cpp does) - same class as the #111 libgsi and
+          // #135 flatbuffer caveats.
+          cc_library {
+              name: "android.hardware.sensors-V1-convert",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.frameworks.sensorservice-V1-ndk",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.sensors-V3-ndk",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libeigen",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "tensorflow_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libtflite_static",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libkernelconfigs",
+              srcs: ["empty.c"],
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.companion.virtualdevice.flags-aconfig-cc",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libPlatformProperties",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -4910,6 +5115,14 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #135/#136/#137 stubs created: flatbuffer_headers + libaudio_system_headers cc_library_headers stubs; android.permission.flags-aconfig-cc + android.companion.virtual.virtualdevice_aidl-cpp + libssl_fuzz_unsafe + libcrypto_fuzz_unsafe cc_library stubs; libhardware cc_library_shared stub. No type changes this round."
+          # Runs #138/#139/#140 fix: verify all 9 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135 loops above).
+          for stub in android.hardware.sensors-V1-convert android.frameworks.sensorservice-V1-ndk android.hardware.sensors-V3-ndk libeigen tensorflow_headers libtflite_static libkernelconfigs android.companion.virtualdevice.flags-aconfig-cc libPlatformProperties; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #138/#139/#140 stubs created: android.hardware.sensors-V1-convert + android.frameworks.sensorservice-V1-ndk + android.hardware.sensors-V3-ndk cc_library stubs; libeigen + tensorflow_headers cc_library_headers stubs; libtflite_static + libkernelconfigs cc_library_static stubs; android.companion.virtualdevice.flags-aconfig-cc + libPlatformProperties cc_library stubs. No type changes this round."
+
 
 
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
@@ -5190,6 +5403,11 @@ jobs:
           # Runs #135/#136/#137 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in flatbuffer_headers libaudio_system_headers android.permission.flags-aconfig-cc libhardware android.companion.virtual.virtualdevice_aidl-cpp libssl_fuzz_unsafe libcrypto_fuzz_unsafe; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #138/#139/#140 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.sensors-V1-convert android.frameworks.sensorservice-V1-ndk android.hardware.sensors-V3-ndk libeigen tensorflow_headers libtflite_static libkernelconfigs android.companion.virtualdevice.flags-aconfig-cc libPlatformProperties; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
