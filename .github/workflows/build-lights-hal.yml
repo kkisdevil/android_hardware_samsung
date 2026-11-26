@@ -1208,6 +1208,37 @@ jobs:
             exit 1
           fi
           echo "runs #78/#79/#80 pruned: system/tools/hidl/test + hidl2aidl/test."
+          # Run #84 fix (45767300168, 13m30s): five test-only dirs whose ONLY referencers are tests — prune them whole.
+          # system/core/fs_mgr/tests (tradefed), frameworks/native/services/gpuservice/vts (tradefed, compatibility-host-util),
+          # frameworks/native/libs/binder/tests/binder_sdk (cmake, ctest), frameworks/native/libs/binderthreadstate/1.0 (android.hidl.base@1.0_interface x5),
+          # system/tools/xsdc/tests (junit, stub-annotations, kxml2-2.3.0). Do NOT stub tradefed / compatibility-host-util / cmake / ctest /
+          # kxml2-2.3.0 / android.hidl.base@1.0_interface — their only referencers are these pruned dirs. Test/host modules are never built for this HAL-only target.
+          rm -rf system/core/fs_mgr/tests
+          rm -rf frameworks/native/services/gpuservice/vts
+          rm -rf frameworks/native/libs/binder/tests/binder_sdk
+          rm -rf frameworks/native/libs/binderthreadstate/1.0
+          rm -rf system/tools/xsdc/tests
+          if [ -d system/core/fs_mgr/tests ]; then
+            echo "::error::prune failed — system/core/fs_mgr/tests present"
+            exit 1
+          fi
+          if [ -d frameworks/native/services/gpuservice/vts ]; then
+            echo "::error::prune failed — frameworks/native/services/gpuservice/vts present"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/binder/tests/binder_sdk ]; then
+            echo "::error::prune failed — frameworks/native/libs/binder/tests/binder_sdk present"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/binderthreadstate/1.0 ]; then
+            echo "::error::prune failed — frameworks/native/libs/binderthreadstate/1.0 present"
+            exit 1
+          fi
+          if [ -d system/tools/xsdc/tests ]; then
+            echo "::error::prune failed — system/tools/xsdc/tests present"
+            exit 1
+          fi
+          echo "run #84 pruned: system/core/fs_mgr/tests + frameworks/native/services/gpuservice/vts + frameworks/native/libs/binder/tests/binder_sdk + frameworks/native/libs/binderthreadstate/1.0 + system/tools/xsdc/tests."
 
           # Kept paths must still exist (the prune must not have eaten them).
           for d in hardware/interfaces/light hardware/interfaces/light/aidl/Android.bp \
@@ -2072,6 +2103,276 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Run #84 fix (45767300168, 13m30s, 48 "depends on undefined module" errors):
+          // the core-library / Kotlin / test java deps below are referenced via `static_libs:`
+          // by java_library / java_api_library / java_binary_host modules in
+          // build/soong/java/core-libraries/Android.bp (conscrypt/i18n public + platform stubs),
+          // build/make/tools/check-flagged-apis (Kotlin stdlib + metalava), system/tools/xsdc
+          // (junit) and build/make/tools/product_config (junit). Upstream homes are the unsynced
+          // libcore / external/conscrypt / external/icu projects; the referencers are never built
+          // for this HAL-only target, so only the NAMES have to exist for Soong's parse. Empty
+          // java_library stubs with the dummy source Empty.java, exactly like the runs
+          // #62/#63/#64 ART stubs — NOT cc_defaults or java_defaults. Public visibility on
+          // purpose (see the VTS helper stub above).
+          java_library {
+              name: "conscrypt.module.public.api.stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "i18n.module.public.api.stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "conscrypt.module.platform.api.stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "legacy.i18n.module.platform.api.stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "stable.i18n.module.platform.api.stubs",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "art.module.public.api.stubs.exportable",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "conscrypt.module.public.api.stubs.exportable",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "i18n.module.public.api.stubs.exportable",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "art.module.public.api.stubs.exportable.module_lib",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "conscrypt.module.platform.api.stubs.exportable",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "legacy.i18n.module.platform.api.stubs.exportable",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "stub-annotations",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "junit",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "kotlin-stdlib",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "kotlin-stdlib-jdk7",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "kotlin-stdlib-jdk8",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "kotlin-annotations",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "metalava-signature-reader",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_library {
+              name: "metalava-tools-common-m2-deps",
+              srcs: ["Empty.java"],
+              sdk_version: "none",
+              system_modules: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          // Run #84 fix: the three java_api_contribution stubs for core.current.stubs.from-text.
+          // A java_api_contribution with no api_file FAILS with "has an empty api file", and an
+          // empty api_surface FAILS in sortApiFilesByApiScope — so each stub needs api_surface
+          // "core" + api_file pointing at a real file (empty-api.txt, created below). Do NOT stub
+          // these as java_library (see the runs #62/#63/#64 note at the top of this step).
+          java_api_contribution {
+              name: "art.module.public.api.stubs.source.api.contribution",
+              api_surface: "core",
+              api_file: "empty-api.txt",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_api_contribution {
+              name: "conscrypt.module.public.api.stubs.source.api.contribution",
+              api_surface: "core",
+              api_file: "empty-api.txt",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          java_api_contribution {
+              name: "i18n.module.public.api.stubs.source.api.contribution",
+              api_surface: "core",
+              api_file: "empty-api.txt",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          // Run #84 fix: libsqlite + libchrome-gestures_headers. Soong's python.go adds libsqlite
+          // as a launcher SHARED-lib dep of prebuilts/build-tools py3-stdlib-prebuilt, so the stub
+          // must be cc_library_shared (not static), host_supported: true. libchrome-gestures_headers
+          // is used in header_libs + export_header_lib_headers by libinputflinger_headers, so it is
+          // a cc_library_headers stub, host_supported: true, no srcs. Both are never built here.
+          cc_library_shared {
+              name: "libsqlite",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libchrome-gestures_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -2134,6 +2435,18 @@ jobs:
           grep -q "library_linking_strategy_cc_defaults" yuzora-stubs/Android.bp \
             || { echo "::error::stub does not use library_linking_strategy_cc_defaults"; exit 1; }
           echo "apex-lowest-min-sdk-version stub created."
+          # Run #84 fix: empty api file for the java_api_contribution stubs above, created in
+          # the same heredoc style as the compatibility_matrix.xsd skeleton above. A
+          # java_api_contribution with no api_file FAILS with "has an empty api file", so the
+          # file must exist (it is empty by design — test -f below, NOT test -s).
+          cat > yuzora-stubs/empty-api.txt <<'EOF'
+          EOF
+          test -f yuzora-stubs/empty-api.txt || { echo "::error::stub source missing after creation: yuzora-stubs/empty-api.txt"; exit 1; }
+          # Run #84 fix: verify all 24 new stubs are present in yuzora-stubs/Android.bp.
+          for stub in conscrypt.module.public.api.stubs i18n.module.public.api.stubs conscrypt.module.platform.api.stubs legacy.i18n.module.platform.api.stubs stable.i18n.module.platform.api.stubs art.module.public.api.stubs.exportable conscrypt.module.public.api.stubs.exportable i18n.module.public.api.stubs.exportable art.module.public.api.stubs.exportable.module_lib conscrypt.module.platform.api.stubs.exportable legacy.i18n.module.platform.api.stubs.exportable stub-annotations junit kotlin-stdlib kotlin-stdlib-jdk7 kotlin-stdlib-jdk8 kotlin-annotations metalava-signature-reader metalava-tools-common-m2-deps art.module.public.api.stubs.source.api.contribution conscrypt.module.public.api.stubs.source.api.contribution i18n.module.public.api.stubs.source.api.contribution libsqlite libchrome-gestures_headers; do
+            grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "run #84 stubs created: conscrypt/i18n core-library + kotlin + metalava + junit java_library stubs, 3 java_api_contribution stubs, libsqlite + libchrome-gestures_headers (+ empty-api.txt)."
           echo "use_libaidlvintf_gtest_helper_static + neuralnetworks_utils_defaults stubs created."
           echo "keymint_use_latest_hal_aidl_ndk_shared + avf_build_flags_cc + libvintf_static_user_defaults stubs created."
           echo "runs #48/#49/#50 stubs created: power/graphics -ndk_shared + -ndk_static + -ndk_export_shared, cts_defaults, android.os.hintmanager_aidl-ndk (+ empty.c)."
@@ -2320,6 +2633,31 @@ jobs:
           done
           python3 -c "import zipfile; [zipfile.ZipFile(p) for p in ('prebuilts/sdk/29/public/android.jar', 'prebuilts/sdk/tools/core-lambda-stubs.jar')]" \
             || { echo "::error::pre-build guard: SDK shim is not a valid zip"; exit 1; }
+          # Run #84 fix: the new stubs must be present and the 5 pruned test dirs absent at build time.
+          test -f yuzora-stubs/empty-api.txt || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/empty-api.txt"; exit 1; }
+          for stub in conscrypt.module.public.api.stubs i18n.module.public.api.stubs conscrypt.module.platform.api.stubs legacy.i18n.module.platform.api.stubs stable.i18n.module.platform.api.stubs art.module.public.api.stubs.exportable conscrypt.module.public.api.stubs.exportable i18n.module.public.api.stubs.exportable art.module.public.api.stubs.exportable.module_lib conscrypt.module.platform.api.stubs.exportable legacy.i18n.module.platform.api.stubs.exportable stub-annotations junit kotlin-stdlib kotlin-stdlib-jdk7 kotlin-stdlib-jdk8 kotlin-annotations metalava-signature-reader metalava-tools-common-m2-deps art.module.public.api.stubs.source.api.contribution conscrypt.module.public.api.stubs.source.api.contribution i18n.module.public.api.stubs.source.api.contribution libsqlite libchrome-gestures_headers; do
+            grep -q "$stub" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          if [ -d system/core/fs_mgr/tests ]; then
+            echo "::error::pre-build guard: system/core/fs_mgr/tests present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/services/gpuservice/vts ]; then
+            echo "::error::pre-build guard: frameworks/native/services/gpuservice/vts present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/binder/tests/binder_sdk ]; then
+            echo "::error::pre-build guard: frameworks/native/libs/binder/tests/binder_sdk present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/binderthreadstate/1.0 ]; then
+            echo "::error::pre-build guard: frameworks/native/libs/binderthreadstate/1.0 present at build time"
+            exit 1
+          fi
+          if [ -d system/tools/xsdc/tests ]; then
+            echo "::error::pre-build guard: system/tools/xsdc/tests present at build time"
+            exit 1
+          fi
           echo "Pre-build guard passed: pruned paths absent, stubs present."
           # Single module only. No ALLOW_MISSING_DEPENDENCIES — a missing
           # dep must fail here, not be silently skipped.
