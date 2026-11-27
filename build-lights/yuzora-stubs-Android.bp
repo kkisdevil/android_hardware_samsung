@@ -5869,3 +5869,107 @@ cc_library_static {
         "//visibility:public",
     ],
 }
+
+// Runs #219/#220/#221/#222 fix: 7 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// 2 plain cc_library:
+//   android.hardware.graphics.composer@2.2 — hidl_interface in
+//     the pruned hardware/interfaces/graphics/composer/2.2 dir
+//     (interfaces common@1.0 + common@1.1 + composer@2.1 +
+//     hidl.base@1.0, gen_java false); same form as the #214
+//     composer@2.1 and #210 composer@2.4 stubs.
+//   android.hardware.graphics.composer@2.3 — hidl_interface in
+//     the pruned hardware/interfaces/graphics/composer/2.3 dir
+//     (interfaces common@1.0 + common@1.1 + common@1.2 +
+//     composer@2.1 + composer@2.2 + hidl.base@1.0, gen_java
+//     false); same form.
+// 5 cc_library_headers (all consumed via header_libs by
+// libcompositionengine_defaults):
+//   android.hardware.graphics.composer@2.1-command-buffer —
+//     cc_library_headers in the pruned
+//     hardware/interfaces/graphics/composer/2.1/utils/command-buffer
+//     dir (shared_libs composer@2.1 + libfmq + libsync).
+//   android.hardware.graphics.composer@2.2-command-buffer —
+//     cc_library_headers in the pruned 2.2/utils/command-buffer
+//     dir (shared_libs composer@2.2, header_libs
+//     @2.1-command-buffer).
+//   android.hardware.graphics.composer@2.3-command-buffer —
+//     cc_library_headers in the pruned 2.3/utils/command-buffer
+//     dir (shared_libs composer@2.3, header_libs
+//     @2.2-command-buffer).
+//   android.hardware.graphics.composer@2.4-command-buffer —
+//     cc_library_headers in the pruned 2.4/utils/command-buffer
+//     dir (shared_libs composer@2.4, header_libs
+//     @2.3-command-buffer).
+//   android.hardware.graphics.composer3-command-buffer —
+//     cc_library_headers in the pruned
+//     hardware/interfaces/graphics/composer/aidl dir
+//     (Android.bp:85; shared_libs common-V2-ndk + libbase + libfmq
+//     + libsync, static_libs libaidlcommonsupport).
+// A plain cc_library yields both variants, so one stub satisfies
+// shared_libs consumers (libcompositionengine) alike; a
+// cc_library_headers stub satisfies header_libs consumers. No
+// sdk_version on any new stub: zero sdk_version hits on either
+// consumer file (verified on CompositionEngine/Android.bp and
+// renderengine/benchmark/Android.bp).
+// libjnigraphics is NOT stubbed: its only in-tree Soong consumer
+// is the librenderengine_bench benchmark, whose dir is pruned
+// whole this round (see the workflow comment). Upstream type
+// verified for the record: cc_library_shared in the unsynced
+// frameworks/base/native/graphics/jni/Android.bp (r32 +
+// lineage-22.2 identical) — NOT frameworks/base/libs/jnigraphics,
+// which does not exist.
+cc_library {
+    name: "android.hardware.graphics.composer@2.2",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.composer@2.3",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "android.hardware.graphics.composer@2.1-command-buffer",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "android.hardware.graphics.composer@2.2-command-buffer",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "android.hardware.graphics.composer@2.3-command-buffer",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "android.hardware.graphics.composer@2.4-command-buffer",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "android.hardware.graphics.composer3-command-buffer",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
