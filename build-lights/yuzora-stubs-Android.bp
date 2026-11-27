@@ -5421,3 +5421,110 @@ cc_library_static {
         "//visibility:public",
     ],
 }
+// Runs #195/#196/#197/#198 fix: 10 new stubs (see the comment block in
+// the prune step of .github/workflows/build-lights-hal.yml for the
+// per-module verification).
+// 8 plain cc_library — a plain cc_library yields both variants,
+// so one stub satisfies the shared_libs and static_libs consumers
+// alike; same form as the #156 allocator@2.0 stub and the #174
+// health@2.1 stub. 3 are HIDL @x.y libs (sensors@1.0,
+// sensorservice@1.0, dumpstate@1.0 + @1.1 — the last two are two
+// entries in this count, so 4 HIDL libs total), 1 is a HIDL -convert
+// lib (sensors@1.0-convert), 1 is an AIDL -ndk lib (dumpstate-V1-ndk),
+// 2 are aconfig-generated cc_aconfig_library libs
+// (android.tracing.flags_c_lib, device_policy_aconfig_flags_c_lib).
+// 2 cc_library_static (libhealthhalutils + libhealthshim — both
+// upstream cc_library_static, both consumed via static_libs by
+// libstoraged through storaged_defaults).
+// No sdk_version on any new stub: no consumer sets sdk_version
+// (verified by grep over all 7 consumer files).
+cc_library {
+    name: "android.hardware.sensors@1.0-convert",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.frameworks.sensorservice@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.sensors@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.dumpstate@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.dumpstate@1.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.dumpstate-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.tracing.flags_c_lib",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "device_policy_aconfig_flags_c_lib",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libhealthhalutils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libhealthshim",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
