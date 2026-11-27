@@ -2996,6 +2996,178 @@ still 32 projects.
   which touches the cache steps and needs his word - not changed in
   this fix round.
 
+  Runs #223 (46073941448, 12m45s, stubs push 35d5ab1, job
+  140757147473), #224 (46074141600, 12m59s, manifest push 36bed98,
+  job 140757786281), #225 (46074241281, 13m49s, README push 942d822,
+  job 140758102502) and #226 (46074455325, 15m24s, manual dispatch
+  ~03:35 IST on commit 942d822, job 140758791016). ALL FAILED at
+  Soong ninja-file generation, on the SAME fix code (head 942d822
+  - the runs #219/#220/#221/#222 7-stub + 1-prune fix, workflow
+  af8c423), except #223, which ran the PRE-fix workflow 1f43351
+  (staged-commit artifact: the stubs push landed before the
+  workflow push, same pattern as #195/#199/#207/#211). Steps
+  (#226): Restore 0s (MISS), sync 11m02s, Prune 1s (passed), Build
+  38s FAILED (exit 1). #224/#225: Build 38s FAILED. THE #222 FIX
+  HELD for the 7 composer modules (zero genuine errors in #226)
+  and THE #222 PRUNE HELD (zero librenderengine_bench lines in
+  #224/#225/#226). #223's single libjnigraphics line is the staged
+  old-workflow artifact, NOT a fix failure.
+  NEW FAILURE LAYER - a NEW class (the filesystem / system-image
+  layer), NOT a regular-module layer. #223 (whole raw log,
+  confirmed 2026-11-28 ~04:22 IST): EXACTLY 1 genuine error -
+  librenderengine_bench needs libjnigraphics
+  (frameworks/native/libs/renderengine/benchmark/Android.bp:25:1,
+  22:13:33Z). ZERO system-image errors; neither consumer name
+  occurs in the raw log at all. #224/#225/#226: 315 genuine
+  lines, 313 distinct modules, 2 consumers (whole raw log of
+  #226, 1,449 lines, one error block 22:20:53.394-22:20:53.436Z;
+  only "error: ... depends on undefined module ..." lines
+  counted, "#" comment echoes and "Or did you mean" excluded).
+  Consumer 1 - yuzora_lights_generated_system_image
+  (build/soong/fsgen/Android.bp:31:1): libcompiler_rt,
+  update_engine_sideload. Consumer 2 -
+  aosp_shared_system_image
+  (build/make/target/product/generic/Android.bp:1037:1): 313
+  modules - BackupRestoreConfirmation, BasicDreams,
+  BlockedNumberProvider, BluetoothMidiService, BookmarkProvider,
+  BuiltInPrintService, CalendarProvider, CallLogBackup,
+  CameraExtensionsProxy, CaptivePortalLogin, CarrierDefaultApp,
+  CellBroadcastLegacyApp, CertInstaller, CompanionDeviceManager,
+  ContactsProvider, CredentialManager, DeviceAsWebcam,
+  DeviceDiagnostics, DocumentsUI, DownloadProvider,
+  DownloadProviderUi, DynamicSystemInstallationService,
+  E2eeContactKeysProvider, EasterEgg, ExtShared,
+  ExternalStorageProvider, FusedLocation, HTMLViewer, InputDevices,
+  IntentResolver, KeyChain, LiveWallpapersPicker, LocalTransport,
+  ManagedProvisioning, MediaProviderLegacy, MmsService, MtpService,
+  MusicFX, NetworkStack, ONS, PacProcessor, PackageInstaller,
+  PartnerBookmarksProvider, PrintRecommendationService, PrintSpooler,
+  ProxyHandler, SecureElement, SettingsProvider, SharedStorageBackup,
+  Shell, SimAppDialog, SoundPicker, StatementService, Stk, Tag,
+  TeleService, Telecom, TelephonyProvider, Traceur,
+  UserDictionaryProvider, VpnDialogs, WallpaperBackup,
+  adbd_system_api, android.test.runner, aosp_mainline_modules,
+  com.android.cellbroadcast, com.android.future.usb.accessory,
+  com.android.location.provider, com.android.media.remotedisplay,
+  com.android.media.remotedisplay.xml, com.android.mediadrm.signer,
+  com.android.nfc_extras, com.android.nfcservices,
+  framework-graphics, framework-location,
+  framework-minus-apex-install-dependencies,
+  framework-connectivity-b, hwservicemanager_compat_symlink_module,
+  hyph-data, ims-common, javax.obex, perfetto-extras, services,
+  telephony-common, voip-common, com.android.crashrecovery,
+  com.android.neuralnetworks, com.android.profiling, AvatarPicker,
+  com.android.uprobestats, android.system.virtualizationcommon-ndk,
+  android.system.virtualizationservice-ndk, drmserver, mediaserver,
+  android.hardware.biometrics.fingerprint@2.1,
+  android.hardware.radio.config@1.0,
+  android.hardware.radio.deprecated@1.0, android.hardware.radio@1.0,
+  android.hardware.radio@1.1, android.hardware.radio@1.2,
+  android.hardware.radio@1.3, android.hardware.radio@1.4,
+  android.hardware.secure_element@1.0, app_process,
+  boringssl_self_test, heapprofd_client, libEGL_angle, libFFTEm,
+  libGLESv1_CM_angle, libGLESv2_angle, libOpenMAXAL, libOpenSLES,
+  libaaudio, libalarm_jni, libamidi, libandroid_runtime,
+  libandroid_servers, libandroidfw, libartpalette-system,
+  libaudio-resampler, libaudioeffect_jni, libaudiohal,
+  libaudiopolicyengineconfigurable, libcamera2ndk, libcompiler_rt,
+  libdrm, libdrmframework, libdrmframework_jni, libfilterfw,
+  libfilterpack_imageproc, libfwdlockengine, libhidltransport,
+  libhwbinder, libiprouteutil, libjnigraphics, libjpeg, libmedia,
+  libmedia_jni, libmediandk, libmonkey_jni, libmtp, libnetd_client,
+  libnetlink, libneuralnetworks_packageinfo, libnl, libpdfium,
+  libpolicy-subsystem, libpower, libradio_metadata, librs_jni,
+  librtp_jni, libsfplugin_ccodec, libskia, libsonic, libsonivox,
+  libsoundpool, libspeexresampler, libstagefright,
+  libstagefright_foundation, libstagefright_omx, libvintf_jni,
+  libwebviewchromium_loader, libwebviewchromium_plat_support,
+  libwilhelm, abx, aconfigd-system, am,
+  android.system.suspend-service, appops, appwidget, audioserver,
+  bcc, blank_screen, blkid, bmgr, bootanimation, bpfloader, bu,
+  cameraserver, content, cppreopts.sh, credstore, device_config,
+  dirty-image-objects, dmesgd, dnsmasq, dpm, dump.erofs, e2fsck,
+  enhanced-confirmation.xml, flags_health_check,
+  framework-audio_effects.xml, framework-sysconfig.xml, fsck.f2fs,
+  fsck_msdos, gpu_counter_producer, gsi_tool, gsid, heapprofd, hid,
+  hiddenapi-package-whitelist.xml, idc_data, idmap2, idmap2d, ime,
+  incident, incident-helper-cmd, incident_helper, incidentd,
+  initial-package-stopped-states.xml, input, ip, iptables,
+  kcmdlinectrl, keychars_data, keylayout_data, keystore2, ld.mc,
+  lmkd, locksettings, lpdump, make_f2fs, mdnsd,
+  media_profiles_V1_0.dtd, mediacodec.policy, mediaextractor,
+  mediametrics, misctrl, mke2fs, mkfs.erofs, monkey, mtectrl, ndc,
+  netd, netutils-wrapper-1.0, odsign,
+  package-shareduid-allowlist.xml, perfetto, ping, ping6, pintool,
+  platform.xml, pm, preinstalled-packages-asl-files.xml,
+  preinstalled-packages-platform.xml,
+  preinstalled-packages-strict-signature.xml, preloaded-classes,
+  privapp-permissions-platform.xml, prng_seeder, recovery-persist,
+  recovery-refresh, requestsync, resize2fs, schedtest, screencap,
+  screenrecord, secdiscard, settings, sgdisk, sm, svc,
+  system_manifest.xml, tc, telecom, traced, traced_probes,
+  tradeinmode, tune2fs, uiautomator, uinput, uncrypt, update_engine,
+  update_engine_sideload, update_verifier, vdc, virtual_camera,
+  vold, vr, wifi.rc, wificond, wm, mm_daemon, adevice_fingerprint,
+  arping, avbctl, bootctl, iotop, iperf3, iw, ot-cli-ftd, ot-ctl,
+  procrank, profcollectctl, profcollectd, sanitizer-status, showmap,
+  sqlite3, ss, start_with_lockagent, strace, su, tinycap,
+  tinyhostless, tinymix, tinypcminfo, tinyplay, tracepath,
+  tracepath6, traceroute6, unwind_info, unwind_reg_info,
+  unwind_symbols, update_engine_client. (Telecom and telecom are
+  distinct names; both appear once.) The "libcharger_sysprop"
+  lines are a CONFIRMED PHANTOM again (zero genuine errors in
+  #226; only "#" comment lines + one "Or did you mean"
+  suggestion), same class as #152/#161/#174/#177/#182/#186/#194/
+  #198/#202/#206/#210/#214/#218/#222.
+  MECHANISM - PHASE MASKING: the filesystem modules' deps resolve
+  in a LATER phase than ordinary modules' deps; a single remaining
+  ordinary-module error masks the whole later layer (#223: 1
+  ordinary error, ZERO filesystem errors, neither consumer name
+  even in the log; #224/#225/#226: zero ordinary errors, 315
+  filesystem errors). The layer's code existed in the synced tree
+  since at least the 2026-11-26 local sync - NOT new upstream code
+  and NOT caused by the #222 fix. Same lesson as #185/#202:
+  "never reported" means "not yet reached".
+  Root causes, verified in the synced tree: consumer 1 is
+  GENERATED by the fsgen soong_filesystem_creator plugin
+  (filesystem_creator.go:176 "%s_generated_%s", prefix = device
+  product yuzora_lights); its deps are PRODUCT_PACKAGES (added
+  ONLY IF the module exists - collectDepsMutator) PLUS the
+  hardcoded fsDeps["system"] extras (fsgen_mutators.go:103-108),
+  of which exactly 2 are undefined (the other 8 resolve - proven
+  by the #226 raw log). Consumer 2 inherits its dep set from the
+  system_image_defaults module in the same file via `defaults:` -
+  a hardcoded deps list of the whole system-image contents; the
+  defaults module itself creates no edges. NOTHING references
+  aosp_shared_system_image (whole-tree grep: only its own
+  definition + one comment in filesystem_creator.go:225).
+  Fix: 2 new plain cc_library stubs (libcompiler_rt,
+  update_engine_sideload - both UNLOCATED definitions, per the
+  #186/#202 precedent; the consumer edge is a filesystem Deps
+  edge, type-agnostic; never compiled for this target) + DISABLE
+  aosp_shared_system_image (`enabled: false,` after its `name:`
+  line in generic/Android.bp). Evidence for the disable: the
+  other two android_system_image modules in the tree are DISABLED
+  by default and produce ZERO errors despite undefined deps
+  (android_gsi + aosp_system_image in gsi/Android.bp:155/:171).
+  No sdk_version on either new stub. No new projects (still 32).
+  The prune-step check and the pre-build guard both verify the new
+  stubs, their types, and the disable. Alternatives rejected
+  (recorded in the workflow comment): stub all 313 modules; delete
+  the block; remove the 313 entries from the defaults list; sync
+  the unsynced projects (forbidden); ALLOW_MISSING_DEPENDENCIES
+  (forbidden); prune generic/Android.bp whole; prune the generated
+  module (impossible - generated at build time).
+
+  CACHE NOTE (runs #223/#224/#225/#226): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~9-12 min) and no Save step is expected to run - #226:
+  Restore 0s MISS, sync 11m02s; no "Cache saved" line in any run.
+  The next run will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
