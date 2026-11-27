@@ -880,6 +880,60 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #144 (45915274992, 13m5s, auto, manifest 12f612a),
+  #145 (45915356532, 13m21s, auto, README add4635) and #146
+  (45915696899, 11m6s, manual dispatch ~05:45 IST 2026-11-27,
+  head add4635 - the runs #141/#142/#143 fix, workflow
+  e5946a7): ALL FAILED at Soong ninja-file generation, 36-51s
+  into the "Build lights HAL" step. The #141/#142/#143 fix
+  HELD in all three (prune step passed + pre-build guard
+  passed, ZERO "depends on undefined module" / "missing
+  variant" lines in any raw log - the 9 new stubs all
+  resolved). NEW failure class, not an undefined module: a
+  Soong dependency cycle, raw-log verbatim from #146
+  (job-logs.txt, Build step lines 476-478; log-search verified
+  0 matches for "depends on undefined module", "missing
+  variant" and "undefined"): prebuilts/clang/host/linux-x86/
+  Android.bp:444:1 "encountered dependency cycle:" -
+  yuzora-stubs/Android.bp:620:1 module "libwinpthread" variant
+  "windows_x86_static" depends on module "libc++_static"
+  variant "windows_x86_static" - prebuilts/clang/host/
+  linux-x86/Android.bp:444:1 module "libc++_static" variant
+  "windows_x86_static" depends on module "libwinpthread"
+  variant "windows_x86_static". FAILED line is
+  out/soong/build.yuzora_lights.ninja. Root cause, verified
+  in the SYNCED Soong source (build/soong/cc): (1) the
+  libwinpthread stub (cc_library_static, from the #75/#76/#77
+  fix) has no `stl:` property, so it takes Soong's default
+  STL - stl.go says a blank stl selects "libc++_static" -
+  so the stub depends on the real libc++_static
+  (llvm_prebuilt_library_static, prebuilts/clang/host/
+  linux-x86/Android.bp:444, windows variant, since the stub
+  is windows-enabled). (2) The real libc++_static depends
+  back on the stub: linker.go:441-442 appends "libwinpthread"
+  to LateStaticLibs for EVERY windows-variant cc module
+  except libwinpthread itself. The two edges close a cycle.
+  It surfaced only now because Soong's cycle check runs once
+  all modules resolve - every earlier run died on
+  undefined-module errors first (same one-layer-deeper
+  pattern as #30/#33/#75/#102). The fix is workflow-only:
+  `stl: "none"` on the libwinpthread stub (the empty.c stub
+  needs no STL; the real libc++_static block itself carries
+  `stl: "none"`), checked in the prune step and the
+  pre-build guard. No new stubs, no new projects (still 32).
+  No type changes this round. The cache steps are untouched
+  (see the save-always note below).
+
+  CACHE NOTE (run #146): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 1s - a cache MISS,
+  sync took 8m50s, and "Post Restore repo cache" was SKIPPED
+  (0s), so no cache was saved - same as runs #118/#121/#124/
+  #127/#130/#134/#137/#140/#143. The next run will also
+  restore-miss and sync ~9-12 min. The upstream-recommended
+  fix is separate restore + save steps (the save step with
+  `if: always()`), which touches the cache steps and needs his
+  word - not changed in this fix round.
+
   -->
 
 <manifest>
