@@ -2895,6 +2895,107 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #219 (46067407201, 12m36s, stubs push 5382ea0, job
+  140735970993), #220 (46067696202, 15m04s, manifest push f3f6f14,
+  job 140736907151), #221 (46067834619, 15m34s, README push 9165fee,
+  job 140737353101) and #222 (46068188980, 14m53s, manual dispatch
+  ~02:37 IST on commit 9165fee, job 140738496315). ALL FAILED at
+  Soong ninja-file generation, on the SAME fix code (head 9165fee
+  - the runs #215/#216/#217/#218 manifest-XML + 4-stub fix,
+  workflow 1f43351). Steps (#222): Restore 1s (MISS), sync 11m00s,
+  Prune 1s (passed), Build 37s FAILED (exit 1). #219: Restore 0s,
+  sync 9m00s, Prune 3s, Build 53s. #220: Restore 0s, sync 11m11s,
+  Prune 4s, Build 44s. #221: Restore 1s, sync 11m56s, Prune 1s,
+  Build 38s. THE #214 FIX HELD COMPLETELY in all four runs (zero
+  genuine errors for composer@2.1, libandroid,
+  automotive.display@1.0, displayservice@1.0) and THE #218 FIX HELD
+  COMPLETELY (zero genuine errors for fastboot@1.1,
+  fastboot-V1-ndk, confirmationui-V1-ndk, libfastbootshim). THE
+  #218 MANIFEST FIX HELD too: all four runs synced fine
+  (9m00s-11m56s), no manifest parse error. THE #214 PRUNES ARE NOW
+  TESTED - and they WORK: zero genuine androidx.* / secretkeeper
+  errors in any of the four runs. All four ran a workflow WITH the
+  prunes (#219 ran the #214 workflow a7475c9 from its trigger
+  commit 5382ea0; #220/#221/#222 ran 1f43351). The #215 "STILL
+  UNTESTED" caveat is now closed.
+  RUNS #219/#220/#221/#222 UNION (whole-job raw logs, browser
+  job-log reads of all four job-logs.txt; only lines starting
+  "error: ... depends on undefined module ..." counted, "#"
+  comment echoes and "Or did you mean" excluded; 14 "#" lines per
+  run): the genuine error set is IDENTICAL in all four runs - NO
+  subset variation this time. 8 genuine lines each, 8 distinct
+  (consumer, module) pairs, 1x each. libcompositionengine needs
+  android.hardware.graphics.composer@2.1-command-buffer +
+  @2.2-command-buffer + @2.3-command-buffer +
+  @2.4-command-buffer +
+  android.hardware.graphics.composer3-command-buffer +
+  android.hardware.graphics.composer@2.2 +
+  android.hardware.graphics.composer@2.3
+  (frameworks/native/services/surfaceflinger/CompositionEngine/
+  Android.bp:92:1). librenderengine_bench needs libjnigraphics
+  (frameworks/native/libs/renderengine/benchmark/Android.bp:25:1).
+  The "libcharger_sysprop" lines are a CONFIRMED PHANTOM again
+  (zero genuine errors in any run; 33-35 "#" comment lines per run
+  only), same class as #152/#161/#174/#177/#182/#186/#194/#198/
+  #202/#206/#210/#214/#218. FIRST-EVER reported: the first
+  -command-buffer libs (5), the first composer@2.2/@2.3 as
+  consumer deps (previously only ever listed as @2.4's hidl
+  interfaces), the first libcompositionengine consumer, the first
+  librenderengine_bench consumer, the first libjnigraphics (via a
+  prune, not a stub), the first run quartet with an IDENTICAL
+  genuine error set in all four runs (no subset variation).
+  Root causes, verified in the synced tree + upstream AOSP
+  android-15.0.0_r32: composer@2.2/@2.3 are hidl_interface in the
+  pruned hardware/interfaces/graphics/composer/2.2 + 2.3 dirs
+  (gen_java false); the five -command-buffer libs are
+  cc_library_headers in pruned dirs (2.1/2.2/2.3/2.4 utils/
+  command-buffer + composer/aidl Android.bp:85), all consumed via
+  header_libs by libcompositionengine_defaults. libjnigraphics is
+  cc_library_shared in the UNSYNCED frameworks/base/native/
+  graphics/jni/Android.bp (r32 + lineage-22.2 identical) - NOT
+  frameworks/base/libs/jnigraphics, which does not exist (404 on
+  both LineageOS lineage-22.2 and AOSP r32). Its only in-tree Soong
+  consumer is the librenderengine_bench benchmark, so the
+  benchmark dir is pruned whole instead of stubbing the lib
+  (benchmark-dir prune precedent #210; test-dir prunes #162/#165/
+  #195). The workflow prunes ALL of hardware/interfaces except
+  light, compatibility_matrices, common and input, so the in-tree
+  composer definitions are deleted before Soong runs. No
+  sdk_version on any new stub (zero sdk_version hits on either
+  consumer file). No new projects (still 32). Dep-closure verified
+  (audit over the erroring consumers' DIRECT deps): every other
+  direct dep is defined in-tree (non-pruned) or already stubbed.
+  Prune alternative for libcompositionengine considered and
+  REJECTED (recorded in the workflow comment): the dir holds the
+  in-graph lib itself (surfaceflinger/Android.bp references it),
+  so 7 stubs is the minimal fix. CORRECTION to the #218
+  carried-forward list: it wrongly retained libhealthhalutils +
+  libhealthshim (stubbed #195), allocator@3.0/@4.0 +
+  mapper@2.0/2.1/3.0 (stubbed #194) and mapper@4.0 (stubbed #111)
+  as "never reported" - all five were reported and stubbed in
+  their rounds.
+  Fix: 7 new stubs (2 plain cc_library:
+  android.hardware.graphics.composer@2.2 +
+  android.hardware.graphics.composer@2.3; 5 cc_library_headers:
+  android.hardware.graphics.composer@2.1-command-buffer,
+  @2.2-command-buffer, @2.3-command-buffer, @2.4-command-buffer,
+  android.hardware.graphics.composer3-command-buffer) + 1 dir
+  pruned whole (frameworks/native/libs/renderengine/benchmark,
+  killing the libjnigraphics dep). No sdk_version on any new stub.
+  The prune-step check and the pre-build guard both verify the new
+  stubs, their types, and the prune.
+
+  CACHE NOTE (runs #219/#220/#221/#222): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~9-12 min) and no Save step is expected to run - #219:
+  Restore 0s MISS, sync 9m00s; #220: Restore 0s MISS, sync 11m11s;
+  #221: Restore 1s MISS, sync 11m56s; #222: Restore 1s MISS, sync
+  11m00s; no "Cache saved" line in any run. The next run will also
+  restore-miss and sync ~9-12 min. The upstream-recommended fix is
+  separate restore + save steps (the save step with `if: always()`),
+  which touches the cache steps and needs his word - not changed in
+  this fix round.
+
   -->
 
 <manifest>
