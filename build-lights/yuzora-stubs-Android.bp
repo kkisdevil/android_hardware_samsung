@@ -1,0 +1,5056 @@
+// Stub — see the "Prune unneeded subtrees + stub missing
+// defaults" step in
+// .github/workflows/build-lights-hal.yml (run #36 fix).
+// Verbatim replica of the "apex-lowest-min-sdk-version"
+// definition from packages/modules/common/sdk/Android.bp
+// (LineageOS android_packages_modules_common, lineage-22.2,
+// lines 575-601; APEX_LOWEST_MIN_SDK_VERSION = "30", line 333).
+// The real project is NOT synced: its java/ + javatests/
+// concrete modules reference unsynced framework libs, so syncing
+// it would trade one undefined module for more. This stub gives
+// system/core/libutils (the only user in this tree) exactly what
+// the real definition gives it: min_sdk_version "30" by default.
+soong_config_module_type_import {
+    from: "system/apex/Android.bp",
+    module_types: [
+        "library_linking_strategy_cc_defaults",
+    ],
+}
+
+library_linking_strategy_cc_defaults {
+    name: "apex-lowest-min-sdk-version",
+    defaults_visibility: [
+        "//system/core/libutils:__subpackages__",
+    ],
+    min_sdk_version: "30",
+    soong_config_variables: {
+        library_linking_strategy: {
+            prefer_static: {
+                min_sdk_version: "apex_inherit",
+            },
+        },
+    },
+}
+
+// use_libaidlvintf_gtest_helper_static (runs #38/#39 fix):
+// empty cc_defaults stub for the VTS-test helper defined in
+// system/libvintf/libaidlvintf_test_helper/Android.bp (AOSP r32,
+// unsynced — its static_libs chain needs libz + libselinux).
+// Referenced by VTS target tests across hardware/interfaces and
+// hardware/google/interfaces (bluetooth + automotive/ivn in runs
+// #36/#38/#39). VTS tests are never built for this HAL-only
+// target, so only the NAME has to exist for Soong's parse.
+cc_defaults {
+    name: "use_libaidlvintf_gtest_helper_static",
+    // Public on purpose: VTS tests referencing this helper live
+    // all over hardware/interfaces + hardware/google/interfaces,
+    // and more may surface on later runs — a restricted list
+    // would turn an unknown user into a visibility error.
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+// neuralnetworks_utils_defaults (run #38 fix): empty cc_defaults
+// stub. Referenced by hardware/interfaces/neuralnetworks/utils/
+// {common,adapter/hidl}; NN utils are unrelated to the lights HAL
+// and never built here, so only the NAME has to exist.
+cc_defaults {
+    name: "neuralnetworks_utils_defaults",
+    // Public on purpose (see the VTS helper stub above): the
+    // known users are the NN utils dirs, but an unknown user
+    // elsewhere must not turn into a visibility error.
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+// keymint_use_latest_hal_aidl_ndk_shared (runs #46/#47 fix):
+// empty cc_defaults stub. Referenced in `defaults:` by
+// system/core/gatekeeperd gatekeeperd_defaults and
+// system/core/trusty/confirmationui
+// android.hardware.confirmationui-lib.trusty; defined as a
+// cc_defaults in hardware/interfaces/security/keymint/aidl —
+// a dir the closure prune deletes. Gatekeeperd /
+// ConfirmationUI are unrelated to the lights HAL and never
+// built here, so only the NAME has to exist.
+cc_defaults {
+    name: "keymint_use_latest_hal_aidl_ndk_shared",
+    // Public on purpose (see the VTS helper stub above).
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+// avf_build_flags_cc (runs #46/#47 fix): empty cc_defaults
+// stub. Referenced in `defaults:` by system/core/init
+// libinit.microdroid, init_second_stage.microdroid and
+// init_first_stage.microdroid; defined as a cc_defaults in
+// packages/modules/Virtualization (unsynced). The Microdroid
+// init variants are never built for this HAL-only target, so
+// only the NAME has to exist.
+cc_defaults {
+    name: "avf_build_flags_cc",
+    // Public on purpose (see the VTS helper stub above).
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+// libvintf_static_user_defaults (runs #46/#47 fix): empty
+// cc_defaults stub. Referenced in `defaults:` by
+// kernel/configs/xsd/kernelLifetimes/vts
+// vts_kernelLifetimes_validate_test (that dir is also pruned
+// above, so this stub is belt-and-braces for any other
+// referencer); defined as a cc_defaults in
+// system/libvintf/Android.bp (unsynced — syncing it would
+// cascade via libz + libselinux). VTS tests are never built
+// here, so only the NAME has to exist.
+cc_defaults {
+    name: "libvintf_static_user_defaults",
+    // Public on purpose (see the VTS helper stub above).
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+// Runs #48/#49/#50 fix: the AIDL `-ndk_shared` /
+// `-ndk_static` / `-ndk_export_shared` forwarding defaults
+// (all used in `defaults:` by frameworks/native modules, so
+// the stubs are cc_defaults, NOT libraries) + cts_defaults.
+// All nine are defined in dirs the closure prune deletes
+// (hardware/interfaces/power/aidl, graphics/*/aidl) or in
+// unsynced projects (CTS) — the referencing modules
+// (libpowermanager, libtonemap, libshaders, libgralloctypes,
+// libui, libgui, surfaceflinger, renderengine, MTS tests)
+// are never built for this HAL-only target, so only the NAME
+// has to exist for Soong's parse. Complete set proven by
+// scanning all 331 Android.bp files in the synced
+// frameworks/native + system/core trees (see the comment
+// block at the top of this step) — do NOT add one at a time.
+cc_defaults {
+    name: "android.hardware.power-ndk_shared",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_defaults {
+    name: "android.hardware.power-ndk_export_shared",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_defaults {
+    name: "android.hardware.power-ndk_static",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_defaults {
+    name: "android.hardware.graphics.common-ndk_shared",
+    // Runs #105/#106/#107 fix: the real generated defaults
+    // forwards the -ndk lib into shared_libs (that is how an
+    // aidl_interface's -ndk_shared defaults works); the empty
+    // stub is what makes Soong report
+    // android.hardware.graphics.common-V6-ndk as "not in
+    // shared_libs" on libgralloctypes' export_shared_lib_headers
+    // check (frameworks/native/libs/gralloc/types/Android.bp:58).
+    // V6 is the current version (aidl_interface frozen: false,
+    // aidl_api 1-5 + current) - the same name the export list
+    // names. The V6-ndk stub is added below.
+    shared_libs: [
+        "android.hardware.graphics.common-V6-ndk",
+    ],
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_defaults {
+    name: "android.hardware.graphics.common-ndk_static",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_defaults {
+    name: "android.hardware.graphics.composer3-ndk_shared",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_defaults {
+    name: "android.hardware.graphics.composer3-ndk_static",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_defaults {
+    name: "android.hardware.graphics.allocator-ndk_shared",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+// cts_defaults (runs #48/#49/#50 fix): empty cc_defaults
+// stub, belt-and-braces — the only referencer
+// (libnativehelper/tests_mts) is pruned above, so this stub
+// is inert unless another referencer surfaces on a later run.
+cc_defaults {
+    name: "cts_defaults",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+// android.os.hintmanager_aidl-ndk (runs #48/#49/#50 fix):
+// the aidl-generated NDK static lib for android.os.hintmanager
+// (frameworks/base, unsynced), used in whole_static_libs by
+// libpowermanager. whole_static_libs entries must be static
+// libraries, so this stub is an (empty) cc_library_static with
+// the dummy source created below — NOT a cc_defaults.
+// libpowermanager is never built here, so the empty lib never
+// links into anything.
+cc_library_static {
+    name: "android.os.hintmanager_aidl-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+// Runs #51/#52/#53 fix: `librenderengine_deps` (cc_defaults in
+// frameworks/native/libs/renderengine/Android.bp) has
+// `defaults: ["skia_renderengine_deps"]` and
+// `static_libs: ["libskia_renderengine"]`. Both are defined in
+// external/skia/Android.bp (LineageOS lineage-22.2:
+// skia_renderengine_deps = cc_defaults, lines 4129-4193;
+// libskia_renderengine = cc_library_static, lines 280-288) —
+// an unsynced project. Syncing external/skia would cascade
+// (libpng, libz, libarect, libperfetto, EGL/GLESv2/vulkan,
+// the whole Skia tree) for a RenderEngine the HAL never
+// needs, so stub both. skia_renderengine_deps is used in
+// `defaults:`, so it is a cc_defaults; libskia_renderengine
+// is used in `static_libs:`, so it is an (empty)
+// cc_library_static with the dummy source created below —
+// same form as the hintmanager stub. librenderengine is
+// never built here (not in the HAL closure), so the empty
+// lib never links into anything. Stub BOTH, not just the
+// reported one: Soong reports the first undefined dep per
+// module (defaults before static_libs), so the static_libs
+// dep would surface on the next run.
+cc_defaults {
+    name: "skia_renderengine_deps",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_library_static {
+    name: "libskia_renderengine",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Run #58 fix: `framework-module-defaults` +
+// `framework-system-server-module-defaults` (used in
+// `defaults:` by the java_sdk_library test modules
+// test_framework-apexd + test_service-apexd in
+// system/apex/apexd/apexd_testdata/Android.bp). Both are
+// java_defaults in frameworks/base (unsynced — see the
+// comment block at the top of this step). The referencers
+// are java_sdk_library modules, so the stubs are
+// java_defaults, NOT cc_defaults. The test modules are
+// never built here (not in the HAL closure), so only the
+// NAMES have to exist for Soong's parse. Public visibility
+// on purpose (see the VTS helper stub above): the known
+// users are the two test modules, but an unknown user
+// elsewhere must not turn into a visibility error.
+java_defaults {
+    name: "framework-module-defaults",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+
+java_defaults {
+    name: "framework-system-server-module-defaults",
+    defaults_visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #62/#63/#64 fix: the ART core-library stub
+// libraries (see the comment block at the top of this
+// step). All seven are used in `libs:` by the
+// java_system_modules in
+// build/soong/java/core-libraries/Android.bp, so the
+// stubs are empty java_library with a dummy source
+// (Empty.java, created below) — NOT cc_defaults or
+// java_defaults. The system-modules targets are never
+// built for this HAL-only target, so only the NAMES
+// have to exist for Soong's parse. Public visibility
+// on purpose: the referencers live in
+// build/soong/java/core-libraries, a different package
+// from yuzora-stubs. (The seventh module is handled by
+// the conditional block after the heredoc — it is NOT
+// in this list, so the stub check below stays meaningful.)
+
+java_library {
+    name: "art.module.public.api.stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+java_library {
+    name: "art.module.public.api.stubs.module_lib",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+java_library {
+    name: "art.module.intra.core.api.stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+java_library {
+    name: "art-module-intra-core-api-stubs-system-modules-lib",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+java_library {
+    name: "art.module.api.annotations.for.system.modules",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+java_library {
+    name: "core-lambda-stubs-for-system-modules",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #75/#76/#77 fix: the build/make host tools' java deps (see the comment block at
+// the top of this step). All are referenced via `static_libs:` (signapk, signtos,
+// apicheck, aconfig_protos, releasetools) except where noted, so the stubs are empty
+// java_library with the dummy source Empty.java — NOT cc_defaults or java_defaults —
+// exactly like the runs #62/#63/#64 ART stubs. The referencers are host tools
+// (signapk/signtos/apicheck/aconfig/releasetools/backported_fixes) that are never built
+// for this HAL-only target, so only the NAMES have to exist for Soong's parse. Two of
+// the deps are implicit, not explicit properties: backported_fixes_proto gets
+// libprotobuf-java-lite from its .proto src, and apex_manifest_proto_java gets
+// libprotobuf-java-full from `proto: { type: "full" }` — the stubs cover those too.
+// libtombstone_proto_java (system/core/debuggerd/proto) also references
+// libprotobuf-java-lite although #77 never reported it — the stubs cover the complete
+// layer, not just the reported subset (see the comment block). Public visibility on
+// purpose (see the VTS helper stub above): the known users live in build/make + system,
+// different packages from yuzora-stubs, and an unknown user elsewhere must not turn
+// into a visibility error. Upstream homes (all unsynced): external/protobuf
+// (libprotobuf-java-*), external/bouncycastle, external/conscrypt, external/apksig,
+// external/doclava, external/jsilver, prebuilts/misc/common/commons-cli (Make prebuilt).
+java_library {
+  name: "libprotobuf-java-full",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "libprotobuf-java-lite",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "libprotobuf-java-nano",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "bouncycastle-unbundled",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "bouncycastle-bcpkix-unbundled",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "conscrypt-unbundled",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "apksig",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "doclava",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "jsilver",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "commons-cli-1.2",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+// Runs #75/#76/#77 fix: "unsupportedappusage", referenced via `libs:` by
+// aconfig_storage_reader_java (build/make/tools/aconfig/aconfig_storage_read_api).
+// Upstream it is a java_library in frameworks/base (unsynced) — same stub form.
+java_library {
+  name: "unsupportedappusage",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+// Runs #75/#76/#77 fix: the five implicit java libs of the AppInRebootlessApex test
+// app (system/apex/apexd/apexd_testdata). The android_app module has no srcs/libs of
+// its own — Soong adds these as implicit app deps. Upstream homes (all unsynced):
+// frameworks/base (android.test.base, android.test.mock, org.apache.http.legacy) and
+// the HIDL-generated -java libs (android.hidl.base/manager-V1.0-java, whose
+// hidl_interface generators live in pruned hardware/interfaces dirs). Same stub form.
+java_library {
+  name: "android.test.base",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "android.test.mock",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "org.apache.http.legacy",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "android.hidl.base-V1.0-java",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+java_library {
+  name: "android.hidl.manager-V1.0-java",
+  srcs: ["Empty.java"],
+  sdk_version: "none",
+  system_modules: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+// Runs #75/#76/#77 fix: "core-all-system-modules", referenced via the scalar
+// `system_modules:` property by fake_device_config + aconfig_storage_stub_none
+// (build/make/tools/aconfig/fake_device_config) and aconfig_storage_file
+// (build/make/tools/aconfig/aconfig_storage_file). The property requires a
+// java_system_modules module — a java_library stub would fail Soong's type check —
+// so this stub IS a java_system_modules. Its libs list holds our own empty
+// core-lambda-stubs-for-system-modules stub (defined above) so the list is non-empty
+// and always resolves. Upstream it aggregates frameworks/base's system modules
+// (unsynced); the referencers are host tools never built here, so the aggregation is
+// irrelevant — only the NAME and the TYPE have to exist for Soong's parse.
+java_system_modules {
+  name: "core-all-system-modules",
+  libs: ["core-lambda-stubs-for-system-modules"],
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+// Runs #75/#76/#77 fix: "libwinpthread", the implicit Windows-host dep of
+// frameworks/native/libs/math libmath_headers (no such property in the file at
+// lineage-22.2 — Soong adds it for windows-enabled cc modules; HOST_CROSS_OS=windows).
+// Linked statically, so this stub is an (empty) cc_library_static with the dummy source
+// empty.c — same form as the hintmanager/skia stubs. The defining project is unsynced
+// and libmath_headers is never built here, so the empty lib never links into anything.
+// Runs #144/#145/#146 fix: the #141/#142/#143 fix HELD in
+// all three (prune step passed + pre-build guard passed,
+// zero "depends on undefined module" / "missing variant"
+// lines in any raw log - the 9 new stubs all resolved).
+// All three fail at Soong ninja-file generation, 36-51s
+// into the build step, on the SAME fix code (head add4635
+// - the #141/#142/#143 fix, workflow e5946a7; #144 is the
+// manifest push 12f612a, #145 the README push add4635 -
+// same workflow file in all three, #146 a manual dispatch
+// ~05:45 IST on add4635). NEW failure class, not an
+// undefined module: a Soong dependency cycle, raw-log
+// verbatim from #146 (job-logs.txt, Build step lines
+// 476-478; log-search verified 0 matches for "depends on
+// undefined module", "missing variant" and "undefined"):
+//   error: prebuilts/clang/host/linux-x86/Android.bp:444:1:
+//     encountered dependency cycle:
+//   error: yuzora-stubs/Android.bp:620:1: module
+//     "libwinpthread" variant "windows_x86_static" depends
+//     on module "libc++_static" variant "windows_x86_static"
+//   error: prebuilts/clang/host/linux-x86/Android.bp:444:1:
+//     module "libc++_static" variant "windows_x86_static"
+//     depends on module "libwinpthread" variant
+//     "windows_x86_static"
+// FAILED line is out/soong/build.yuzora_lights.ninja.
+// Root cause, verified in the SYNCED Soong source
+// (build/soong/cc): (1) this stub has no `stl:` property,
+// so it takes Soong's default STL - stl.go says a blank
+// stl selects "libc++_static" (case "libc++",
+// "libc++_static", "" -> "libc++_static", and stl.deps
+// adds it as a dep) - so the stub depends on the real
+// libc++_static (llvm_prebuilt_library_static,
+// prebuilts/clang/host/linux-x86/Android.bp:444, the
+// windows variant, since this stub is windows-enabled).
+// (2) The real libc++_static depends back on this stub:
+// linker.go:441-442 appends "libwinpthread" to
+// LateStaticLibs for EVERY windows-variant cc module
+// except libwinpthread itself. The two edges close a
+// cycle. It surfaced only now because Soong's cycle
+// check runs once all modules resolve - every earlier
+// run died on undefined-module errors first (same
+// one-layer-deeper pattern as #30/#33/#75/#102). Fix:
+// `stl: "none"` on this stub (the empty.c stub needs no
+// STL; the real libc++_static block itself carries
+// `stl: "none"`). The reverse edge stays, one-way, so
+// the cycle is broken. The stub stays cc_library_static
+// with windows enabled - the #78/#79/#80 missing-variant
+// errors (os:windows,link:static) still need exactly
+// that. A second cycle behind this one, if any, will
+// surface on the next run the same way.
+cc_library_static {
+  name: "libwinpthread",
+  srcs: ["empty.c"],
+  stl: "none",
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+// Runs #75/#76/#77 fix: "libconscrypt_openjdk_jni", referenced via `jni_libs:` by
+// signapk (build/make/tools/signapk). Upstream it is the shared JNI library of
+// external/conscrypt (unsynced), so this stub is an (empty) cc_library_shared with the
+// dummy source empty.c — NOT a cc_library_static and NOT a java_library. signapk is
+// never built here, so the empty .so never links into anything.
+cc_library_shared {
+  name: "libconscrypt_openjdk_jni",
+  srcs: ["empty.c"],
+  host_supported: true,
+  target: { windows: { enabled: true } },
+  visibility: [
+    "//visibility:public",
+  ],
+}
+
+// Runs #78/#79/#80 fix: libsepol / libpcre2 / libselinux are
+// HOST tools (system/sepolicy/tools: libsepol via the
+// sepolicy_tools_defaults static_libs, libpcre2 via checkseapp
+// whole_static_libs, libselinux via checkfc static_libs), and
+// compatibility_matrix_schema is a filegroup in
+// system/libvintf/xsd/compatibilityMatrix/Android.bp (not synced).
+// The vintf plugin adds it implicitly and reads Srcs()[0] as
+// --xsd, but the .xml matrix modules are never built here (not
+// in the HAL closure), so the XSD content is never read; a
+// minimal valid XSD skeleton (created below) suffices.
+cc_library_static {
+    name: "libsepol",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_library {
+    name: "libpcre2",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+cc_library {
+    name: "libselinux",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+filegroup {
+    name: "compatibility_matrix_schema",
+    srcs: ["compatibility_matrix.xsd"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Run #84 fix (45767300168, 13m30s, 48 "depends on undefined module" errors):
+// the core-library / Kotlin / test java deps below are referenced via `static_libs:`
+// by java_library / java_api_library / java_binary_host modules in
+// build/soong/java/core-libraries/Android.bp (conscrypt/i18n public + platform stubs),
+// build/make/tools/check-flagged-apis (Kotlin stdlib + metalava), system/tools/xsdc
+// (junit) and build/make/tools/product_config (junit). Upstream homes are the unsynced
+// libcore / external/conscrypt / external/icu projects; the referencers are never built
+// for this HAL-only target, so only the NAMES have to exist for Soong's parse. Empty
+// java_library stubs with the dummy source Empty.java, exactly like the runs
+// #62/#63/#64 ART stubs — NOT cc_defaults or java_defaults. Public visibility on
+// purpose (see the VTS helper stub above).
+java_library {
+    name: "conscrypt.module.public.api.stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "i18n.module.public.api.stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "conscrypt.module.platform.api.stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "legacy.i18n.module.platform.api.stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "stable.i18n.module.platform.api.stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "art.module.public.api.stubs.exportable",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "conscrypt.module.public.api.stubs.exportable",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "i18n.module.public.api.stubs.exportable",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "art.module.public.api.stubs.exportable.module_lib",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "conscrypt.module.platform.api.stubs.exportable",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "legacy.i18n.module.platform.api.stubs.exportable",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "stub-annotations",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "junit",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "kotlin-stdlib",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "kotlin-stdlib-jdk7",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "kotlin-stdlib-jdk8",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "kotlin-annotations",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "metalava-signature-reader",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "metalava-tools-common-m2-deps",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Run #84 fix: the three java_api_contribution stubs for core.current.stubs.from-text.
+// A java_api_contribution with no api_file FAILS with "has an empty api file", and an
+// empty api_surface FAILS in sortApiFilesByApiScope — so each stub needs api_surface
+// "core" + api_file pointing at a real file (empty-api.txt, created below). Do NOT stub
+// these as java_library (see the runs #62/#63/#64 note at the top of this step).
+java_api_contribution {
+    name: "art.module.public.api.stubs.source.api.contribution",
+    api_surface: "core",
+    api_file: "empty-api.txt",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_api_contribution {
+    name: "conscrypt.module.public.api.stubs.source.api.contribution",
+    api_surface: "core",
+    api_file: "empty-api.txt",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_api_contribution {
+    name: "i18n.module.public.api.stubs.source.api.contribution",
+    api_surface: "core",
+    api_file: "empty-api.txt",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Run #84 fix: libsqlite + libchrome-gestures_headers. Soong's python.go adds libsqlite
+// as a launcher SHARED-lib dep of prebuilts/build-tools py3-stdlib-prebuilt, so the stub
+// must be cc_library_shared (not static), host_supported: true. libchrome-gestures_headers
+// is used in header_libs + export_header_lib_headers by libinputflinger_headers, so it is
+// a cc_library_headers stub, host_supported: true, no srcs. Both are never built here.
+cc_library_shared {
+    name: "libsqlite",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libchrome-gestures_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+
+// Runs #87/#88/#89 fix: empty java_library stubs for the
+// host-test deps of build/make/backported_fixes (guava,
+// jcommander, truth, truth-liteproto-extension,
+// truth-proto-extension) and the java stubs the Soong
+// parse needs (android_module_lib_stubs_current,
+// core-lambda-stubs). core-lambda-stubs is NOT the
+// already-stubbed core-lambda-stubs-for-system-modules:
+// the real one is a java_library in libcore/JavaLibrary.bp.
+// Empty.java (created below); never built for this HAL-only
+// target, so only the NAMES have to exist. Public visibility
+// on purpose: the referencers live in other packages.
+java_library {
+    name: "guava",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "jcommander",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "truth",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "truth-liteproto-extension",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "truth-proto-extension",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "android_module_lib_stubs_current",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "core-lambda-stubs",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #87/#88/#89 fix: empty cc_binary stub for
+// linkerconfig (a cc_binary in system/linkerconfig).
+// The com.android.runtime apex wants the device binary
+// and runtime-module-host-exports wants the host binary,
+// so this stub MUST have both variants: host_supported
+// is true and device_supported is NOT set to false.
+// empty.c (created below); never built for this target.
+cc_binary {
+    name: "linkerconfig",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #96 (45800651582, 14m36s), #97 (45801208075, 12m58s) and
+// #98 (45801390708, 14m34s) fix - all three FAILED at Soong
+// ninja-file generation on the SAME fix code (the #93 fix HELD:
+// prune step + pre-build guard passed in all three), but with
+// THREE different error sets on one commit (the subset-reporting
+// lesson at its extreme, again). Run #96's set is the widest;
+// the fix below covers the UNION of all three runs' errors, so
+// the next run is not left to rediscover the other runs' subsets.
+// Verified live (LineageOS lineage-22.2 / AOSP android-15.0.0_r32
+// unless noted): every module below is in an unsynced project
+// and is never built for this HAL-only target, so only the NAMES
+// have to exist for Soong's parse. Types match each module's
+// real type and how its referencers use it (see the per-stub
+// notes). Public visibility on purpose: the referencers live
+// in other packages.
+//
+// android_stubs_current / android_test_stubs_current /
+// android_system_stubs_current - the SDK stubs Soong resolves
+// sdk_version "current" / "test_current" / "system_current" to
+// (same family as the already-stubbed
+// android_module_lib_stubs_current, runs #87/#88/#89, which
+// HELD - #98 reports no error for it). Referencers: the
+// java_sdk_library-generated .stubs.from-source modules of
+// test_framework-apexd / test_service-apexd, libtombstone_proto_java
+// (sdk_version "current"), libaconfig_java_proto_lite/nano
+// (sdk_version "current"), aconfig_storage_file.test.java /
+// aconfig_storage_read_unit (sdk_version "test_current") and the
+// auto-generated RRO characteristics modules. Empty java_library
+// stubs, exactly like the #62/#64 ART stubs.
+//
+// sysprop-library-stub-platform - the stub library Soong's
+// sysprop_library codegen (build/soong/sysprop/sysprop_library.go,
+// AOSP r32, verified live) puts in `libs:` of every generated
+// java_library for a platform-owned sysprop_library (the <name>
+// java lib has Sdk_version "core_current" and Libs
+// [javaSyspropStub]; the <name>_public stub is created the same
+// way). Referencers: com.android.sysprop.apex_public,
+// charger_sysprop_public, LibGuiProperties_public,
+// SurfaceFlingerProperties_public. Empty java_library stub.
+//
+// ext + framework - the framework java_library modules
+// (frameworks/base/Android.bp at AOSP r32: `framework` line 561
+// and `ext` line 638, both java_library). Referencers: the
+// java_sdk_library-generated .stubs.source / .impl modules of
+// test_framework-apexd / test_service-apexd (their impl compiles
+// against the full framework), libsimpleparcelable_java,
+// aidl_test_java_* (system/tools/aidl), backported_fixes_proto
+// and the frameworks/native opengl/binder test apps. Empty
+// java_library stubs. (The .source vs .from-source naming differs
+// between runs #96/#97 and #98 - the floating LineageOS pins
+// moved build/soong between their syncs - so BOTH the stubs
+// family (this block) and the ext/framework pair are needed.)
+//
+// androidx.test.runner + androidx.test.core - java_library in
+// external/androidx (unsynced). Referencers: the aconfig_storage_*
+// android_test modules and the aidl_test_java_* modules
+// (static_libs:). Empty java_library stubs.
+//
+// framework-res + org.lineageos.platform-res - the resource
+// packages the auto-generated RRO product modules overlay:
+// framework-res is an android_app in frameworks/base/core/res/
+// Android.bp (verified live: sdk_version "core_platform",
+// certificate "platform"); org.lineageos.platform-res is the
+// LineageOS platform resources package (vendor/lineage,
+// unsynced). Referencers: the AppInRebootlessApex /
+// PrivAppInRebootlessApex / TestLatency
+// __auto_generated_rro_product modules (and the aconfig_storage_*
+// android_test modules). Stubbed as android_app with a dummy
+// manifest (package "android" / "org.lineageos.platform",
+// yuzora-stubs/AndroidManifest.xml /
+// AndroidManifest-lineage.xml, created below) + Empty.java,
+// sdk_version "none", system_modules "none",
+// use_resource_processor false (mirrors the real framework-res;
+// no res/ dir is needed). NOT pruned: the RROs' source apps
+// live in the kept apexs_testdata file, which the kept
+// system/apex/apexd/Android.bp references (its ApexTestCases
+// data lists name the test apexes) - same reason as run #58.
+//
+// libz / libgrpc++ / libusb / libusb_platform / libcrypto /
+// libstatssocket - cc_library_shared, all used in shared_libs:
+// by a synced module (libjsoncpp was in this list until the
+// runs #105/#106/#107 fix - see its note below - it is now a
+// plain cc_library stub): libz by liblibz_sys
+// (rust_library, external/rust/android-crates-io/crates/libz-sys);
+// libgrpc++ by libgrpcio_sys (same tree, crates/grpcio-sys);
+// libusb + libusb_platform by liblibusb1_sys /
+// liblibusb1_sys_platform (crates/libusb1-sys; the real ones are
+// cc_library in external/libusb, verified live at r32);
+// libjsoncpp by aidl_metadata_parser + hidl_metadata_parser
+// (cc_binary, shared_libs, verified live at r32). Runs
+// #105/#106/#107 fix: run #105 ALSO reports libjsoncpp as a
+// missing STATIC variant (libprocessgroup_proto_test,
+// system/core/libprocessgroup/profiles/Android.bp:108,
+// static_libs) - upstream libjsoncpp is plain cc_library
+// (external/jsoncpp/Android.bp, verified live at r32), which
+// builds BOTH variants, so the stub below changes from
+// cc_library_shared to plain cc_library (same fix as the
+// #99/#100/#101 protobuf stubs). The shared_libs users above
+// are unaffected - a plain cc_library still provides the
+// shared variant.
+// libcrypto by libcrypto_utils (cc_library, shared_libs,
+// verified live at lineage-22.2); libstatssocket by
+// libstatslog_express (cc_library, shared_libs - the module is
+// defined nowhere in the synced tree: system/core/libstats has
+// only socket_lazy at r32/lineage-22.2). Empty cc_library_shared
+// stubs with empty.c, host_supported + windows (same form as
+// the #84 libsqlite stub). Runs #99/#100/#101 fix: the #96
+// round wrote this comment but never created the
+// libstatssocket stub block - run #101 reports it undefined
+// (system/core/libstats/expresslog/Android.bp:76). Stub added
+// below.
+//
+// libprotobuf-cpp-lite / libprotobuf-cpp-full - the C++
+// protobuf runtimes (external/protobuf, NOT synced - verified
+// in run #82: no external/protobuf entry in the manifest).
+// Referencers: the cc_library_static proto modules
+// (libtombstone_proto, lib_apex_manifest_proto_lite,
+// lib_apex_blocklist_proto, libvintf_proto,
+// libaconfig_storage_protos_cc, lib_linker_config_proto_lite,
+// ota_metadata_proto_cc need -lite; cc_analyzer_proto,
+// lib_apex_manifest_proto, lib_apex_session_state_proto,
+// libprocessgroup_proto need -full), all via static_libs:.
+// Runs #99/#100/#101 fix - the #96 round stubbed these as
+// cc_library_static, but upstream both are plain cc_library
+// (verified live at r32: external/protobuf/Android.bp,
+// host_supported, min_sdk_version "29"), which builds BOTH
+// the static and the shared variant. Run #101 reports
+// "missing variant os:linux_glibc,arch:x86_64,link:shared
+// (only static available)" for both - a consumer needs the
+// shared variant, which a cc_library_static stub can never
+// provide. Changed to plain cc_library stubs with empty.c,
+// host_supported + windows. (Upstream disables the static
+// variant of -full on device, but a cc_library stub still
+// satisfies every name reference; consumers link -full via
+// shared_libs upstream.)
+//
+// libjemalloc5_je_prefixed - cc_library_static in
+// external/jemalloc (unsynced), used in static_libs: by the
+// rust_library_host libtikv_jemalloc_sys
+// (crates/tikv-jemalloc-sys). Empty cc_library_static stub.
+//
+// libhardware_headers - cc_library_headers in
+// hardware/libhardware (unsynced), used in header_libs: by
+// hwvulkan_headers (frameworks/native/vulkan, cc_library_headers).
+// Empty cc_library_headers stub (same form as the #84
+// libchrome-gestures_headers stub).
+//
+// gwp_asan_headers - cc_library_headers for GWP-ASan
+// (external/gwp-asan, unsynced), used in header_libs: by
+// libc_native_allocator_defaults (bionic/libc/Android.bp - the
+// MAIN libc defaults, not a test) and by bionic_tests_defaults.
+// Empty cc_library_headers stub. (Pruning bionic/tests would NOT
+// fix this: the libc defaults still need it.)
+//
+// dex2oatd - art_cc_binary in art/dex2oat (unsynced; verified
+// live at r32: `art_cc_binary { name: "dex2oatd", ... }`, the
+// binary dexpreopt depends on). Referencers: the
+// java_sdk_library-generated .impl modules of
+// test_framework-apexd / test_service-apexd. art_cc_binary is a
+// cc_binary subclass and art/ is not synced, so stub as
+// cc_binary with empty.c, host_supported, device_supported NOT
+// set to false (BOTH variants, same form as the #87 linkerconfig
+// stub - dexpreopt needs the host binary and the device variant
+// must exist too).
+//
+// libcxx - the Rust cxx crate (external/rust/crates/cxx,
+// unsynced; NOT vendored in android-crates-io - the r32
+// crates/ listing has 389 entries and no cxx). Referencer:
+// libmoveit (rust_library_host, crates/moveit) via rustlibs:.
+// Empty rust_library stub (crate_name "cxx", srcs lib.rs,
+// created below - an empty file is a valid empty crate),
+// host_supported (libmoveit is host-only).
+java_library {
+    name: "android_stubs_current",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "android_test_stubs_current",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "android_system_stubs_current",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "sysprop-library-stub-platform",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "ext",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "framework",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "androidx.test.runner",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "androidx.test.core",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// aconfig-annotations-lib - java_library in
+// frameworks/libs/modules-utils/java/Android.bp (unsynced;
+// verified live at r32: sdk_version "core_current",
+// host_supported, srcs com/android/aconfig/annotations/*.java).
+// NOT in the synced tree: build/make/tools/aconfig/aconfig/
+// Android.bp never names it - Soong's java_aconfig_library
+// adds the dep implicitly. Referencers (run #100):
+// aconfig_host_test_java_library,
+// aconfig_test_java_library_exported, aconfig_flags_java,
+// aconfig_test_java_library,
+// aconfig_test_java_library_forcereadonly. Empty java_library
+// stub (same form as the other java_library stubs above).
+java_library {
+    name: "aconfig-annotations-lib",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app {
+    name: "framework-res",
+    srcs: ["Empty.java"],
+    manifest: "AndroidManifest.xml",
+    sdk_version: "none",
+    system_modules: "none",
+    use_resource_processor: false,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app {
+    name: "org.lineageos.platform-res",
+    srcs: ["Empty.java"],
+    manifest: "AndroidManifest-lineage.xml",
+    sdk_version: "none",
+    system_modules: "none",
+    use_resource_processor: false,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libz",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "libgrpc++",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "libusb",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "libusb_platform",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libjsoncpp",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libcrypto",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "libstatssocket",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libprotobuf-cpp-lite",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libprotobuf-cpp-full",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libjemalloc5_je_prefixed",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libhardware_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "gwp_asan_headers",
+    host_supported: true,
+    system_shared_libs: [],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "dex2oatd",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "libcxx",
+    crate_name: "cxx",
+    srcs: ["lib.rs"],
+    edition: "2018",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// libprotobuf-python / fsverity_digests_proto_python /
+// typing_extensions - python libraries (external/protobuf,
+// system/security/fsverity, external/python/
+// typing_extensions - all NOT synced, verified live at r32).
+// libprotobuf-python is python_library, host_supported
+// (external/protobuf/Android.bp); referencers (run #101, 14
+// lines): soong-metrics-proto-py, apex_build_info_proto,
+// provenance_metadata_proto, tool_event_proto, config_proto,
+// linker_config_proto, edit_event_proto, snapshot_proto_python,
+// ota_metadata_proto, teams-proto-py, metadata_file_proto_py,
+// apex_manifest_proto, libaconfig_python_proto,
+// py_proto_pkg_path_test. fsverity_digests_proto_python is
+// python_library_host (system/security/fsverity/Android.bp:
+// srcs fsverity_digests.proto + proto block); referencer
+// (run #101): releasetools_fsverity_metadata_generator.
+// typing_extensions is python_library, host_supported
+// (external/python/typing_extensions/Android.bp); referencer
+// (run #101): pdl_python_generator_test. Empty python stubs
+// with srcs empty.py (created below - Soong requires Srcs
+// non-empty for python_library; a comment-only .py file is
+// valid), host_supported where upstream has it, visibility
+// public. No proto: block needed - the stubs only have to
+// resolve the libs: edge; they are never built or imported.
+python_library {
+    name: "libprotobuf-python",
+    srcs: ["empty.py"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+python_library_host {
+    name: "fsverity_digests_proto_python",
+    srcs: ["empty.py"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+python_library {
+    name: "typing_extensions",
+    srcs: ["empty.py"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #102/#103/#104 fix: "sdk_public_34_system_modules" -
+// the ONLY runtime Soong error in all three runs (raw-log
+// verbatim, identical in #102/#103/#104):
+//   error: frameworks/native/libs/binder/ndk/tests/Android.bp:132:1:
+//   "IBinderVendorDoubleLoadTest-java" depends on undefined module
+//   "sdk_public_34_system_modules".
+// Root cause, verified live at LineageOS lineage-22.2 / AOSP r32:
+// IBinderVendorDoubleLoadTest is an aidl_interface (that file,
+// lines 254-268: unstable, vendor) with the Java backend enabled
+// (no `backend: { java: { enabled: false } }`), so Soong
+// generates the IBinderVendorDoubleLoadTest-java java_library
+// with a NUMERIC sdk_version 34. Soong's decodeSdkDep
+// (build/soong/java/sdk.go) gives every java module with a
+// numeric sdk_version above 29 an implicit system_modules dep
+// `sdk_<kind>_<ver>_system_modules` (Java 9+ uses system
+// modules; 29 and below is Java 8 and gets none - which is why
+// sdk-29 AppInRebootlessApex never needed one). Upstream that
+// module is a java_system_modules_import generated by the
+// `prebuilt_apis` "sdk" module in prebuilts/sdk/Android.bp
+// (one per scope+version, only for core-for-system-modules.jar;
+// build/soong/java/prebuilt_apis.go, createSystemModules) -
+// prebuilts/sdk is NOT synced, so no sdk_*_system_modules
+// exists in this tree. The #96 fix stubbed the other half of
+// the dep (android_stubs_current, the bootclasspath lib); now
+// the system-modules half surfaces - the same one-layer-deeper
+// pattern as runs #30/#33/#75. The 46 other "error:" lines in
+// the Build step are the runner echoing the step script itself
+// (the ::error:: pre-build-guard echo commands that did not
+// fire), NOT build errors.
+// Fix, same established pattern (stub, don't sync): this stub
+// IS a java_system_modules - the dep's type (a java_library
+// stub would fail Soong's type check; same reason as the #75
+// core-all-system-modules stub). Its libs list holds our own
+// empty android_stubs_current stub (defined above) so the list
+// is non-empty and always resolves. The sibling
+// sdk_module-lib_34_system_modules is stubbed too:
+// decodeSdkDep's systemModuleKind maps system/test/core kinds
+// to public and system-server to module, so for ver 34 only
+// the public and the module-lib names can ever be referenced -
+// that is the complete layer, not just the reported subset.
+// (No synced module uses sdk_version module_34 today - its
+// jar would have errored first - but the stub costs nothing
+// and the subset-reporting lesson says the next run is the
+// arbiter.) NOT java_system_modules_import: its deps mutator
+// prefixes lib names with `prebuilt_`, which would create a
+// new undefined-module error.
+java_system_modules {
+    name: "sdk_public_34_system_modules",
+    libs: ["android_stubs_current"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_system_modules {
+    name: "sdk_module-lib_34_system_modules",
+    libs: ["android_module_lib_stubs_current"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #105/#106/#107 fix: the #102/#103/#104 fix HELD in
+// all three (prune step + pre-build guard passed). The three
+// runs report THREE different error sets on the same fix code
+// (subset-reporting at its extreme, again): #105 (28 lines)
+// the widest, #106 (4), #107 (2). The fix covers the UNION
+// (30 lines). Raw-log verbatim, per run:
+//   #107 (45819014190, 13m58s, manual, f8e598c) - 2 lines,
+//   both build/make/tools/aconfig/aconfig/Android.bp:105:1
+//   ("aconfig.test.java"): androidx.test.rules, testng.
+//   #106 (45818868390, 14m41s, auto, f8e598c) - 4 lines:
+//   system/tools/aidl/Android.bp:857:1 + :841:1
+//   (aidl_test_java_service_permission,
+//   aidl_test_java_client_permission):
+//   frameworks-base-testutils; frameworks/native/headers/
+//   Android.bp:11:1 (media_plugin_headers):
+//   libstagefright_headers, libstagefright_foundation_headers.
+//   #105 (45818724942, 15m25s, auto, fab59cc) - 28 lines:
+//   both media_plugin_headers lines + both aconfig.test.java
+//   lines + pyfakefs x4 (build/soong/bloaty/Android.bp:19,
+//   build/make/ci/Android.bp:52, :20, :74) + asuite_cc_client
+//   x3 (build/make/tools/edit_monitor/Android.bp:33,
+//   build/make/tools/tool_event_logger/Android.bp:33, :46) +
+//   watchdog (edit_monitor:33) + the libgralloctypes triple
+//   (frameworks/native/libs/gralloc/types/Android.bp:58:30
+//   export_shared_lib_headers V6-ndk, :25:1 mapper@4.0,
+//   :25:1 libhidlbase) + libssl x4 / libcrypto_static x2
+//   (external/rust/android-crates-io/crates/quiche/Android.bp)
+//   + libgoogle-benchmark x2 / libtinyxml2 x2 (bionic tests +
+//   benchmarks) + libgtest_isolated (bionic/tests:855) +
+//   libprocinfo (bionic/tests:809) + the libprocessgroup
+//   triple (system/core/libprocessgroup/profiles/Android.bp:108:
+//   libjsoncpp missing STATIC variant, libjsonpbverify,
+//   libjsonpbparse). (The 46 other "error:" lines in each Build
+// step are the runner echoing the step script itself, NOT build
+// errors. NOTE: the first UI-log read of #107 reported the
+// aconfig error path as frameworks/base/aconfig/test/Android.bp
+// - WRONG; the raw log says build/make/tools/aconfig/aconfig/
+// Android.bp, and frameworks/base has no aconfig/ dir at
+// lineage-22.2 (verified by git ls-tree) and is not synced.)
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (each stub's type is its upstream
+// type, or the type the referencer's property requires where
+// the home was not traced to a file):
+// - androidx.test.rules + testng: static_libs of the
+//   android_test aconfig.test.java (build/make/tools/aconfig/
+//   aconfig/Android.bp:105, lineage-22.2). testng is
+//   java_library in external/testng (r32, host_supported);
+//   androidx.test.rules is java_library in external/androidx,
+//   same family as the #96 androidx.test.runner/core stubs.
+// - frameworks-base-testutils: static_libs of the java_test
+//   aidl_test_java_client_permission / _service_permission
+//   (system/tools/aidl/Android.bp:841, :857, r32) - java_library
+//   in unsynced frameworks/base (defining file not traced).
+// - libstagefright_headers + libstagefright_foundation_headers:
+//   header_libs (+ export_header_lib_headers) of the
+//   cc_library_headers media_plugin_headers
+//   (frameworks/native/headers/Android.bp:11, lineage-22.2).
+//   libstagefright_headers is cc_library_headers in
+//   frameworks/av media/libstagefright/Android.bp
+//   (lineage-22.2); _foundation_headers is cc_library_headers
+//   in frameworks/av (unsynced; the defining file was not
+//   located - no media/libstagefright/foundation/ dir in the
+//   lineage-22.2 or r32 frameworks/av checkouts).
+// - pyfakefs: libs: of python_test_host bloaty_merger_test
+//   (build/soong/bloaty/Android.bp:19) + build_test_suites_*
+//   (build/make/ci/Android.bp) - python_library in
+//   external/python/pyfakefs/pyfakefs/Android.bp (r32,
+//   host_supported).
+// - asuite_cc_client + watchdog: libs: of python_library_host
+//   edit_monitor_lib (build/make/tools/edit_monitor/Android.bp:
+//   33, lineage-22.2) and python_binary_host tool_event_logger
+//   (+ _test). watchdog is python_library_host in
+//   external/python/watchdog/src/watchdog/Android.bp (r32);
+//   asuite_cc_client is a python library (home not traced to
+//   a file) - both stubbed with srcs empty.py, same form as
+//   the #99 python stubs.
+// - libssl + libcrypto_static: libquiche (rust_library,
+//   shared_libs) + libquiche_ffi (rust_ffi, static_libs) +
+//   libquiche_static (rust_library_rlib, static_libs)
+//   (external/rust/android-crates-io/crates/quiche/Android.bp,
+//   r32). Upstream external/boringssl: libssl is plain
+//   cc_library, libcrypto_static is cc_library_static (r32).
+//   libssl is used in BOTH shared_libs and static_libs, so
+//   only a plain cc_library stub satisfies both; libcrypto
+//   (shared_libs) is already stubbed as cc_library_shared.
+// - libgoogle-benchmark: static_libs of cc_library_static
+//   libbionic_spawn_benchmark (bionic/benchmarks/spawn/
+//   Android.bp:53) + the cc_benchmark_host
+//   bionic-benchmarks-glibc (no such entry in its own .bp text
+//   or its bionic-benchmarks-defaults - Soong's cc_benchmark
+//   type adds the benchmark runtime implicitly). Upstream
+//   cc_library_static in external/google-benchmark (r32).
+// - libtinyxml2: static_libs of libBionicStandardTests +
+//   bionic-benchmarks-defaults (bionic/benchmarks/Android.bp)
+//   - plain cc_library in external/tinyxml2 (r32,
+//   host_supported).
+// - libgtest_isolated: static_libs of libBionicStandardTests
+//   + whole_static_libs of libBionicCtsGtestMain
+//   (bionic/tests/Android.bp:369, :855, lineage-22.2) - NOT
+//   defined in external/googletest at r32 (all four .bp files
+//   checked); home not traced - plain cc_library stub (the
+//   static variant is what both referencers need).
+// - libprocinfo: static_libs of cc_test_library
+//   libBionicLoaderTests (bionic/tests/Android.bp:809,
+//   lineage-22.2) - NOT in system/core at lineage-22.2 or
+//   r32 (no libprocinfo dir in either checkout) and NOT in
+//   bionic; home not traced - plain cc_library stub.
+// - libjsonpbverify + libjsonpbparse: static_libs of
+//   cc_test_host libprocessgroup_proto_test (system/core/
+//   libprocessgroup/profiles/Android.bp:108, lineage-22.2) -
+//   NOT in system/core/libprocessgroup/Android.bp at r32;
+//   home not traced - plain cc_library stubs.
+// - libjsoncpp missing variant (same file:108): the #96 stub
+//   is cc_library_shared, but the test needs the STATIC
+//   variant ("missing variant os:linux_glibc,arch:x86_64,
+//   link:static"). Upstream libjsoncpp is plain cc_library
+//   (external/jsoncpp/Android.bp, r32) - the stub changes to
+//   plain cc_library, same fix as the #99/#100/#101 protobuf
+//   stubs. Its shared_libs users (aidl/hidl metadata parsers)
+//   are unaffected.
+// - android.hardware.graphics.common-V6-ndk +
+//   android.hardware.graphics.mapper@4.0 + libhidlbase:
+//   libgralloctypes (cc_library, frameworks/native/libs/
+//   gralloc/types/Android.bp, lineage-22.2) lists mapper@4.0
+//   + libhidlbase in shared_libs and V6-ndk + mapper@4.0 +
+//   libhidlbase in export_shared_lib_headers. mapper@4.0 is a
+//   hidl_interface in hardware/interfaces/graphics/mapper/4.0
+//   and V6-ndk is the NDK lib of the aidl_interface
+//   android.hardware.graphics.common (frozen: false, aidl_api
+//   1-5 + current = V6) - BOTH dirs are deleted by the closure
+//   prune below (hardware/interfaces keeps ONLY light/aidl +
+//   compatibility_matrices + common/aidl + input), so neither
+//   module exists in this tree. libhidlbase is plain
+//   cc_library in system/libhidl (r32, unsynced). V6-ndk +
+//   mapper@4.0 stubbed as cc_library_shared (the HIDL/AIDL
+//   generated libs are shared); libhidlbase as plain
+//   cc_library (its upstream type). AND the
+//   android.hardware.graphics.common-ndk_shared cc_defaults
+//   stub (runs #48/#49/#50) gains shared_libs V6-ndk: the real
+//   generated defaults forwards the -ndk lib into shared_libs,
+//   and the empty stub is what makes Soong report V6-ndk as
+//   "not in shared_libs" on the export check.
+java_library {
+    name: "androidx.test.rules",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "testng",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_library {
+    name: "frameworks-base-testutils",
+    srcs: ["Empty.java"],
+    sdk_version: "none",
+    system_modules: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libstagefright_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libstagefright_foundation_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+python_library {
+    name: "pyfakefs",
+    srcs: ["empty.py"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+python_library {
+    name: "asuite_cc_client",
+    srcs: ["empty.py"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+python_library_host {
+    name: "watchdog",
+    srcs: ["empty.py"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libssl",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libtinyxml2",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libgtest_isolated",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libprocinfo",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libjsonpbverify",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libjsonpbparse",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libhidlbase",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libcrypto_static",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libgoogle-benchmark",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "android.hardware.graphics.common-V6-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "android.hardware.graphics.mapper@4.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #111/#112/#113 fix: the #110 fix HELD in all three
+// (prune step passed in 1s + pre-build guard passed). All
+// three fail at Soong ninja generation, ~36-55s into the
+// build step, on the SAME fix code (head bfbbfcb - the #110
+// fix, workflow fd7e33e). Subset-reporting again: #113 and
+// #112 report the same pair, #111 reports a different one.
+// The fix covers the UNION (3 lines). Raw-log verbatim:
+//   #113 (45835491023, 14m40s, manual, bfbbfcb) + #112
+//   (45835366346, 14m30s, auto, bfbbfcb) - 2 lines each:
+//   system/core/fs_mgr/libdm/Android.bp:22:1 libdm depends
+//   on undefined module libext2_uuid; system/core/fs_mgr/
+//   libfstab/Android.bp:24:1 libfstab depends on undefined
+//   module libgsi_headers.
+//   #111 (45835194480, 15m01s, auto, e000389) - 1 line:
+//   external/rust/android-crates-io/crates/drm-ffi/
+//   Android.bp:16:1 libdrm_ffi depends on undefined module
+//   libdrm_sys.
+//   (The 50 other error: lines in each Build step are the
+//   runner echoing the pre-build-guard echo commands that
+//   did NOT fire - the guard printed Pre-build guard passed
+//   in all three runs.)
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32:
+// - libext2_uuid: static_libs of the cc_library_static
+//   libdm (system/core/fs_mgr/libdm/Android.bp,
+//   lineage-22.2). Upstream plain cc_library in
+//   external/e2fsprogs/lib/uuid/Android.bp (lineage-22.2,
+//   host_supported) - external/e2fsprogs is NOT synced (not
+//   in the 32-project manifest). Stubbed as plain cc_library
+//   (covers the static_libs use, same as the libssl /
+//   libjsoncpp pattern).
+// - libgsi_headers: header_libs of the cc_library_static
+//   libfstab (system/core/fs_mgr/libfstab/Android.bp,
+//   lineage-22.2). Upstream cc_library_headers in
+//   platform/system/gsid/Android.bp (r32, host_supported,
+//   export_include_dirs include) - system/gsid is its own
+//   project, NOT synced; system/core never contained it (no
+//   libgsi dir under fs_mgr at lineage-22.2). Stubbed as
+//   cc_library_headers, mirroring the #105
+//   libstagefright_headers stub.
+// - libgsi + libgsid: NOT reported by any run yet, but the
+//   same unsynced gsid file defines them (libgsi cc_library,
+//   libgsid cc_library_static) and the SYNCED
+//   system/core/fs_mgr/Android.bp references both in
+//   static_libs (libfs_mgr_defaults lists libgsi; remount
+//   lists libgsid) - they are the next subset-reporting
+//   layer, so both are stubbed now (plain cc_library covers
+//   the static use; same complete-layer precedent as the
+//   #102 sibling sdk_module-lib_34_system_modules stub).
+// - libdrm_sys: rustlibs of the rust_library libdrm_ffi
+//   (external/rust/android-crates-io/crates/drm-ffi/
+//   Android.bp, r32, crate drm_ffi 0.8.0). NO defining file
+//   exists at r32 or on main: crates/drm-sys/Android.bp
+//   404s in android-crates-io and in external/rust/crates,
+//   and the r32 crates listing has no drm-sys entry - an
+//   upstream gap (the drm-ffi 0.8.0 upgrade references a
+//   crate never vendored), not a sync/prune issue. Stubbed
+//   as rust_library with crate_name drm_sys (what drm-ffi
+//   resolves with extern crate drm_sys), srcs lib.rs
+//   (reused from the #96 libcxx stub), mirroring the libcxx
+//   stub.
+// COMPILE-STAGE CAVEATS (the next round may hit these if
+// libdm / libfstab are actually compiled for this target -
+// Soong only needed the stubs to parse): dm.cpp includes
+// uuid/uuid.h and calls uuid_generate / uuid_unparse_lower;
+// fstab.cpp includes libgsi/libgsi.h and uses gsi
+// kDsuPostfix etc. A bare stub passes Soong; dummy headers
+// plus stub functions will be needed only if the next run
+// fails at compile/link.
+cc_library {
+    name: "libext2_uuid",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libgsi_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libgsi",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libgsid",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "libdrm_sys",
+    crate_name: "drm_sys",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #116/#117/#118 fix: the #111/#112/#113 fix HELD in
+// all three (prune step passed in 1-2s + pre-build guard
+// passed). All three fail at Soong ninja generation,
+// ~33-37s into the build step, on the SAME fix code (head
+// 81f5407 - the #111/#112/#113 fix, workflow 8aeb025,
+// rebased onto the save-always head 65709cd).
+// Subset-reporting again: #116 reports 1 line, #117
+// reports 2, #118 reports 3 - all different subsets of
+// one commit. The fix covers the UNION (4 lines, 6
+// instances). Raw-log verbatim (job-logs.txt, genuine
+// build-output lines only - the 14 other "depends on
+// undefined module" + 3 "missing variant" matches in each
+// raw log are the runner echoing the Build step script
+// itself, the comment block + the pre-build-guard echo
+// commands that did NOT fire, NOT build errors):
+//   #116 (45850213901, 14m10s, auto, manifest e0636fa) -
+//   1 line: external/rust/android-crates-io/crates/gbm/
+//   Android.bp:16:1 libgbm_rust depends on undefined
+//   module libgbm_sys.
+//   #117 (45850361596, 13m04s, auto, README 81f5407) -
+//   2 lines: external/rust/android-crates-io/crates/
+//   rusqlite/Android.bp:16:1 librusqlite depends on
+//   undefined module liblibsqlite3_sys; + the libgbm_sys
+//   line above.
+//   #118 (45850678030, 15m10s, manual ~21:05 IST,
+//   81f5407) - 3 lines: external/rust/android-crates-io/
+//   crates/tokio-openssl/Android.bp:16:1 libtokio_openssl
+//   depends on undefined module libbssl_sys; same file
+//   depends on undefined module libopenssl; + the
+//   libgbm_sys line above.
+//   No genuine "missing variant" line in any of the three.
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32:
+// - libbssl_sys: rustlibs of the rust_library
+//   libtokio_openssl (android-crates-io/crates/
+//   tokio-openssl/Android.bp:16, r32; tokio-openssl 0.6.5,
+//   rustlibs libbssl_sys + libopenssl + libtokio).
+//   Upstream rust_library in external/boringssl/
+//   Android.bp:913-914 (r32, crate_name bssl_sys,
+//   host_supported, via rust_defaults libbssl_sys_defaults)
+//   - external/boringssl is NOT synced (not in the
+//   32-project manifest; only its cc stubs libssl /
+//   libcrypto_static were stubbed in #105). Stubbed as
+//   rust_library with crate_name bssl_sys.
+// - libopenssl: rustlibs of the same libtokio_openssl.
+//   Upstream rust_library in external/rust/crates/openssl
+//   (r32, crate_name openssl) - external/rust/crates is
+//   NOT synced. Stubbed as rust_library with crate_name
+//   openssl.
+// - libgbm_sys: rustlibs of the rust_library libgbm_rust
+//   (android-crates-io/crates/gbm/Android.bp:16, r32). NO
+//   defining file exists at r32 or on main: no crates/
+//   gbm-sys repo under external/rust/crates and no
+//   crates/gbm-sys dir in android-crates-io at r32 (its
+//   tree has crates/gbm but no gbm-sys) - an upstream gap
+//   (the gbm crate upgrade references a crate never
+//   vendored), same pattern as libdrm_sys (#113). Stubbed
+//   as rust_library with crate_name gbm_sys.
+// - liblibsqlite3_sys: rustlibs of the rust_library
+//   librusqlite (android-crates-io/crates/rusqlite/
+//   Android.bp:16, r32). Upstream rust_library in
+//   external/rust/crates/libsqlite3-sys (r32, crate_name
+//   libsqlite3_sys, the rusqlite FFI crate) -
+//   external/rust/crates is NOT synced. Stubbed as
+//   rust_library with crate_name libsqlite3_sys.
+// All four stubs use srcs lib.rs (reused from the #96
+// libcxx stub), mirroring the libdrm_sys stub.
+rust_library {
+    name: "libbssl_sys",
+    crate_name: "bssl_sys",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "libopenssl",
+    crate_name: "openssl",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "libgbm_sys",
+    crate_name: "gbm_sys",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "liblibsqlite3_sys",
+    crate_name: "libsqlite3_sys",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #119/#120/#121 fix: the #116/#117/#118 fix HELD in
+// all three (prune step passed + pre-build guard passed).
+// All three fail at Soong ninja generation, ~35-53s into
+// the build step, on the SAME fix code (head 5a83c08 - the
+// #116/#117/#118 fix, workflow fa506ff). Subset-reporting
+// again: #119 reports 10 lines, #120 reports 15, #121
+// reports 7 - all different subsets of one commit. The fix
+// covers the UNION (12 distinct modules, 15 error lines -
+// #120's 15 lines are the full union; #119's 10 and #121's
+// 7 are subsets of them). Raw-log verbatim (job logs,
+// genuine build-output lines only - the other "error:"
+// matches in each log are the runner echoing the Build
+// step script itself, the pre-build-guard echo commands
+// that did NOT fire, NOT build errors):
+//   #119 (45857356942, 15m45s, auto, manifest 02209e6) -
+//   10 lines: libsnapshot_cow (system/core/fs_mgr/
+//   libsnapshot/Android.bp:201) needs
+//   libupdate_engine_headers, libbrotli, liblz4,
+//   libzstd, and libz missing variant; liblog-host-test
+//   (system/logging/liblog/tests/Android.bp:139) needs
+//   libgtest_isolated_main; libinput_from_rust_to_cpp
+//   (frameworks/native/libs/input/Android.bp:176) needs
+//   cxx-bridge-header; libexpresslog (system/core/
+//   libstats/expresslog/Android.bp:29) needs
+//   libtextclassifier_hash_headers +
+//   libtextclassifier_hash_static; run_dex2oat_test
+//   (frameworks/native/cmds/installd/Android.bp:126)
+//   needs server_configurable_flags.
+//   #120 (45857551439, 16m25s, auto, README 5a83c08) -
+//   15 lines: the #119 set (same 10, different order) +
+//   5 more: libaconfig_flags_rust (build/make/tools/
+//   aconfig/aconfig_flags/Android.bp:36) +
+//   libaconfig_test_rust_library (build/make/tools/
+//   aconfig/aconfig/Android.bp:241) need libflags_rust;
+//   libaconfig_storage_read_api_cc (aconfig/
+//   aconfig_storage_read_api/Android.bp:80) +
+//   libaconfig_storage_file_cc (aconfig/
+//   aconfig_storage_file/Android.bp:121) need
+//   cxx-bridge-header; libfs_avb (system/core/fs_mgr/
+//   libfs_avb/Android.bp:27) needs libavb.
+//   #121 (45857942449, 12m43s, manual ~21:51 IST,
+//   5a83c08) - 7 lines: the libsnapshot_cow set (5) +
+//   libgtest_isolated_main + cxx-bridge-header
+//   (libinput_from_rust_to_cpp only).
+//   CORRECTION: an early browser read of #121 reported
+//   two vendor/qcom/opensource/power/config/Android.bp
+//   "power.qcom / power.qcom.rc is not a module name"
+//   lines - PHANTOM. A second exhaustive read of the
+//   same job log (every error line + negative searches)
+//   found no such lines in any of the three runs, and
+//   the manifest syncs no vendor/qcom project, so that
+//   file cannot exist in the synced tree. Same class as
+//   the #30/#33/#84 phantom reads.
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all 12 defining projects
+// UNSYNCED):
+// - libupdate_engine_headers: header_libs of
+//   libsnapshot_cow_defaults (system/core/fs_mgr/
+//   libsnapshot/Android.bp:176-199, which the
+//   cc_library_static libsnapshot_cow pulls in via
+//   defaults). Upstream cc_library_headers in
+//   system/update_engine/Android.bp (r32 lines
+//   1313-1314) - system/update_engine NOT synced.
+// - libbrotli: static_libs of the same defaults block.
+//   Upstream cc_library_static in external/brotli/
+//   Android.bp (r32 lines 49-50) - external/brotli NOT
+//   synced.
+// - liblz4: static_libs of the same defaults block.
+//   Upstream plain cc_library in external/lz4/lib/
+//   Android.bp (r32 lines 19-20; external/lz4/
+//   Android.bp does not exist at r32) - external/lz4
+//   NOT synced.
+// - libzstd: static_libs of the same defaults block.
+//   Upstream plain cc_library in external/zstd/
+//   Android.bp (r32 lines 44-45) - external/zstd NOT
+//   synced.
+// - libz: static_libs of the same defaults block.
+//   Upstream plain cc_library in external/zlib/
+//   Android.bp (r32 lines 180-181) - external/zlib NOT
+//   synced. The #96 stub was cc_library_shared, which
+//   provides no static variant, so the static variant
+//   the consumer requests is missing - same fix as
+//   libjsoncpp (#105) and the protobuf stubs (#99):
+//   change the stub to plain cc_library (it still
+//   provides the shared variant liblibz_sys needs).
+// - libgtest_isolated_main: NOT named in the consumer
+//   file. liblog-host-test (cc_test_host, system/
+//   logging/liblog/tests/Android.bp:139) sets isolated:
+//   true, and Soong's cc/test.go appends
+//   libgtest_isolated_main to the test's StaticLibs
+//   automatically. Upstream cc_library_static in
+//   system/testing/gtest_extras/gtest_isolated/
+//   Android.bp (r32 lines 59-60, srcs Main.cpp,
+//   host_supported; its whole_static_libs
+//   libgtest_isolated + shared_libs liblog are NOT
+//   replicated - bare stub, as usual) - system/testing/
+//   gtest_extras NOT synced.
+// - cxx-bridge-header: generated_headers of
+//   libinput_from_rust_to_cpp (frameworks/native/libs/
+//   input/Android.bp:189-190),
+//   libaconfig_storage_read_api_cc (build/make/tools/
+//   aconfig/aconfig_storage_read_api/Android.bp:80)
+//   and libaconfig_storage_file_cc (aconfig/
+//   aconfig_storage_file/Android.bp:121). Upstream
+//   genrule in external/rust/cxx/Android.bp (r32 lines
+//   93-98, tools cxxbridge, out rust/cxx.h) -
+//   external/rust/cxx NOT synced, and NOT in
+//   external/rust/crates/cxx (that path 404s). Stubbed
+//   as a genrule with the same out and a cmd that
+//   touches it - tools omitted (cxxbridge is unsynced)
+//   and the rule never runs, since the consumers are
+//   never built. If the next run errors on the genrule
+//   stub, switch it to cc_library_headers.
+// - libtextclassifier_hash_headers: header_libs of
+//   libexpresslog (system/core/libstats/expresslog/
+//   Android.bp:38-39). Upstream cc_library_headers in
+//   external/libtextclassifier/native/Android.bp (r32
+//   lines 24-25) - external/libtextclassifier NOT
+//   synced.
+// - libtextclassifier_hash_static: static_libs of the
+//   same libexpresslog (lines 41-43). Upstream
+//   cc_library_static in the same file (r32 lines
+//   62-63) - the same-file sibling
+//   libtextclassifier_hash (plain cc_library, lines
+//   55-56) is NOT stubbed: no synced file references
+//   it (unlike libgsi/libgsid in #111, which synced
+//   fs_mgr code references) - stub it if a run
+//   reports it.
+// - server_configurable_flags: shared_libs of
+//   run_dex2oat_test (frameworks/native/cmds/installd/
+//   Android.bp:126; also installd_defaults). Upstream
+//   plain cc_library in system/
+//   server_configurable_flags/libflags/Android.bp (r32
+//   lines 5-6) - system/server_configurable_flags NOT
+//   synced.
+// - libflags_rust: NOT named in either consumer file.
+//   libaconfig_flags_rust (rust_aconfig_library,
+//   build/make/tools/aconfig/aconfig_flags/
+//   Android.bp:36-41) and libaconfig_test_rust_library
+//   (rust_aconfig_library, aconfig/Android.bp:241-246)
+//   have no rustlibs entry for it; Soong's
+//   rust_aconfig_library SourceProviderDeps (build/
+//   soong/aconfig/codegen/rust_aconfig_library.go)
+//   appends libflags_rust to deps.Rustlibs for every
+//   rust_aconfig_library. Upstream rust_library in
+//   system/server_configurable_flags/libflags/
+//   Android.bp (r32 lines 75-77, crate_name flags_rust,
+//   srcs lib.rs, rustlibs libcxx) - same project as
+//   above, NOT synced. The stub is bare (no rustlibs /
+//   static_libs replicated), like the other rust stubs.
+// - libavb: static_libs of libfs_avb
+//   (cc_library_static, system/core/fs_mgr/libfs_avb/
+//   Android.bp:43-44, alongside the synced libdm and
+//   libfstab and the #111-stubbed libgsi). Upstream
+//   cc_library_static in external/avb/Android.bp (r32
+//   lines 195-196) - external/avb NOT synced.
+// All stubs use srcs empty.c (cc) / lib.rs (rust),
+// mirroring the existing stubs; the headers stubs have
+// no srcs, like libgsi_headers /
+// libstagefright_headers.
+cc_library_headers {
+    name: "libupdate_engine_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libbrotli",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "liblz4",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libzstd",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libgtest_isolated_main",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+genrule {
+    name: "cxx-bridge-header",
+    out: ["rust/cxx.h"],
+    cmd: "touch $(out)",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libtextclassifier_hash_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libtextclassifier_hash_static",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "server_configurable_flags",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "libflags_rust",
+    crate_name: "flags_rust",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libavb",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #122/#123/#124 fix: the #119/#120/#121 fix HELD in
+// all three (prune step passed + pre-build guard passed).
+// All three fail at Soong ninja generation, ~36-54s into
+// the build step, on the SAME fix code (head a5b3730 - the
+// #119/#120/#121 fix, workflow d0b8b17). Subset-reporting
+// again: #122 reports 11 lines, #123 reports 10, #124
+// reports 15 - all different subsets of one commit. The fix
+// covers the UNION (17 distinct lines, 10 distinct modules;
+// #122's 11 lines are all inside the #124+#123 union).
+// Raw-log verbatim (job-logs.txt, genuine build-output
+// lines only - the other "error:" matches in each log are
+// the runner echoing the Build step script itself, the
+// pre-build-guard echo commands that did NOT fire, NOT
+// build errors). The FAILED line is
+// out/soong/build.yuzora_lights.ninja (not build.ninja),
+// and Soong prints no "N errors" total line this round.
+//   #122 (45867347789, 15m0s, auto, manifest b35b3cd) -
+//   11 lines: liblp needs libext4_utils; inspect_cow +
+//   create_snapshot need libgflags; libfs_avb_test_util
+//   needs libavb_host_sysdeps + libchrome; write_cow
+//   needs libgflags; create_snapshot needs libext4_utils;
+//   libhidl-gen needs libhwbinder_headers; libvbmeta_test
+//   + create_snapshot + libhidl-gen need libcrypto static
+//   variant.
+//   #123 (45867671751, 15m22s, auto, README a5b3730) -
+//   10 lines: the #122 set minus libvbmeta_test/libcrypto
+//   and the libfs_avb pair, plus libsnapuserd needs
+//   libext4_utils + liburing.
+//   #124 (45867963752, 15m59s, manual ~22:58 IST,
+//   a5b3730) - 15 lines: the #122 set (same 11) + 4 more:
+//   libtracing_perfetto needs libperfetto_c +
+//   android.os.flags-aconfig-cc-host; libapex needs
+//   libziparchive + libselinux shared variant.
+//   NOTE on paths: the raw logs cite the consumers as
+//   system/core/liblp/Android.bp:31:1 and
+//   system/apex/apexd/Android.bp:271:1, but at
+//   lineage-22.2 liblp lives at system/core/fs_mgr/liblp/
+//   and libapex starts at apexd/Android.bp:527
+//   (libapex-deps at 492) - Soong attributes through the
+//   defaults: expansion, so the :line numbers do not
+//   reproduce in the raw files. Key the fix off module
+//   names, not :line numbers (same caveat as the #96
+//   "librusb_platform" and #107 aconfig-path misreads).
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all defining projects UNSYNCED):
+// - libext4_utils: shared_libs (liblp, via the
+//   liblp_lib_deps variable), static_libs (create_snapshot,
+//   libsnapuserd, liblp_test_defaults) and whole_static_libs
+//   (libsnaphot_defaults) - only plain cc_library satisfies
+//   all three. Upstream plain cc_library in
+//   system/extras/ext4_utils/Android.bp (r32 ~lines 41-45,
+//   host_supported) - system/extras NOT synced.
+// - libgflags: static_libs of inspect_cow, create_snapshot
+//   (host-only binary) and write_cow. Upstream plain
+//   cc_library in external/gflags/Android.bp (r32 ~line
+//   107, host_supported via gflags_defaults) - external/
+//   gflags NOT synced. (Not cc_library_static: the 2017
+//   port was static; at r32 it is plain cc_library.)
+// - libavb_host_sysdeps: static_libs of libfs_avb_test_util
+//   (via libfs_avb_host_test_defaults). Upstream
+//   cc_library_host_static in external/avb/Android.bp
+//   (r32 ~line 627, host-only by type, no host_supported
+//   property upstream - the stub mirrors that) -
+//   external/avb NOT synced. Different module from libavb
+//   (cc_library_static, same file, stubbed in #119).
+// - libchrome: shared_libs of libfs_avb_test_util (via
+//   libfs_avb_host_test_defaults). Upstream plain
+//   cc_library in external/libchrome/Android.bp (r32
+//   ~line 1657, host_supported, min_sdk_version 30;
+//   its visibility list names //system/core/fs_mgr/libfs_avb)
+//   - external/libchrome NOT synced. NOT
+//   libchrome-gestures_headers (already stubbed, different
+//   module). Caveat: upstream libchrome is the full
+//   Chromium base; a bare stub passes Soong only - if a
+//   later run fails at compile/link on libchrome symbols,
+//   that is a new layer (same caveat as libdm/libfstab #111).
+// - libhwbinder_headers: header_libs of libhidl-gen.
+//   Upstream cc_library_headers in system/libhwbinder/
+//   Android.bp (r32 ~line 67, host_supported,
+//   export_include_dirs include) - system/libhwbinder
+//   NOT synced.
+// - libperfetto_c: shared_libs of libtracing_perfetto
+//   (cc_library_shared, host_supported). Upstream
+//   cc_library_shared in external/perfetto/Android.bp
+//   (r32; on main it is plain cc_library - r32 is
+//   authoritative, do not copy the main-branch type) -
+//   external/perfetto NOT synced.
+// - android.os.flags-aconfig-cc-host: shared_libs of
+//   libtracing_perfetto. Upstream cc_aconfig_library in
+//   frameworks/base/AconfigFlags.bp (lineage-22.2 lines
+//   918-926, aconfig_declarations android.os.flags-aconfig,
+//   host_supported) - frameworks/base NOT synced. It is
+//   explicitly declared (unlike libflags_rust #119, which
+//   Soong appends implicitly); a cc_aconfig_library
+//   generates a cc_library of the same name, so a plain
+//   cc_library stub satisfies it. Siblings -cc / -cc-test
+//   are NOT stubbed - no synced file references them;
+//   stub them if a run reports one.
+// - libziparchive: shared_libs of libapex (via
+//   libapex-deps). Upstream plain cc_library in
+//   system/libziparchive/Android.bp (lineage-22.2 lines
+//   284-300, host_supported via libziparchive_lib_defaults)
+//   - system/libziparchive NOT synced (its own project,
+//   not under system/core).
+// - liburing: static_libs of libsnapuserd (also
+//   snapuserd_defaults/_test_defaults/_extractor).
+//   Upstream cc_library_static in external/liburing/
+//   Android.bp (r32, host_supported) - external/liburing
+//   NOT synced.
+// - libcrypto: the #96 cc_library_shared stub provides no
+//   static variant; the host consumers (libvbmeta_test,
+//   create_snapshot, libhidl-gen, all static_libs on
+//   linux_glibc) need it. Upstream plain cc_library in
+//   external/boringssl/Android.bp (r32 ~line 497,
+//   host_supported via libcrypto_defaults) - the device
+//   static variant is disabled upstream (FIPS; static
+//   users take libcrypto_static, already stubbed), but
+//   the HOST static variant is built, so plain cc_library
+//   is the fix - same as libjsoncpp (#105), libz (#119)
+//   and the protobuf stubs (#99). The stub changes
+//   from cc_library_shared to plain cc_library above.
+// - libselinux: the #78 cc_library_static stub provides no
+//   shared variant; libapex needs the shared host variant
+//   (shared_libs via libapex-deps). Upstream plain
+//   cc_library in external/selinux/libselinux/Android.bp
+//   (r32, host_supported) - external/selinux NOT synced.
+//   The stub changes from cc_library_static to plain
+//   cc_library above (same fix as libcrypto).
+cc_library {
+    name: "libext4_utils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libgflags",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_host_static {
+    name: "libavb_host_sysdeps",
+    srcs: ["empty.c"],
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libchrome",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libhwbinder_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "libperfetto_c",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.os.flags-aconfig-cc-host",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libziparchive",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "liburing",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #125/#126/#127 fix: the #122/#123/#124 fix HELD in
+// all three (prune step passed + pre-build guard passed).
+// All three fail at Soong ninja generation, ~35-37s into
+// the build step, on the SAME fix code (head 205ec0a - the
+// #122/#123/#124 fix, workflow aa3581b). Subset-reporting
+// again, at its extreme: #125 reports 10 lines, #126
+// reports 4, #127 reports 2 - all different subsets of one
+// commit. The fix covers the UNION (12 distinct error
+// lines, 8 distinct modules; #127's 2 lines are a subset
+// of #126's 4; #126's 4 are #125's libcap pair plus the
+// new libaconfigd_protos_rust pair).
+// Raw-log verbatim (job-logs.txt, genuine build-output
+// lines only - the other "error:" matches in each log are
+// the runner echoing the Build step script itself, the
+// pre-build-guard echo commands that did NOT fire, NOT
+// build errors). The FAILED line is
+// out/soong/build.yuzora_lights.ninja (not build.ninja).
+// No genuine "missing variant" line in any of the three
+// runs - "missing variant" appears only inside the quoted
+// comment blocks in the build script.
+//   #125 (45875772540, 15m16s, auto, manifest ce8b2b9) -
+//   10 lines: libinit_host + host_init_verifier need
+//   libcap; libzipalign needs libzopfli; libfastboot2
+//   needs avb_headers + bootimg_headers + libadb_host;
+//   libutils_binder_test needs liblzma; libfastboot needs
+//   bootimg_headers + avb_headers + platform_tools_version.
+//   #126 (45875913306, 13m52s, auto, README 205ec0a) -
+//   4 lines: libinit_host + host_init_verifier need
+//   libcap; aflags + aflags.test need
+//   libaconfigd_protos_rust.
+//   #127 (45876399917, 14m53s, manual ~00:00 IST,
+//   205ec0a) - 2 lines: aflags + aflags.test need
+//   libaconfigd_protos_rust.
+//   NOTE on :line numbers: Soong's reported lines do NOT
+//   reproduce in the live files - fastboot :47/:280 vs
+//   live libfastboot2 at 89/91 and libfastboot at 521/523;
+//   init :661/:631 vs live libinit_host at 1269/1271 and
+//   host_init_verifier at 1211/1213; zipalign :21 vs live
+//   libzipalign at 37/39. Verified at lineage-22.2 tip AND
+//   the manifest-pinned HEAD bcb8623 (byte-identical for
+//   both files), so this is Soong attributing through the
+//   defaults: expansion, not version drift. Key the fix
+//   off module names, not :line numbers (same caveat as
+//   the #122 liblp/libapex paths and the #96/#107 misreads).
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all 8 defining projects UNSYNCED):
+// - libcap: whole_static_libs of init_host_defaults (used
+//   by libinit_host + host_init_verifier) and
+//   libinit_defaults. Upstream plain cc_library in
+//   external/libcap/Android.bp (r32 ~lines 48-91,
+//   host_supported, min_sdk_version 29) - external/libcap
+//   NOT synced. Plain cc_library matches upstream and
+//   covers any future shared_libs use (same precedent as
+//   libz #119, libjsoncpp #105, libcrypto #122).
+// - libzopfli: whole_static_libs of libzipalign
+//   (cc_library_host_static). Upstream plain cc_library in
+//   external/zopfli/Android.bp (r32 ~lines 20-50,
+//   host_supported, export_include_dirs src) -
+//   external/zopfli NOT synced.
+// - avb_headers: header_libs of libfastboot2 + libfastboot
+//   (via fastboot_host_defaults). Upstream
+//   cc_library_headers in external/avb/Android.bp
+//   (lineage-22.2 lines 838-870, host_supported,
+//   export_include_dirs ".") - external/avb NOT synced.
+//   Same file as libavb (#119, cc_library_static) and
+//   libavb_host_sysdeps (#122, cc_library_host_static) -
+//   three different modules, all stubbed now.
+// - bootimg_headers: header_libs of libfastboot2 +
+//   libfastboot (+ export_header_lib_headers) and of
+//   libinit_defaults (line 449, not cited by any run -
+//   subset reporting). Upstream cc_library_headers in
+//   system/tools/mkbootimg/Android.bp (r32 ~lines 7-22,
+//   export_include_dirs include/bootimg, host_supported)
+//   - system/tools/mkbootimg NOT synced (only
+//   system/tools/aidl, hidl, xsdc are synced). NOT
+//   system/core/mkbootimg - mkbootimg lives under
+//   system/tools/.
+// - libadb_host: static_libs of libfastboot2. Upstream
+//   cc_library_host_static in packages/modules/adb/
+//   Android.bp (r32 lines 536-538) - packages/modules/adb
+//   NOT synced. NOT a prune casualty: system/core has no
+//   adb/ dir at all at r32 or lineage-22.2 - adb moved out
+//   of system/core to its own project. Stub mirrors the
+//   upstream type (host-only by type, no host_supported -
+//   same pattern as libavb_host_sysdeps #122).
+// - liblzma: shared_libs (target.android) AND static_libs
+//   (target.host) of libutils_binder_test - only plain
+//   cc_library satisfies both. Upstream plain cc_library
+//   in external/lzma/Android.bp (r32 ~lines 40-44,
+//   host_supported) - external/lzma NOT synced.
+// - platform_tools_version: generated_headers of
+//   libfastboot. Upstream genrule in development/sdk/
+//   Android.bp (r32 lines 42-52, out
+//   platform_tools_version.h, seds
+//   plat_tools_source.prop_template) - development NOT
+//   synced. Stub genrule with the same out and a dummy
+//   header cmd; it must NOT reference the template as a
+//   src (that file is not in the tree). Same pattern as
+//   the cxx-bridge-header genrule stub (#119).
+// - libaconfigd_protos_rust: rustlibs of aflags.defaults
+//   (inherited by rust_binary aflags + rust_test_host
+//   aflags.test). Upstream rust_library in
+//   packages/modules/ConfigInfrastructure/aconfigd/proto/
+//   Android.bp (r32 lines 108-126, crate_name
+//   aconfigd_protos, defaults aconfigd_protos.defaults,
+//   host_supported) - that project NOT synced. The daemon
+//   lives under packages/modules/ConfigInfrastructure/
+//   aconfigd/ (NOT build/make/tools/aconfig/aconfigd or
+//   system/aconfigd - neither exists). Do NOT stub the
+//   rust_protobuf libaconfigd_rust_proto separately - no
+//   synced file references it; the stub carries no
+//   rustlibs, so its generated-proto dep never surfaces.
+//   Stub is rust_library with crate_name aconfigd_protos,
+//   srcs lib.rs (reused from the #96 libcxx stub),
+//   edition 2021.
+cc_library {
+    name: "libcap",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libzopfli",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "avb_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "bootimg_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_host_static {
+    name: "libadb_host",
+    srcs: ["empty.c"],
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "liblzma",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+genrule {
+    name: "platform_tools_version",
+    out: ["platform_tools_version.h"],
+    cmd: "echo '#define PLATFORM_TOOLS_VERSION \"34.0.0\"' > $(out)",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "libaconfigd_protos_rust",
+    crate_name: "aconfigd_protos",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #128/#129/#130 fix: the #125/#126/#127 fix HELD in
+// all three (prune step passed + pre-build guard passed).
+// All three fail at Soong ninja generation, ~36-52s into
+// the build step, on the SAME fix code (head 5ae5a26 - the
+// #125/#126/#127 fix, workflow bbb3ce6). Subset-reporting
+// again: #130 reports 7 lines, #128/#129 add 2 lines
+// naming one more module - the fix covers the UNION
+// (8 distinct error lines, 5 distinct modules).
+// Raw-log verbatim (live browser read of the job log;
+// genuine build-output lines only - the other "error:"
+// matches in each log are the runner echoing the Build
+// step script itself, the pre-build-guard echo commands
+// that did NOT fire, NOT build errors). The FAILED line is
+// out/soong/build.yuzora_lights.ninja (not build.ninja).
+// No genuine "missing variant" line in any of the three
+// runs.
+//   #130 (45883094436, 14m3s, manual ~00:51 IST,
+//   5ae5a26) - 7 lines: merge_ota
+//   (build/make/tools/releasetools/Android.bp:339) needs
+//   update_payload + care_map_proto_py;
+//   releasetools_add_img_to_target_files (:189) +
+//   add_img_to_target_files (:319) need libavbtool;
+//   ota_from_target_files (:491) +
+//   releasetools_ota_from_target_files (:263) need
+//   care_map_proto_py; libutilscallstack
+//   (system/core/libutils/Android.bp:220) needs
+//   libunwindstack.
+//   #128 (45881593027, auto, manifest ad496c8) + #129
+//   (45882824033, auto, README 5ae5a26) - 2 lines, both
+//   naming android.os.vibrator.flags-aconfig-cc (one new
+//   module).
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all 5 defining projects UNSYNCED):
+// - update_payload: python_library_host in
+//   system/update_engine/scripts/Android.bp -
+//   system/update_engine NOT synced. Same project as
+//   libupdate_engine_headers (#119).
+// - care_map_proto_py: python_library_host in
+//   bootable/recovery/update_verifier/Android.bp -
+//   bootable/recovery NOT synced.
+// - libavbtool: python_library_host in external/avb/
+//   Android.bp - external/avb NOT synced. Same file as
+//   libavb (#119, cc_library_static),
+//   libavb_host_sysdeps (#122, cc_library_host_static)
+//   and avb_headers (#125, cc_library_headers) - four
+//   different modules, all stubbed now.
+// - libunwindstack: plain cc_library in
+//   system/unwinding/libunwindstack/Android.bp -
+//   system/unwinding NOT synced. Stub is plain cc_library
+//   (upstream type; covers both shared_libs and
+//   static_libs use - same precedent as libz #119,
+//   libjsoncpp #105, libcrypto #122).
+// - android.os.vibrator.flags-aconfig-cc: cc_aconfig_library
+//   in frameworks/base/AconfigFlags.bp - frameworks/base
+//   NOT synced; explicitly declared (like
+//   android.os.flags-aconfig-cc-host #122), and a
+//   cc_aconfig_library generates a cc_library of the same
+//   name, so a plain cc_library stub satisfies it. Siblings
+//   -cc / -cc-test NOT stubbed - no synced file references
+//   them.
+python_library_host {
+    name: "update_payload",
+    srcs: ["empty.py"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+python_library_host {
+    name: "care_map_proto_py",
+    srcs: ["empty.py"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+python_library_host {
+    name: "libavbtool",
+    srcs: ["empty.py"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libunwindstack",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.os.vibrator.flags-aconfig-cc",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #131/#132/#133/#134 fix: the #128/#129/#130 fix HELD in
+// all four (prune step passed + pre-build guard passed).
+// All four fail at Soong ninja generation, 34-51s into the
+// build step, on the SAME fix code (head d1733a2 - the
+// #128/#129/#130 fix, workflow f608a53; #131 is the
+// manifest push 94840c1, #132 the README push 038d421 -
+// same content, parallel upload). Subset-reporting
+// again: #134 reports 6 lines, #133 reports 4, #132
+// reports 3, #131 reports 3 - the fix covers the UNION
+// (7 distinct error lines, 6 distinct modules).
+// Raw-log verbatim (live browser read of the job-logs.txt
+// raw logs; genuine build-output lines only - the other
+// "error:" matches in each log are the runner echoing the
+// Build step script itself, the pre-build-guard echo
+// commands that did NOT fire, NOT build errors). The
+// FAILED line is out/soong/build.yuzora_lights.ninja (not
+// build.ninja).
+//   #134 (45895348416, 13m39s, manual ~02:32 IST,
+//   d1733a2) - 6 lines: servicemanager_test
+//   (frameworks/native/cmds/servicemanager/Android.bp:94)
+//   + servicemanager_unittest (:105) need libvintf;
+//   libutils_test (system/core/libutils/Android.bp:329)
+//   needs libunwindstack_no_dex; host-apex-verifier
+//   (system/apex/tools/Android.bp:122) needs
+//   debugfs_static + fsck.erofs + the libpcre2 SHARED
+//   variant (only static available).
+//   #133 (45894592352, 14m42s, manual ~02:26 IST,
+//   038d421) - 4 lines: libutils_test needs
+//   libunwindstack_no_dex; liblogd
+//   (system/logging/logd/Android.bp:57) needs
+//   ILogcatManagerService_aidl; servicemanager_test +
+//   servicemanager_unittest need libvintf.
+//   #132 (45894278812, 14m59s, auto, README 038d421) -
+//   3 lines: host-apex-verifier needs debugfs_static +
+//   fsck.erofs + the libpcre2 SHARED variant.
+//   #131 (45894154470, 14m40s, auto, manifest 94840c1) -
+//   3 lines: libutils_test needs libunwindstack_no_dex;
+//   servicemanager_test + servicemanager_unittest need
+//   libvintf.
+// PHANTOM CORRECTION: the first browser read of #134
+// reported ILights.aidl / types.aidl /
+// android.hardware.light@2.0 / vendor.qti.hardware.display
+// lines - NONE occur in any of the four raw logs (a raw-log
+// text search returns zero matches for ILights,
+// types.aidl, vendor.qti.hardware.display and
+// android.hardware.light@2.0; the light aidl_api has no
+// types.aidl at lineage-22.2 and ILights.aidl has no
+// imports). Same class as the #30/#33/#84/#96/#107
+// misreads: UI-log reads invent error lines; the raw log
+// is authoritative.
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all 6 defining projects UNSYNCED):
+// - libvintf: plain cc_library in system/libvintf/
+//   Android.bp (r32, host_supported) - system/libvintf
+//   NOT synced. Used in shared_libs by
+//   servicemanager_defaults, which both test modules
+//   inherit (neither names it directly).
+// - libunwindstack_no_dex: cc_library_static in
+//   system/unwinding/libunwindstack/Android.bp (r32,
+//   static lib without DEX support, no libdexfile dep) -
+//   system/unwinding NOT synced. Used in
+//   target.host.static_libs by libutils_test (on Android
+//   it uses shared libunwindstack instead, already
+//   stubbed #128).
+// - ILogcatManagerService_aidl: aidl_library in
+//   frameworks/base/core/java/Android.bp (r32, lines
+//   256-259, srcs android/os/logcat/
+//   ILogcatManagerService.aidl) - frameworks/base NOT
+//   synced. Used in aidl.libs by liblogd (a
+//   cc_library_static), NOT in shared/static_libs - so
+//   the stub must be a real aidl_library (a cc_library
+//   stub would fail Soong's aidl.libs type check), with
+//   a minimal valid .aidl source (empty interface;
+//   liblogd is never compiled for this HAL-only target,
+//   so only the module name has to exist for the parse).
+// - debugfs_static: cc_binary (static_executable,
+//   host_supported) in external/e2fsprogs/debugfs/
+//   Android.bp (r32) - external/e2fsprogs NOT synced.
+//   Used in data_bins by the sh_test_host
+//   host-apex-verifier (NOT the cc_binary_host
+//   host_apex_verifier) and in required: by deapexer /
+//   apex_elf_checker / apexd_host in the same file.
+// - fsck.erofs: cc_binary (host_supported) in
+//   external/erofs-utils/Android.bp (r32) -
+//   external/erofs-utils NOT synced. Same use as
+//   debugfs_static.
+// - libpcre2: the #78 cc_library_static stub provides
+//   only the static variant, but host-apex-verifier
+//   lists it in data_libs, which needs the SHARED
+//   variant (os:linux_glibc,arch:x86_64,link:shared).
+//   Upstream libpcre2 is plain cc_library in
+//   external/pcre/Android.bp (r32, host_supported) -
+//   external/pcre NOT synced. The stub changes type
+//   (same fix as libz #119, libcrypto/libselinux #122).
+cc_library {
+    name: "libvintf",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libunwindstack_no_dex",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+aidl_library {
+    name: "ILogcatManagerService_aidl",
+    srcs: ["android/os/logcat/ILogcatManagerService.aidl"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "debugfs_static",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "fsck.erofs",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #135/#136/#137 fix: the #131/#132/#133/#134 fix HELD in
+// all three (prune step passed + pre-build guard passed).
+// All three fail at Soong ninja generation, tens of seconds
+// into the build step, on the SAME fix code (head 0a0f080 -
+// the #131/#132/#133/#134 fix, workflow 6f51f5e; #135 is the
+// manifest push 475f777, #136 the README push 0a0f080 -
+// same workflow file in all three, parallel upload).
+// Subset-reporting again: #137 reports 1 line, #136
+// reports 5, #135 reports 3 - the fix covers the UNION
+// (9 lines, 7 distinct modules).
+// Raw-log verbatim (live browser read of the job-logs.txt
+// raw logs; genuine build-output lines only - the other
+// "error:" matches in each log are the runner echoing the
+// Build step script itself, the pre-build-guard echo
+// commands that did NOT fire, NOT build errors). The
+// FAILED line is out/soong/build.yuzora_lights.ninja (not
+// build.ninja). No genuine "missing variant" line in any
+// of the three runs.
+//   #137 (45902430896, 14m43s, manual ~03:35 IST,
+//   0a0f080) - 1 line: libinput_bindgen
+//   (frameworks/native/libs/input/Android.bp:78) needs
+//   flatbuffer_headers.
+//   #136 (45902061404, 13m32s, auto, README 0a0f080) -
+//   5 lines: libvibrator
+//   (frameworks/native/libs/vibrator/Android.bp:49) needs
+//   libaudio_system_headers; libinput_bindgen (:78) needs
+//   flatbuffer_headers; libsensor
+//   (frameworks/native/libs/sensor/Android.bp:37) needs
+//   android.permission.flags-aconfig-cc + libhardware +
+//   android.companion.virtual.virtualdevice_aidl-cpp.
+//   #135 (45901885683, 15m50s, auto, manifest 475f777) -
+//   3 lines: libinput_bindgen needs flatbuffer_headers;
+//   binder_rpc_fuzzer
+//   (frameworks/native/libs/binder/tests/rpc_fuzzer/
+//   Android.bp:10) needs libssl_fuzz_unsafe +
+//   libcrypto_fuzz_unsafe.
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all 7 defining projects UNSYNCED):
+// - flatbuffer_headers: cc_library_headers in
+//   external/flatbuffers/Android.bp (r32, lines 51-55,
+//   export_include_dirs ["include"], vendor_available,
+//   host_supported) - external/flatbuffers NOT synced.
+//   Used in header_libs by libinput_bindgen (a
+//   rust_bindgen), libinput and the input tests.
+// - libaudio_system_headers: cc_library_headers in
+//   system/media/audio/Android.bp (r32, lines 9-11,
+//   host_supported, vendor_available, product_available,
+//   export_include_dirs ["include"], min_sdk_version 29)
+//   - NOT frameworks/av; system/media NOT synced. Used
+//   in header_libs by libvibrator.
+// - android.permission.flags-aconfig-cc: cc_aconfig_library
+//   in frameworks/base/AconfigFlags.bp (r32, lines
+//   851-856, aconfig_declarations
+//   android.permission.flags-aconfig, host_supported) -
+//   frameworks/base NOT synced. Used in static_libs by
+//   libsensor; a cc_aconfig_library generates a
+//   cc_library of the same name, so a plain cc_library
+//   stub satisfies it (same as the -aconfig-cc stubs in
+//   #122 / #128).
+// - libhardware: cc_library_shared in
+//   hardware/libhardware/Android.bp (r32, lines 90-91,
+//   srcs hardware.c, host_supported, recovery_available,
+//   vendor_available, min_sdk_version 29) - NOT plain
+//   cc_library; hardware/libhardware NOT synced. Used in
+//   shared_libs (+ export_shared_lib_headers) by
+//   libsensor, and in shared_libs by the sensor fuzzers,
+//   sensorprivacy and the hwc test defaults - every known
+//   use is shared_libs, so cc_library_shared satisfies
+//   them all (same shape as the libperfetto_c stub #122).
+//   The sibling libhardware_headers was already stubbed
+//   in #96.
+// - android.companion.virtual.virtualdevice_aidl-cpp: the
+//   generated C++ lib of the aidl_interface
+//   android.companion.virtual.virtualdevice_aidl (note
+//   the _aidl suffix) in frameworks/base/core/java/
+//   Android.bp (r32, lines 818-825, unstable,
+//   host_supported, srcs android/companion/virtualnative/
+//   IVirtualDeviceManagerNative.aidl; no explicit cpp
+//   backend block - cpp is default-on, confirmed by use
+//   in libmedia_jni shared_libs) - frameworks/base NOT
+//   synced. Used in shared_libs by libsensor AND in
+//   static_libs by libsensorserviceaidl_fuzzer (a
+//   cc_fuzz), so only a plain cc_library stub satisfies
+//   both - the generated type itself is unconfirmed.
+// - libssl_fuzz_unsafe: cc_test_library in
+//   external/boringssl/Android.bp (r32, lines 554-556,
+//   host_supported, defaults boringssl_fuzz_unsafe_
+//   defaults, static_libs libcrypto_fuzz_unsafe) -
+//   external/boringssl NOT synced. Used in static_libs
+//   by binder_rpc_fuzzer (a cc_fuzz); stubbed as plain
+//   cc_library, which provides the static variant the
+//   fuzzer needs.
+// - libcrypto_fuzz_unsafe: cc_test_library in the same
+//   file (r32, lines 478-479; host support comes via its
+//   defaults, boringssl_fuzz_unsafe_defaults and
+//   libcrypto_defaults) - same project, NOT synced.
+//   Same use and same stub type as libssl_fuzz_unsafe.
+// COMPILE-STAGE CAVEAT: the two cc_library_headers stubs
+// are bare (no export_include_dirs, no real headers), as
+// all earlier headers stubs were. A bare stub passes
+// Soong; dummy headers will be needed only if the next
+// run fails at compile/link because libinput or
+// libvibrator actually includes flatbuffers/audio
+// headers (same class as the #111 libgsi caveat).
+cc_library_headers {
+    name: "flatbuffer_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libaudio_system_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.permission.flags-aconfig-cc",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "libhardware",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.companion.virtual.virtualdevice_aidl-cpp",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libssl_fuzz_unsafe",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libcrypto_fuzz_unsafe",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #138/#139/#140 fix: the #135/#136/#137 fix HELD in
+// all three (prune step passed + pre-build guard passed).
+// All three fail at Soong ninja generation, tens of seconds
+// into the build step, on the SAME fix code (head 8603eb6 -
+// the #135/#136/#137 fix, workflow 3a06e37; #138 is the
+// manifest push 03a736c, #139 the README push 8603eb6 -
+// same workflow file in all three, #140 a manual dispatch
+// ~04:25 IST on 8603eb6). Subset-reporting again: #138/#139
+// report 3 lines, #140 reports 9 - the fix covers the UNION
+// (9 lines, 9 distinct modules).
+// Raw-log verbatim (live browser read of the job-logs.txt
+// raw logs; genuine build-output lines only - the other
+// "error:" matches in each log are the runner echoing the
+// Build step script itself, the pre-build-guard echo
+// commands that did NOT fire, NOT build errors). The
+// FAILED line is out/soong/build.yuzora_lights.ninja (not
+// build.ninja). No genuine "missing variant" line in any
+// of the three runs.
+//   #138 (45907425555, 14m34s, auto, manifest 03a736c) +
+//   #139 (45907515196, 14m47s, auto, README 8603eb6) - 3
+//   lines each, byte-identical: libsensorserviceaidl
+//   (frameworks/native/services/sensorservice/aidl/
+//   Android.bp:10) needs android.hardware.sensors-
+//   V1-convert + android.frameworks.sensorservice-V1-ndk
+//   + android.hardware.sensors-V3-ndk.
+//   #140 (45907764291, 14m40s, manual ~04:25 IST, 8603eb6)
+//   - 9 lines: the same 3 sensor lines PLUS libinput
+//   (frameworks/native/libs/input/Android.bp:203) needs
+//   libeigen + tensorflow_headers + libtflite_static +
+//   libkernelconfigs +
+//   android.companion.virtualdevice.flags-aconfig-cc +
+//   libPlatformProperties.
+// NOTE on :line numbers: Soong reports libinput at
+// :203:1 but the live file has libinput at line 387
+// (:203 is inside libinput_bindgen's bindgen_flags) -
+// Soong attributes through the defaults expansion again,
+// so key the fix off module names, not :line numbers
+// (same caveat as the #122 liblp/libapex paths and the
+// #125 fastboot/init lines).
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all defining projects UNSYNCED
+// unless noted):
+// - android.hardware.sensors-V1-convert: the generated
+//   version-conversion C++ lib of the aidl_interface
+//   android.hardware.sensors in hardware/interfaces/
+//   sensors/aidl/Android.bp (lineage-22.2, versions_with_
+//   info 1 + 2, frozen: false, cpp/java backends disabled,
+//   ndk default-on, stability vintf) - hardware/interfaces
+//   is synced but the closure prune keeps ONLY light/aidl
+//   + compatibility_matrices + common/aidl + input/common/
+//   aidl, so sensors/aidl is pruned. Used in static_libs
+//   by libsensorserviceaidl (a plain cc_library), so a
+//   plain cc_library stub satisfies it.
+// - android.frameworks.sensorservice-V1-ndk: the generated
+//   NDK lib of the aidl_interface
+//   android.frameworks.sensorservice in frameworks/
+//   hardware/interfaces/sensorservice/aidl/Android.bp
+//   (aosp monorepo main: frozen version 1, cpp/java
+//   backends disabled, ndk default-on, stability vintf,
+//   srcs android/frameworks/sensorservice/*.aidl) -
+//   frameworks/hardware/interfaces is NOT synced. Used in
+//   shared_libs by libsensorserviceaidl, so a plain
+//   cc_library stub satisfies it. (The interface imports
+//   android.hardware.sensors-V2 - no stub for that: imports
+//   of an unsynced interface never surface, only the three
+//   modules synced code names directly.)
+// - android.hardware.sensors-V3-ndk: the generated NDK lib
+//   of the same android.hardware.sensors interface - with
+//   frozen: false the current (unfrozen) version is V3.
+//   Same project/prune story as -V1-convert. Used in
+//   shared_libs by libsensorserviceaidl, so a plain
+//   cc_library stub satisfies it.
+// - libeigen: cc_library_headers in external/eigen/
+//   Android.bp (export_include_dirs ["."]) - external/eigen
+//   NOT synced. Used in header_libs (+ export_header_lib_
+//   headers) by libinput; libtflite_framework also lists
+//   it in header_libs, same stub covers both.
+// - tensorflow_headers: cc_library_headers in external/
+//   tensorflow/Android.bp (r32, export_include_dirs ["."],
+//   vendor_available, host_supported, sdk_version current)
+//   - external/tensorflow NOT synced. Used in header_libs
+//   by libinput.
+// - libtflite_static: cc_library_static in external/
+//   tensorflow/tensorflow/lite/tflite_static.bp (r32,
+//   host_supported, vendor_available, sdk_version current,
+//   min_sdk_version 30, srcs :tflite_src) - external/
+//   tensorflow NOT synced. Used in static_libs by libinput
+//   (and by libtensorflowlite_jni); libinput's ldflags
+//   reference libtflite_static.a, confirming the static
+//   archive.
+// - libkernelconfigs: cc_library_static in system/libvintf/
+//   Android.bp (r32, defaults libvintf-defaults, host_
+//   supported, recovery_available, srcs KernelConfigs.cpp
+//   + KernelConfigParser.cpp, shared_libs libbase + libz)
+//   - NOT kernel/configs: the synced kernel/configs tree
+//   holds only config fragments + build rules, while
+//   libkernelconfigs lives in system/libvintf, which is
+//   NOT synced. Used in static_libs by libinput (and in
+//   whole_static_libs by libvintf, stubbed plain in #131
+//   - that stub does not reference it).
+// - android.companion.virtualdevice.flags-aconfig-cc:
+//   cc_aconfig_library in frameworks/base/AconfigFlags.bp
+//   (lineage-22.2, lines 957-967, aconfig_declarations
+//   android.companion.virtualdevice.flags-aconfig,
+//   host_supported, mode test) - frameworks/base NOT
+//   synced. Used in shared_libs by libinput; a
+//   cc_aconfig_library generates a cc_library of the same
+//   name, so a plain cc_library stub satisfies it (same as
+//   the -aconfig-cc stubs in #122 / #128 / #135). The
+//   sibling -java libs are NOT stubbed - no synced file
+//   references them.
+// - libPlatformProperties: Soong generates the cc_library
+//   libPlatformProperties from the sysprop_library
+//   "PlatformProperties" (android/sysprop/Platform-
+//   Properties.sysprop, owner Platform) - one rust_library,
+//   one java_library and one cc_library per sysprop_library
+//   (source.android.com sysprops-apis doc). The defining
+//   .bp file was NOT traced to a file this round (same
+//   class as the #105 libgtest_isolated / libprocinfo
+//   stubs - home not traced); a plain cc_library stub
+//   satisfies the shared_libs use by libinput regardless
+//   of which project defines it.
+// COMPILE-STAGE CAVEAT: the two cc_library_headers stubs
+// are bare (no export_include_dirs, no real headers), as
+// all earlier headers stubs were. A bare stub passes
+// Soong; dummy headers will be needed only if the next
+// run fails at compile/link because libinput actually
+// includes Eigen / tensorflow/lite headers (TfLiteMotion-
+// Predictor.cpp does) - same class as the #111 libgsi and
+// #135 flatbuffer caveats.
+cc_library {
+    name: "android.hardware.sensors-V1-convert",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.frameworks.sensorservice-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.sensors-V3-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libeigen",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "tensorflow_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libtflite_static",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libkernelconfigs",
+    srcs: ["empty.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.companion.virtualdevice.flags-aconfig-cc",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libPlatformProperties",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #141/#142/#143 fix: the #138/#139/#140 fix HELD in
+// all three (prune step passed + pre-build guard passed).
+// All three fail at Soong ninja generation, tens of seconds
+// into the build step, on the SAME fix code (head 24b86f6 -
+// the #138/#139/#140 fix, workflow eed9b31; #141 is the
+// manifest push 026e1af, #142 the README push 24b86f6 -
+// same workflow file in all three, #143 a manual dispatch
+// ~05:08 IST on 24b86f6). NO subset variation this round:
+// all three report the IDENTICAL 12 lines - the fix covers
+// that set (12 lines, 9 distinct modules). Runs #141
+// (45911630805, 13m27s, auto, manifest 026e1af) + #142
+// (45911747029, 15m56s, auto, README 24b86f6) + #143
+// (45912149579, 13m43s, manual ~05:08 IST, 24b86f6).
+// CORRECTION to the run #141 id: the first browser read
+// was given 45911955969, which 404s - the runs list shows
+// #141 is 45911630805. Always take run ids from the runs
+// list, never from a dispatch handoff alone.
+// Raw-log verbatim (live browser read of the job-logs.txt
+// raw logs; genuine build-output lines only - the other
+// "error:" matches in each log are the runner echoing the
+// Build step script itself, the pre-build-guard echo
+// commands that did NOT fire, NOT build errors). The
+// FAILED line is out/soong/build.yuzora_lights.ninja (not
+// build.ninja). No genuine "missing variant" line in any
+// of the three runs.
+//   libinputflinger_base (frameworks/native/services/
+//   inputflinger/Android.bp:229) needs libstatslog.
+//   libinput_tests (frameworks/native/libs/input/tests/
+//   Android.bp:11) needs libflagtest + libstatslog.
+//   inputflinger_tests (frameworks/native/services/
+//   inputflinger/tests/Android.bp:34) needs
+//   libpalmrejection + libperfetto_client_experimental +
+//   perfetto_winscope_extensions_zero + libchrome-gestures
+//   + libflagtest + android.hardware.input.processor-
+//   V1-ndk + libkll + libstatspull + libstatslog.
+// NOTE on :line numbers: Soong's :229 / :11 / :34 ARE the
+// module block starts in the live files this round
+// (verified against the manifest-pinned tree:
+// libinputflinger_base cc_library_shared block at :229,
+// libinput_tests cc_test block at :11, inputflinger_tests
+// cc_test block at :34) - the deps themselves arrive through
+// the defaults the three targets inherit
+// (libinputflinger_base_defaults,
+// libinputflinger_defaults, libinputdispatcher_defaults,
+// libinputreader_defaults), so key the fix off module
+// names, not :line numbers (same caveat as the #122
+// liblp/libapex paths and the #125 fastboot/init lines).
+// CORRECTION to the browser reports: both browser reads
+// claimed the prune step "removed frameworks/native/
+// services/inputflinger, frameworks/native/libs/input and
+// frameworks/native/libs/sensor" - WRONG. The prune step
+// contains no rm for any of those trees (verified in this
+// file); the three consumers are test targets in the
+// SYNCED frameworks/native tree, and their missing deps
+// are stubbed, not pruned. Same phantom class as the
+// #30/#33/#84/#96/#107/#121/#131 misreads - the raw log
+// error lines are authoritative, the browser's prune
+// summary is not.
+// Root causes, verified live at LineageOS lineage-22.2 /
+// AOSP android-15.0.0_r32 (all defining projects UNSYNCED
+// unless noted):
+// - libstatslog: the StatsD client log lib. In Android 12
+//   the StatsD module code moved from system/core/libstats
+//   to packages/modules/StatsD (source.android.com statsd
+//   doc: system/core/libstats -> packages/modules/StatsD/
+//   lib/libstats) - packages/modules/StatsD is NOT synced;
+//   the defining .bp file was NOT traced to a file this
+//   round (same class as the #105 libgtest_isolated /
+//   libprocinfo stubs - home not traced). Used in
+//   shared_libs by libinputflinger_base_defaults,
+//   libinputflinger_defaults, libinputdispatcher_defaults
+//   and libinputreader_defaults, and directly by
+//   libinput_tests, so a plain cc_library stub satisfies
+//   it.
+// - libstatspull: the StatsD pull-atom client lib -
+//   cc_library in packages/modules/StatsD/lib/
+//   libstatspull (same Android 12 move: system/core/
+//   libstats/pull -> packages/modules/StatsD/lib/
+//   libstatspull; the prebuilt module SDK confirms the
+//   shared lib) - packages/modules/StatsD is NOT synced.
+//   Used in shared_libs by libinputflinger_defaults,
+//   libinputdispatcher_defaults and libinputreader_
+//   defaults, so a plain cc_library stub satisfies it.
+// - libkll: provides kll.h, included by the inputflinger
+//   dispatcher (LatencyAggregator.h) - the defining .bp
+//   file was NOT traced to a file this round (same class
+//   as the #105 stubs - home not traced). Used in
+//   shared_libs by libinputflinger_defaults and
+//   libinputdispatcher_defaults, so a plain cc_library
+//   stub satisfies it.
+// - libflagtest: the aconfig flag-test helper lib - also
+//   used in static_libs by cts/flags/cc_tests
+//   FlagMacrosTest; the defining .bp file was NOT traced
+//   to a file this round (same class as the #105 stubs -
+//   home not traced). Used in static_libs by
+//   libinput_tests + inputflinger_tests, so a plain
+//   cc_library stub satisfies it (plain builds the static
+//   variant).
+// - libpalmrejection: the Chromium neural palm-detection
+//   model lib used by the input code (frameworks/native
+//   commits, bug 198472780 - "The libpalmrejection
+//   library is going to be used in the input code"); the
+//   defining .bp file was NOT traced to a file this round
+//   (same class as the #105 stubs - home not traced).
+//   Used in static_libs by libinputflinger_defaults, so a
+//   plain cc_library stub satisfies it.
+// - libperfetto_client_experimental: the Perfetto client
+//   API lib - GN target //:libperfetto_client_
+//   experimental, translated to Android.bp cc_library by
+//   external/perfetto/tools/gen_android_bp (a default
+//   target; host_supported, vendor_available) -
+//   external/perfetto is NOT synced. Used in static_libs
+//   by libinputflinger_defaults and libinputdispatcher_
+//   defaults, so a plain cc_library stub satisfies it.
+// - perfetto_winscope_extensions_zero: a Perfetto proto
+//   lib (the *_zero proto variant) in external/perfetto;
+//   the defining .bp file was NOT traced to a file this
+//   round (same class as the #105 stubs - home not
+//   traced). Used in static_libs by libinputdispatcher_
+//   defaults, so a plain cc_library stub satisfies it.
+// - libchrome-gestures: cc_library in external/
+//   libchrome-gestures (an AOSP submodule - .gitmodules;
+//   the sibling libchrome-gestures_headers was already
+//   stubbed in #84) - external/libchrome-gestures is NOT
+//   synced. Used in static_libs by libinputreader_
+//   defaults (+ libinputreader) and in whole_static_libs
+//   by libinputreader_static, so only a plain cc_library
+//   stub satisfies both (plain builds the static
+//   variant).
+// - android.hardware.input.processor-V1-ndk: the generated
+//   NDK lib of the aidl_interface android.hardware.input.
+//   processor in hardware/interfaces/input/processor/aidl/
+//   Android.bp (verified in the synced tree: frozen
+//   version 1, cpp/java backends disabled, ndk default-
+//   on, stability vintf, imports android.hardware.input.
+//   common-V1) - hardware/interfaces is synced but the
+//   closure prune keeps ONLY light/aidl +
+//   compatibility_matrices + common/aidl + input/common/
+//   aidl, so input/processor is pruned. The imported
+//   android.hardware.input.common-V1 needs NO stub: its
+//   aidl dir is kept (the #65/#66/#67 fix). Used in
+//   shared_libs by libinputflinger_defaults, so a plain
+//   cc_library stub satisfies it.
+// COMPILE-STAGE CAVEAT: all 9 stubs are bare plain
+// cc_library stubs (srcs empty.c, no headers), as all
+// earlier plain stubs were. A bare stub passes Soong;
+// dummy headers + stub symbols will be needed only if a
+// later run gets past Soong and fails at compile/link
+// because the test sources actually include these libs'
+// headers (LatencyAggregator.h includes <kll.h>; the
+// inputflinger/input test sources include palm, perfetto
+// and gestures headers) - same class as the #111 libgsi
+// and #135 flatbuffer caveats. Note the lights HAL
+// closure itself does not link these test targets, so
+// this caveat may never materialize.
+cc_library {
+    name: "libstatslog",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libflagtest",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libpalmrejection",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libperfetto_client_experimental",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "perfetto_winscope_extensions_zero",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libchrome-gestures",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.input.processor-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libkll",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libstatspull",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #147/#148/#149 fix: the #144/#145/#146 fix HELD in
+// all three (prune step passed in 4s + pre-build guard
+// passed; ZERO Soong dependency-cycle lines in any raw
+// log - the libwinpthread stl: "none" fix resolved).
+// All three fail at Soong ninja-file generation, 36-46s
+// into the build step, on the SAME fix code (head
+// d227a64 - the #144/#145/#146 fix, workflow 996034f;
+// #147 is the manifest push 9e61ecc, #148 the README
+// push d227a64 - same workflow file in all three, #149
+// a manual dispatch ~06:22 IST on d227a64). Subset
+// variation again: #149 reports 3 lines, #147/#148
+// report 4 - the fix covers the UNION (4 lines, 3
+// distinct modules). Runs #147 (45918788481, 15m37s,
+// auto) + #148 (45918894728, 13m21s, auto) + #149
+// (45919249035, 14m43s, manual ~06:22 IST).
+// Raw-log verbatim error union (live browser read of
+// the job-logs.txt raw logs; genuine build-output
+// lines only - the other "error:" matches in each
+// log are the runner echoing the Build step script
+// itself, the pre-build-guard echo commands that did
+// NOT fire, NOT build errors; no genuine "missing
+// variant" line in any run):
+//   error: bionic/libc/Android.bp:2180:1:
+//     "librust_baremetal" depends on undefined module
+//     "//external/llvm-libc:llvmlibc".
+//   error: bionic/libc/Android.bp:2180:1:
+//     "librust_baremetal" depends on undefined module
+//     "libarm-optimized-routines-mem".
+//   error: bionic/libc/Android.bp:234:1:
+//     "libc_jemalloc_wrapper" depends on undefined
+//     module "libjemalloc5".
+//   error: bionic/libc/Android.bp:841:1: "libc_bionic"
+//     depends on undefined module
+//     "//external/llvm-libc:llvmlibc". (#147/#148 only)
+//   FAILED: out/soong/build.yuzora_lights.ninja.
+// CORRECTION: the first UI-log read of #149 reported
+// the module as "//external/llvm-libc:llvm-libc" -
+// WRONG; the raw log says "//external/llvm-libc:
+// llvmlibc", matching the consumer's reference
+// (bionic/libc/Android.bp:2209). Same phantom class
+// as the #96 "librusb_platform" misread - raw-log
+// lines are authoritative. Line numbers verified
+// against the manifest-pinned tree: the
+// librust_baremetal block starts at :2181 (Soong
+// :2180:1), libc_jemalloc_wrapper at :235 (Soong
+// :234:1), and libc_bionic's whole_static_libs at
+// :1258 (Soong :841:1 - attributes through the
+// defaults expansion again, same caveat as the #122
+// liblp/libapex paths and the #125 fastboot/init
+// lines). Key the fix off module names, not :line
+// numbers.
+// Root causes, verified live at AOSP
+// android-15.0.0_r32 (which IS the LineageOS
+// lineage-22.2 source for these three paths - the
+// LineageOS manifest pins the AOSP remote to r32
+// and no LineageOS mirrors exist for these repos;
+// all three defining projects UNSYNCED):
+// - llvmlibc is cc_library_static in
+//   external/llvm-libc/Android.bp (r32, lines 24-25),
+//   stl: "none", visibility //bionic/libc. Used in
+//   whole_static_libs by librust_baremetal (:2209)
+//   and libc_bionic (:1258).
+// - libarm-optimized-routines-mem/-string/-math are
+//   all cc_library_static in external/arm-optimized-
+//   routines/Android.bp (r32, lines 187-188, 137-138,
+//   84-85); -mem carries stl: "none", nocrt,
+//   visibility //bionic/libc (comment: "Memory
+//   intrinsics for bare-metal Rust binaries."); the
+//   shared defaults carry stl: "none" +
+//   host_supported. -mem used in whole_static_libs
+//   by librust_baremetal (:2210).
+// - libjemalloc5 is plain cc_library in
+//   external/jemalloc_new/Android.bp (r32, lines
+//   185-186) - NOT external/jemalloc (no Android.bp
+//   there at r32); target.android.shared disabled,
+//   defaults carry stl: "none" + host_supported.
+//   Used in static_libs by libc_jemalloc_wrapper
+//   (:242) and in whole_static_libs via the
+//   cc_defaults libc_native_allocator_defaults
+//   (:206/:220, product_variables malloc_low_memory
+//   - gated, which is why no "libc" module error
+//   surfaces). Sibling libjemalloc5_je_prefixed is
+//   cc_library_host_static (same file, lines
+//   235-236) - a different module, already stubbed
+//   in #96.
+// - Siblings (same-file, next subset-reporting
+//   layer, #111 libgsi/libgsid precedent):
+//   libarm-optimized-routines-string in
+//   whole_static_libs by libc_common (bionic/libc/
+//   Android.bp:1369) and libarm-optimized-routines-
+//   math in whole_static_libs by libm (bionic/libm/
+//   Android.bp:33). Neither errored in any run, but
+//   both are one subset-reporting layer away, so
+//   both are stubbed now.
+// Why llvmlibc cannot live in yuzora-stubs: the dep
+// is path-qualified (//external/llvm-libc:llvmlibc),
+// so Soong resolves it only in package
+// external/llvm-libc. The prune step creates
+// external/llvm-libc/Android.bp (+ empty.c) each
+// run - same mechanism as the #131 .aidl creation.
+// No new projects in the manifest (still 32); the
+// dir is created by the workflow, not synced. All 5
+// stubs carry stl: "none" (upstream carries it on
+// all five via the module or its defaults; the
+// empty.c stub needs no STL; it also avoids a
+// libwinpthread-class default-STL dep).
+// COMPILE-STAGE CAVEAT: all 5 stubs are bare (srcs
+// empty.c, no real symbols). libc_common /
+// libc_bionic / libc_jemalloc_wrapper are in the
+// libc closure, so if the next run passes Soong and
+// links libc.so, undefined symbols from the empty
+// stubs may surface (memcpy/memset/memmove et al.
+// from the -string/-mem stubs, strlcpy/strlcat/
+// memrchr/bsearch from llvmlibc, malloc/calloc/
+// realloc/free from libjemalloc5 if jemalloc is
+// selected) - dummy implementations will be needed
+// only then, same class as the #111 libgsi / #135
+// flatbuffer caveats. librust_baremetal is NOT in
+// the HAL closure (baremetal Rust for AVF guests),
+// so its two deps may never link.
+cc_library_static {
+    name: "libarm-optimized-routines-mem",
+    srcs: ["empty.c"],
+    stl: "none",
+    system_shared_libs: [],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libarm-optimized-routines-string",
+    srcs: ["empty.c"],
+    stl: "none",
+    system_shared_libs: [],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libarm-optimized-routines-math",
+    srcs: ["empty.c"],
+    stl: "none",
+    system_shared_libs: [],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libjemalloc5",
+    srcs: ["empty.c"],
+    stl: "none",
+    system_shared_libs: [],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #150/#151/#152 fix: the #147/#148/#149 fix HELD in
+// all three (prune step passed in 1s + pre-build guard
+// passed; ZERO llvmlibc / libjemalloc5 /
+// libarm-optimized-routines lines in any raw log). All
+// three fail at Soong ninja-file generation, 35-37s into
+// the build step, on the SAME fix code (head 5a43a82 -
+// the #147/#148/#149 fix, workflow 05ebd43; #150 is the
+// manifest push 261cf27, #151 the README push 5a43a82 -
+// same workflow file in all three, #152 a manual
+// dispatch ~07:15 IST on 5a43a82). NO subset variation
+// this round: all three report the identical 2 lines.
+// Runs #150 (45923995039, 12m51s, auto) + #151
+// (45924127939, 13m45s, auto) + #152 (45924377917,
+// 13m21s, manual ~07:15 IST).
+// Raw-log verbatim error union (live browser read of
+// the job-logs.txt raw logs; genuine build-output
+// lines only - the other "error:" matches in each
+// log are the runner echoing the Build step script
+// itself, the pre-build-guard echo commands that did
+// NOT fire, NOT build errors; no genuine "missing
+// variant" line in any run):
+//   error: system/core/fastboot/Android.bp:374:1:
+//     "fastboot_test" depends on undefined module
+//     "AdbWinApi".
+//   error: system/core/fastboot/Android.bp:335:1:
+//     "fastboot" depends on undefined module
+//     "AdbWinApi".
+//   FAILED: out/soong/build.yuzora_lights.ninja.
+// PHANTOM CORRECTION: the first UI-log read of #152
+// invented 'hardware/samsung/lights/Android.bp:26:1:
+// module "android.hardware.lights-service.samsung"
+// ... missing dependencies: AdbWinApi' - WRONG. The
+// raw log has NO such line; no lights/ dir exists in
+// the fork (live lineage-22.2 tree verified: no
+// lights/, the HAL is aidl/light/Android.bp defining
+// the singular android.hardware.light-service.samsung);
+// the only genuine Soong errors are the two fastboot
+// lines above. Same phantom class as #30/#33/#84/#96/
+// #107/#131 - raw-log lines are authoritative. Line
+// numbers verified against the manifest-pinned tree:
+// the fastboot block starts at :336 (Soong :335:1)
+// and fastboot_test at :375 (Soong :374:1) - Soong
+// attributes through the defaults expansion by one
+// line, same caveat as the #122 liblp/libapex paths
+// and the #125 fastboot/init lines. Key the fix off
+// module names, not :line numbers.
+// Usage (synced system/core/fastboot/Android.bp):
+// fastboot (cc_binary_host) target.windows.required
+// ["AdbWinUsbApi"] + target.windows.shared_libs
+// ["AdbWinApi"]; fastboot_test (cc_test_host)
+// target.windows.shared_libs ["AdbWinApi"] + a
+// windows_x86_64 enabled:false block ("Avoid trying
+// to build for win64"). The dep is windows-x86-only
+// (32-bit), matching upstream compile_multilib "32".
+// Root causes, verified live at AOSP
+// android-15.0.0_r32 (which IS the LineageOS
+// lineage-22.2 source for these paths - the
+// LineageOS manifest pins the AOSP remote to r32;
+// the defining project development is UNSYNCED):
+// AdbWinApi + AdbWinUsbApi are BOTH
+// cc_prebuilt_library_shared in development/host/
+// windows/Android.bp (r32, 32 lines; AdbWinApi
+// lines 19-26, AdbWinUsbApi lines 28-32), sharing
+// the cc_defaults AdbWinApi_defaults (lines 5-17:
+// host_supported true, enabled false,
+// device_supported false, compile_multilib "32",
+// target.windows.enabled true). AdbWinApi: srcs
+// prebuilt/usb/AdbWinApi.dll, windows_import_lib
+// prebuilt/usb/AdbWinApi.lib, export_include_dirs
+// ["usb/api"]. AdbWinUsbApi: srcs prebuilt/usb/
+// AdbWinUsbApi.dll. Both are prebuilt DLLs - no DLL
+// is available here, so the stubs are plain
+// cc_library with srcs empty.c (plain builds both
+// static and shared variants, satisfying the
+// shared_libs use - same reasoning as libssl #105 /
+// libcrypto #122 / libz #119). CORRECTIONS to the
+// first guesses: system/libadbwinapi/Android.bp
+// does NOT exist at r32 (no such repo; the phantom
+// UI read's citation was invented), and
+// development/host/windows/usb/api/Android.bp does
+// NOT exist at r32 either (that dir holds legacy
+// VS/MAKEFILE sources, no .bp). Both stubs carry
+// stl: "none" (upstream carries none - the real
+// modules are prebuilts; the empty.c stub needs no
+// STL, and it avoids a libwinpthread-class
+// default-STL dep). Both carry host_supported: true
+// + target windows enabled (the #78 shape - the dep
+// is windows-only).
+// AdbWinUsbApi is stubbed too although no run
+// errored on it: it sits in the same target.windows
+// block of the same consumer (fastboot :364,
+// required) - one subset-reporting layer away
+// (#111 sibling precedent); required-only deps never
+// errored in any run, but the stub costs one block
+// and a re-run costs 13 min.
+// COMPILE-STAGE CAVEAT: both stubs are bare (srcs
+// empty.c, no real symbols, no DLL). fastboot /
+// fastboot_test are host tools NOT in the HAL
+// closure - the lights target never links them - so
+// the empty stubs can never surface at link time
+// here; they exist only so Soong's dependency
+// resolution passes. Same class as the #111 libgsi
+// caveat, but weaker: not even a theoretical link.
+cc_library {
+    name: "AdbWinApi",
+    srcs: ["empty.c"],
+    stl: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "AdbWinUsbApi",
+    srcs: ["empty.c"],
+    stl: "none",
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #153/#154/#155 fix: runs #153 (45929013520,
+// 15m37s, auto, manifest 71371a6), #154 (45929119919,
+// 13m20s, auto, README 1732445) and #155 (45929338979,
+// 12m50s, manual dispatch ~08:06 IST 2026-11-27, head
+// 1732445 - the runs #150/#151/#152 fix, workflow
+// ebb5a3d) ALL FAILED at Soong ninja-file generation,
+// 35-46s into the build step, on the SAME fix code.
+// The #150/#151/#152 fix HELD in all three (prune step
+// passed in 0-4s + pre-build guard passed; ZERO
+// undefined-module / missing-variant lines in any raw
+// log). NO subset variation this round: all three
+// report the identical 7-line cycle. Raw-log verbatim
+// (browser job-logs.txt read of all three raw logs;
+// the other "error:" matches are the runner echoing
+// the Build step script itself - the pre-build-guard
+// echo commands that did not fire - NOT build errors):
+//   error: bionic/libc/Android.bp:1653:1: encountered
+//     dependency cycle:
+//   error: yuzora-stubs/Android.bp:1515:1: module
+//     "gwp_asan_headers" variant
+//     "android_arm64_armv8-a" depends on module
+//     "libc" variant "android_arm64_armv8-a_shared"
+//   error: bionic/libc/Android.bp:1653:1: module
+//     "libc" variant "android_arm64_armv8-a_shared"
+//     depends on module "libc" variant
+//     "android_arm64_armv8-a_shared_current"
+//   error: bionic/libc/Android.bp:1653:1: module
+//     "libc" variant
+//     "android_arm64_armv8-a_shared_current" depends
+//     on module "libc" variant
+//     "android_arm64_armv8-a_shared_30"
+//   error: bionic/libc/Android.bp:1653:1: module
+//     "libc" variant "android_arm64_armv8-a_shared_30"
+//     depends on module "libc" variant
+//     "android_arm64_armv8-a_shared_29"
+//   error: bionic/libc/Android.bp:1653:1: module
+//     "libc" variant "android_arm64_armv8-a_shared_29"
+//     depends on module "libc" variant
+//     "android_arm64_armv8-a_static"
+//   error: bionic/libc/Android.bp:1653:1: module
+//     "libc" variant "android_arm64_armv8-a_static"
+//     depends on module "gwp_asan_headers" variant
+//     "android_arm64_armv8-a"
+//   FAILED: out/soong/build.yuzora_lights.ninja.
+// Root cause, verified in the SYNCED Soong source
+// (build/soong/cc): (1) every cc module gets an
+// implicit dep on libc + libm + libdl -
+// baseLinker.linkerDeps (linker.go) gives every cc
+// module a default system_shared_libs (the toolchain's
+// DefaultSharedLibraries; config/bionic.go: libc,
+// libm, libdl) unless the module declines it, and
+// appends them to LateSharedLibs. The bare
+// gwp_asan_headers stub (cc_library_headers, #96 fix)
+// carries no system_shared_libs, so it depends on
+// libc shared. (2) The real libc depends back on the
+// stub: libc_native_allocator_defaults
+// (bionic/libc/Android.bp:199, manifest-pinned tree)
+// has header_libs: ["gwp_asan_headers"], and libc
+// uses that defaults via libc_library_defaults. The
+// two edges close a cycle. The fix is
+// system_shared_libs: [] on the stub - the sanctioned
+// decline (linker.go: "If an empty list [] is
+// specified, it implies that the module declines the
+// default system_shared_libs"), the same property
+// bionic's own modules carry (libc_defaults, and the
+// cc_library_headers bionic_libc_platform_headers in
+// the same file). Same class as the #144 libwinpthread
+// cycle (an implicit dep on a stub), but the implicit
+// dep here is system_shared_libs, not the default STL.
+// CORRECTION to the #144-body claim: the cycle check
+// does NOT run "once all modules resolve". Blueprint
+// runs the cycle check (updateDependencies) at the end
+// of each mutator group (build/blueprint/context.go
+// runMutator) and a cycle found there replaces the
+// errors that group collected - which is why
+// #153/#154/#155 report ONLY the cycle even though
+// libc's defaults also reference the undefined
+// gwp_asan + libscudo below: those surface only once
+// the cycle is fixed.
+// THE WHOLE CLASS, fixed now (Soong reports one cycle
+// per run - the #144 precedent - so fixing only the
+// reported edge would cost one 13-minute round per
+// cycle): system_shared_libs: [] is added to every cc
+// stub the real libc / libm / libdl closure consumes:
+// gwp_asan_headers (header_libs by
+// libc_native_allocator_defaults);
+// libarm-optimized-routines-string (whole_static_libs
+// by libc_common, itself whole_static_libs by
+// libc_common_static, itself whole_static_libs by
+// libc); libarm-optimized-routines-math
+// (whole_static_libs by libm, which carries
+// target.bionic.system_shared_libs ["libc"]);
+// libarm-optimized-routines-mem (whole_static_libs by
+// librust_baremetal - no path back from libc, but the
+// property is inert on an empty stub and kills the
+// class); libjemalloc5 (static_libs by
+// libc_jemalloc_wrapper - only via the
+// malloc_low_memory-gated product_variable, same inert
+// reasoning); llvmlibc (whole_static_libs by
+// libc_bionic, itself whole_static_libs by
+// libc_common). All five keep their types and
+// stl: "none".
+// NEW STUBS (same round): gwp_asan + libscudo are
+// referenced unconditionally by libc's own defaults -
+// gwp_asan in whole_static_libs by
+// libc_library_defaults (static: + shared:,
+// bionic/libc/Android.bp:1567/:1576) and libscudo in
+// whole_static_libs by libc_native_allocator_defaults
+// (:193) - and NEITHER is defined anywhere in the
+// synced tree (no *.bp defines them) nor stubbed
+// before now: they are the undefined-module layer the
+// cycle was masking, stubbed now (#111 sibling
+// precedent) so the next run does not spend 13 minutes
+// reporting them. Both are static allocator libraries
+// whole-archived into libc (external/gwp-asan +
+// external/scudo, both UNSYNCED), so both stubs are
+// cc_library_static with srcs empty.c, stl: "none"
+// (the #147 whole_static_libs-only shape) - and both
+// carry system_shared_libs: [] from birth, since libc
+// consumes them directly and they would cycle on their
+// first run without it. Upstream .bp types were NOT
+// re-verified line-by-line at r32 this round (web
+// search did not surface the files); the type follows
+// the use (whole_static_libs only) - if a later run
+// needs a shared variant, change to plain cc_library
+// (the libcrypto / libselinux / libz / libjsoncpp
+// precedent). NOT stubbed: tzdata_prebuilt +
+// tz_version_prebuilt (required: by
+// libc_library_defaults - required: never errored in
+// 150 runs) and libc_musl_headers (musl-target-gated,
+// the using modules are enabled: false outside musl).
+// COMPILE-STAGE CAVEAT: the two new stubs are bare
+// (empty.c, no symbols) and both sit in the libc
+// closure (libc whole-archives them), so if the next
+// run passes Soong and links libc.so, undefined
+// gwp_asan_ / scudo symbols may surface - dummy
+// implementations only then, same class as the #147
+// llvmlibc / -string / -mem / libjemalloc5 caveat.
+cc_library_static {
+    name: "gwp_asan",
+    srcs: ["empty.c"],
+    stl: "none",
+    system_shared_libs: [],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libscudo",
+    srcs: ["empty.c"],
+    stl: "none",
+    system_shared_libs: [],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #156/#157/#158 fix: runs #156 (45935286393, 16m34s,
+// auto, manifest a9d18f4), #157 (45935437929, 12m48s, auto,
+// README 82c941c) and #158 (45935609318, 12m47s, manual
+// dispatch ~09:11 IST 2026-11-27, head 82c941c - the runs
+// #153/#154/#155 fix, workflow 61ded3f) ALL FAILED at Soong
+// ninja-file generation, ~37s into the build step, on the
+// SAME fix code. The #153/#154/#155 fix HELD in all three
+// (prune step passed in 2-4s + pre-build guard passed;
+// ZERO dependency-cycle lines in any raw log - the
+// gwp_asan/libscudo system_shared_libs fix resolved).
+// Subset variation again: #156 reports 8 lines, #157/#158
+// report 7. The fix covers the UNION (8 lines, 6 distinct
+// modules). Raw-log verbatim error union (browser
+// job-logs.txt read of all three raw logs; the other
+// "error:" matches in each log are the runner echoing the
+// Build step script itself - the pre-build-guard echo
+// commands that did not fire - NOT build errors; no
+// genuine "missing variant" line in any run):
+//   error: system/core/libgrallocusage/Android.bp:32:1:
+//     "libgrallocusage" depends on undefined module
+//     "android.hardware.graphics.allocator@2.0".
+//   error: system/core/libstats/pull_lazy/Android.bp:8:1:
+//     "libstatspull_lazy" depends on undefined module
+//     "libstatspull_headers".
+//   error: system/core/libstats/pull_lazy/Android.bp:8:1:
+//     "libstatspull_lazy" depends on undefined module
+//     "libstatssocket_headers".
+//   error: frameworks/native/vulkan/vkjson/Android.bp:43:1:
+//     "libvkjson_ndk" depends on undefined module
+//     "vulkan_headers".
+//   error: frameworks/native/vulkan/vkjson/Android.bp:43:1:
+//     "libvkjson_ndk" depends on undefined module
+//     "libjsoncpp_ndk".
+//   error: frameworks/native/vulkan/vkprofiles/Android.bp:44:1:
+//     "libvkprofiles_ndk" depends on undefined module
+//     "vulkan_headers".
+//   error: system/core/libstats/socket_lazy/Android.bp:8:1:
+//     "libstatssocket_lazy" depends on undefined module
+//     "libstatssocket_headers".
+//   error: prebuilts/clang/host/linux-x86/Android.bp:48:1:
+//     "libomp" depends on undefined module "ndk_system".
+//     (#156 only)
+// Root causes, verified live at AOSP android-15.0.0_r32 /
+// LineageOS lineage-22.2 (all 6 defining projects
+// UNSYNCED unless noted):
+// android.hardware.graphics.allocator@2.0 is hidl_interface
+// in hardware/interfaces/graphics/allocator/2.0/Android.bp
+// (lineage-22.2, srcs IAllocator.hal, interfaces common@1.0
+// + mapper@2.0 + hidl.base@1.0, gen_java false).
+// hardware/interfaces IS synced, but the closure prune keeps
+// ONLY light/aidl + compatibility_matrices + common/aidl +
+// input/common/aidl, so allocator/2.0 is pruned - same story
+// as mapper@4.0 (#105). Used in shared_libs by
+// libgrallocusage (system/core/libgrallocusage/Android.bp:44,
+// verified in the manifest-pinned tree) and by libs/ui +
+// surfaceflinger. Stubbed plain cc_library (both variants;
+// the #105 mapper@4.0 shared-only precedent is narrower
+// than the subset-reporting lesson allows).
+// libstatspull_headers is cc_library_headers in
+// packages/modules/StatsD/lib/libstatspull/Android.bp (r32,
+// line 80, export_include_dirs ["include"]) -
+// packages/modules/StatsD is NOT synced; used in header_libs
+// (+ export_header_lib_headers) by libstatspull_lazy
+// (system/core/libstats/pull_lazy/Android.bp:11/15).
+// libstatssocket_headers is cc_library_headers in
+// packages/modules/StatsD/lib/libstatssocket/Android.bp
+// (r32, line 87, export_include_dirs ["include"], apex
+// com.android.resolv + platform, min_sdk_version 29) - same
+// project, NOT synced; used in header_libs (+
+// export_header_lib_headers) by libstatspull_lazy (:12) and
+// libstatssocket_lazy
+// (system/core/libstats/socket_lazy/Android.bp:17/20) and in
+// header_libs by libstats push_compat (:41/:56).
+// vulkan_headers is cc_library_headers in
+// external/vulkan-headers/Android.bp (r32, lines 71-84,
+// export_include_dirs ["include"], host_supported,
+// vendor_available, sdk_version 24, llndk_headers true) -
+// external/vulkan-headers is NOT synced; used in header_libs
+// (+ export_header_lib_headers) by libvkjson_ndk
+// (frameworks/native/vulkan/vkjson/Android.bp:64) and
+// libvkprofiles_ndk (:64) and by libvulkan + nulldrv. NOTE:
+// the synced frameworks/native/vulkan/Android.bp defines
+// only hwvulkan_headers (the libhardware HAL headers) - a
+// DIFFERENT module; Soong's "Or did you mean
+// hwvulkan_headers?" suggestion is a red herring.
+// libjsoncpp_ndk is cc_library_static in
+// external/jsoncpp/Android.bp (r32, lines 85-90, defaults
+// libjsoncpp_defaults, sdk_version 9, stl libc++_static) -
+// external/jsoncpp is NOT synced; used in whole_static_libs
+// by libvkjson_ndk (vkjson/Android.bp:61). Stub mirrors
+// upstream: cc_library_static with stl: "libc++_static"
+// (device-only module, no windows variant, so no
+// libwinpthread-class cycle).
+// ndk_system (#156 only): libomp is
+// llvm_prebuilt_library_static in
+// prebuilts/clang/host/linux-x86/Android.bp (:48,
+// sdk_version "minimum", no stl:). Soong's stl.go makes any
+// sdk_version module with no stl: take SelectedStl
+// "ndk_system" (useSdk && Device), and the ndk_system STL
+// case appends "ndk_system" to HeaderLibs - so the dep is a
+// HEADER_LIBS use. The real module is NOT defined anywhere
+// in the synced tree (zero mentions in any synced .bp; not
+// in bionic/libc or prebuilts/sdk at r32 - home not traced,
+// same class as #105 libgtest_isolated/libprocinfo).
+// Stubbed cc_library_headers. NOTE: the same STL case also
+// appends "libstdc++" to SharedLibs - no stub needed there,
+// libstdc++ IS defined in the synced
+// bionic/libc/Android.bp (:1947/:2333), which is why it
+// never errored.
+// COMPILE-STAGE CAVEAT: the four cc_library_headers stubs
+// are bare (no export_include_dirs, no real headers), as
+// all earlier headers stubs were - a bare stub passes
+// Soong; dummy headers will be needed only if the next run
+// fails at compile/link because libstatspull_lazy /
+// libstatssocket_lazy / libvkjson_ndk / libvkprofiles_ndk
+// actually include the headers (same class as the #111
+// libgsi / #135 flatbuffer caveats). The allocator@2.0 +
+// libjsoncpp_ndk stubs are bare too (empty.c, no symbols);
+// the HAL closure never links libgrallocusage /
+// libvkjson_ndk / libomp, so those may never surface.
+// Runs #159/#160/#161 fix: runs #159 (45939727734, 15m39s,
+// auto, manifest 05d7ff1), #160 (45939796587, 14m41s, auto,
+// README 22c7771) and #161 (45939833196, 13m01s, manual
+// dispatch ~09:55 IST 2026-11-27, head 22c7771 - the runs
+// #156/#157/#158 fix, workflow d83cd90) ALL FAILED at
+// Soong ninja-file generation, 38-54s into the build step,
+// on the SAME fix code. The #156/#157/#158 fix HELD
+// COMPLETELY in all three (prune step passed + pre-build
+// guard passed; ZERO genuine "depends on undefined module"
+// lines in any raw log). NEW failure class - "missing
+// variant", exactly ONE genuine error per run, different
+// each time (subset variation - the fix covers the UNION).
+// All fail at Soong bootstrap [100% 114/114] analyzing,
+// FAILED: out/soong/build.yuzora_lights.ninja, soong
+// bootstrap failed exit status 1. Raw-log verbatim error
+// union (browser job-logs.txt read of all three raw logs;
+// the earlier UI report of "android.hardware.lights-
+// service.samsung / product m51 / missing and no known
+// rule" is a CONFIRMED PHANTOM - it appears nowhere
+// genuine in any raw log, same class as #152):
+//   error: prebuilts/clang/host/linux-x86/Android.bp:48:1:
+//     dependency "ndk_system" of "libomp" missing variant:
+//     (#161) requested variant
+//     os:android,arch:arm64_armv8-a,sdk:sdk; available
+//     variants os:linux_glibc,arch:x86_64,
+//     os:linux_glibc,arch:x86, os:windows,arch:x86,
+//     os:windows,arch:x86_64, os:android,arch:arm64_armv8-a.
+//   error: prebuilts/clang/host/linux-x86/Android.bp:337:1:
+//     dependency "ndk_system" of "libsimpleperf_readelf"
+//     missing variant: (#160) same requested + available
+//     variants.
+//   error: frameworks/native/vulkan/vkprofiles/Android.bp:44:1:
+//     dependency "vulkan_headers" of "libvkprofiles_ndk"
+//     missing variant: (#159) same requested + available
+//     variants.
+// Root cause, verified in the synced Soong source
+// (manifest-pinned tree ~/workspace/lights-local/build/
+// soong): the bare cc_library_headers stubs resolve as
+// modules but only build the PLATFORM variant. The sdk
+// transition mutator (cc/sdk.go Split) creates the
+// {"sdk", "sdk"} variation ONLY for a module whose
+// UseSdk() is true, and UseSdk() (cc/cc.go:1309) is true
+// exactly when Sdk_version is set (canUseSdk + non-empty
+// sdk_version); without one the module gets only the ""
+// (platform) variation. The NDK consumers all set
+// sdk_version, so they request the sdk:sdk variant of
+// their deps: libomp + libsimpleperf_readelf are
+// llvm_prebuilt_library_static with sdk_version "minimum"
+// (prebuilts/clang/host/linux-x86/Android.bp:48/:337,
+// verified in the manifest-pinned tree); libvkprofiles_ndk
+// + libvkjson_ndk are cc_library_static with sdk_version
+// "24" (frameworks/native/vulkan/vkprofiles/Android.bp +
+// vkjson/Android.bp, same tree). A bare stub with no
+// sdk_version can never satisfy an sdk consumer, however
+// many modules are stubbed.
+// Fix: NO new stubs, NO new projects (still 32). Three
+// sdk_version lines INSERTED into the existing d83cd90
+// stub blocks below, so the diff vs d83cd90 is
+// additions-only (the lines are insertions, not edits of
+// existing lines - justified here because the stub type
+// and every other property are unchanged):
+//   vulkan_headers: sdk_version: "24" - mirrors upstream
+//   r32 (external/vulkan-headers/Android.bp, sdk_version
+//   24); both sdk consumers are 24, so the NDK link check
+//   (cc/cc.go: an NDK lib must not link a dep built
+//   against a NEWER api) passes exactly. "current" would
+//   be WRONG: a non-current consumer may not link a
+//   "current" dep.
+//   ndk_system: sdk_version: "minimum" - there is NO
+//   upstream module to mirror (zero mentions in any synced
+//   .bp; Soong-internal STL pseudo-dep, build/soong/cc/
+//   stl.go:168-173); both consumers are "minimum", and
+//   "minimum" is the LOWEST value so every consumer's link
+//   check passes ("current" would fail it). Precedent:
+//   the ndk_prebuilt STL defaults in the synced
+//   prebuilts/clang/host/linux-x86/Android.bp carry
+//   sdk_version "minimum". No self-dependency: stl.go
+//   begin() gives a cc_library_headers module SelectedStl
+//   "" (ctx.header() -> stl "none"), so the stub does NOT
+//   gain an ndk_system dep on itself.
+//   libjsoncpp_ndk: sdk_version: "9" - mirrors upstream
+//   r32 (external/jsoncpp/Android.bp, sdk_version 9); the
+//   provably-next layer, not speculation: libvkjson_ndk
+//   (sdk_version 24) takes this stub in whole_static_libs,
+//   so it WILL demand the sdk variant on the next run.
+//   Its sdk variant's STL deps (ndk_libc++_static +
+//   ndk_libc++abi + libunwind, stl.go:175-180) are all
+//   defined in the synced prebuilts/clang/host/linux-x86/
+//   Android.bp (:509/:515/:521/:315) with sdk variants of
+//   their own (sdk_version "minimum" via defaults), so no
+//   new undefined-module layer opens; the link check passes
+//   (dep 9 < consumer 24).
+// NOT changed now, verified with evidence:
+// libstatspull_headers + libstatssocket_headers - no sdk
+// consumer exists in the closure: libstatspull_lazy +
+// libstatssocket_lazy carry no sdk_version (system/core/
+// libstats/pull_lazy + socket_lazy/Android.bp),
+// libstatspush_compat carries only min_sdk_version "29"
+// (push_compat/Android.bp:60), and libinput (the only other
+// libstatssocket_lazy consumer) carries no sdk_version.
+// android.hardware.graphics.allocator@2.0 - no sdk consumer
+// either: libgrallocusage carries only min_sdk_version
+// "29", libs/ui only min_sdk_version, surfaceflinger none
+// - and min_sdk_version alone does NOT set UseSdk()
+// (cc/cc.go:1309 - only Sdk_version does). If a future run
+// reports a missing-variant line for any of these three,
+// the fix is the same one-line sdk_version addition.
+// The prune step + the pre-build guard both verify the
+// three sdk_version lines (sed block range, #110-safe).
+cc_library {
+    name: "android.hardware.graphics.allocator@2.0",
+    srcs: ["empty.c"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libstatspull_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libstatssocket_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "vulkan_headers",
+    host_supported: true,
+    // Runs #159/#160/#161 fix: sdk_version "24" (see the
+    // comment block above the allocator@2.0 stub). Without
+    // it the stub builds only the platform variant, and
+    // the sdk_version-24 NDK consumers libvkjson_ndk +
+    // libvkprofiles_ndk fail with "missing variant" for
+    // the requested sdk:sdk variant.
+    sdk_version: "24",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libjsoncpp_ndk",
+    srcs: ["empty.c"],
+    stl: "libc++_static",
+    // Runs #159/#160/#161 fix: sdk_version "9" (see the
+    // comment block above the allocator@2.0 stub). The
+    // provably-next layer: libvkjson_ndk (sdk_version 24)
+    // takes this stub in whole_static_libs, so it will
+    // demand the sdk variant on the next run.
+    sdk_version: "9",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "ndk_system",
+    host_supported: true,
+    // Runs #159/#160/#161 fix: sdk_version "minimum"
+    // (see the comment block above the allocator@2.0
+    // stub). Without it the stub builds only the platform
+    // variant, and the sdk_version-"minimum" consumers
+    // libomp + libsimpleperf_readelf fail with "missing
+    // variant" for the requested sdk:sdk variant.
+    sdk_version: "minimum",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #165/#166/#167 fix: eleven new stubs (see the
+// comment block in the prune step above for the per-module
+// verification). librustutils is a rust_library (crate_name
+// "rustutils", srcs lib.rs — reused from the #96 libcxx
+// stub, same form as the #116 rust stubs). The eight plain
+// cc_library stubs mirror the libstatspull form (srcs
+// empty.c, host_supported, windows target, public): a plain
+// cc_library yields both variants, so one stub satisfies
+// shared_libs and static_libs consumers alike. The two
+// bpf headers stubs mirror the libstatspull_headers form
+// (cc_library_headers, host_supported, public, no srcs).
+// No sdk_version on any new stub: none of the eleven has
+// an sdk_version consumer in the closure (verified the
+// same way as the #159/#160/#161 fix — no consumer sets
+// sdk_version on a module taking one of these stubs).
+rust_library {
+    name: "librustutils",
+    crate_name: "rustutils",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libdexfile_support",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libdexfile",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libminui",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libminijail",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libdmabufheap",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libmeminfo",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "bpf_prog_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "bpf_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libbpf_bcc",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libbpf_minimal",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #168/#169/#170 fix: five new stubs (see the comment
+// block in the prune step above for the per-module
+// verification). libmemory_trace + gwp_asan_crash_handler
+// are cc_library_static — both are whole_static_libs
+// consumers (libc_malloc_debug / libdebuggerd), same form
+// as the #153 libscudo + gwp_asan stubs. libmemunreachable
+// + libevent are plain cc_library — a plain cc_library
+// yields both variants, so one stub satisfies the
+// static_libs consumer (libc_malloc_debug /
+// tombstoned_defaults) and the shared_libs consumer
+// (audio default, out of graph) alike; same form as the
+// #165 libdexfile_support stub. scudo_headers is
+// cc_library_headers (header_libs consumer libdebuggerd),
+// same form as the #165 bpf_headers stub. No sdk_version
+// on any new stub: no consumer sets sdk_version.
+cc_library_static {
+    name: "libmemory_trace",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libmemunreachable",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libevent",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "scudo_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "gwp_asan_crash_handler",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #171/#172/#173 fix: nine new stubs (see the comment
+// block in the prune step above for the per-module
+// verification). Eight are plain cc_library — a plain
+// cc_library yields both variants, so one stub satisfies
+// the shared_libs consumers (libgui_headers, libgui,
+// confirmationui) and the static_libs consumers
+// (libsnapshot_defaults, crash_dump, libnetutils,
+// trusty_acvp_modulewrapper) alike; same form as the
+// #156 allocator@2.0 stub (also a HIDL lib) and the #165
+// libdexfile_support stub. libnative_bridge_support_
+// accessor_headers is cc_library_headers (header_libs
+// consumer crash_dump), same form as the #165 bpf_headers
+// / #168 scudo_headers stubs. No sdk_version on any new
+// stub: no consumer sets sdk_version.
+cc_library {
+    name: "android.hidl.token@1.0-utils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.bufferqueue@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.bufferqueue@2.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "update_metadata-protos",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libnative_bridge_support_accessor_headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libnative_bridge_guest_state_accessor",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libip_checksum",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libteeui_hal_support",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libacvp_modulewrapper",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #174/#175/#176 fix: seventeen new stubs (see the comment
+// block in the prune step above for the per-module
+// verification). All plain cc_library — a plain cc_library
+// yields both variants, so one stub satisfies the
+// shared_libs consumers (libfs_mgr, libhealthd_charger_ui*,
+// libbatterymonitor*, libschedulerservicehidl) and the
+// static_libs / whole_static_libs consumers alike; same
+// form as the #156 allocator@2.0 stub (also a HIDL lib)
+// and the #165 libdexfile_support stub. No sdk_version on
+// any new stub: no consumer sets sdk_version.
+cc_library {
+    name: "libfscrypt",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libfec",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "perfetto_trace_protos",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libhealthloop",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.health-V4-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.health-translate-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libpng",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.health-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.health-translate-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libhealth2impl",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.health@2.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libvold_binder",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libmediautils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.frameworks.schedulerservice@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "lib_microdroid_metadata_proto",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libsigningutils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libverity_tree",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #177/#178/#179 fix: six new stubs (see the comment
+// block in the prune step above for the per-module
+// verification). All plain cc_library — a plain cc_library
+// yields both variants, so one stub satisfies the
+// shared_libs consumers (libsnapshot_nobinder,
+// libsnapshot_test_helpers) and the static_libs consumers
+// (libhealthd_charger, apexd.microdroid) alike; same form
+// as the #156 allocator@2.0 stub (also a HIDL lib), the
+// #174 health@2.1 stub and the #165 libdexfile_support
+// stub. No sdk_version on any new stub: no consumer sets
+// sdk_version.
+cc_library {
+    name: "android.hardware.health@1.0-convert",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.boot@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.boot@1.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.boot-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libboot_control_client",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libprotobuf-cpp-full-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #180/#181/#182 fix: thirteen new stubs (see the comment
+// block in the prune step above for the per-module
+// verification). Twelve plain cc_library — a plain cc_library
+// yields both variants, so one stub satisfies the shared_libs
+// consumers (atrace, charger, libstatsbootstrap,
+// servicedispatcher) and the static_libs / whole_static_libs
+// consumers (libinit, libinit.microdroid, libfs_mgr_binder,
+// liblogd_binder, charger_test, libhealthd_charger_test)
+// alike; same form as the #156 allocator@2.0 stub (also a
+// HIDL lib), the #174 health@2.1 stub and the #165
+// libdexfile_support stub. libnativeloader_lazy is the rule-4
+// sibling (same defining file as libnativeloader-headers,
+// referenced by libvulkan + libEGL). No sdk_version on any new
+// stub: no consumer sets sdk_version.
+cc_library {
+    name: "libavf_cc_flags",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libbootloader_message",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "liblmkd_utils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libxml2",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.atrace@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "gsi_aidl_interface-cpp",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.os.statsbootstrap_aidl-cpp",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libincremental_aidl-cpp",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.debug_aidl-cpp",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.health@2.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.health@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libnativeloader_lazy",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Runs #180/#181/#182 fix: the one cc_library_headers stub
+// (libnativeloader-headers — header_libs consumer
+// libgraphicsenv; upstream cc_library_headers, so the stub
+// type follows the upstream type here, unlike the plain
+// cc_library stubs above). No srcs (headers stub, same
+// form as libgsi_headers).
+cc_library_headers {
+    name: "libnativeloader-headers",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+// Run #186 fix: three new stubs (see the comment block in
+// the prune step above for the per-module verification).
+// Three plain cc_library — a plain cc_library yields both
+// variants, so one stub satisfies the shared_libs consumers
+// (libgfxstats, libsensorservice, the samsung keymaster
+// service) alike; same form as the #156 allocator@2.0 stub
+// (also a HIDL lib) and the #174 health@2.1 stub.
+// libprotoutil is the reported module (libgfxstats); the
+// other two are Rule-4 siblings (reported in #186 via the
+// trusty consumers, second unpruned in-graph consumer is
+// the samsung keymaster service). No sdk_version on any new
+// stub: no consumer sets sdk_version.
+cc_library {
+    name: "libprotoutil",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libkeymaster4",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.keymaster@4.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
