@@ -1878,6 +1878,91 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #177 (45974079475, 13m6s, auto, manifest 5bd5386),
+  #178 (45974242578, 16m0s, auto, README cedf713) and #179
+  (45974397532, 12m9s, manual dispatch ~15:01 IST 2026-11-27,
+  head cedf713 - the runs #174/#175/#176 fix, workflow
+  fd32fc3): ALL FAILED at Soong ninja-file generation, 50s
+  (#177) / 53s (#178) / 37s (#179) into the "Build lights HAL"
+  step, on the SAME fix code. The #174/#175/#176 fix HELD
+  COMPLETELY in all three (prune step passed + pre-build
+  guard passed; ZERO genuine errors for any of its 17 modules
+  in any raw log). Subset variation again: #177 reports 6
+  lines, #178 reports 2, #179 reports 1 - the fix covers the
+  UNION of 6 undefined modules, 9 error lines. Raw-log
+  verbatim error union, verified TWICE (browser job-logs.txt
+  read + direct grep of the downloaded log archives; the two
+  reads agree exactly): #177 (6 lines): "libsnapshot_test_
+  helpers" needs "android.hardware.boot@1.1"
+  (libsnapshot/Android.bp:229:1); "apexd.microdroid" needs
+  "libprotobuf-cpp-full-ndk" (apexd/Android.bp:155:1);
+  "libsnapshot_nobinder" needs "android.hardware.boot@1.0" +
+  "android.hardware.boot@1.1" +
+  "android.hardware.boot-V1-ndk" + "libboot_control_client"
+  (libsnapshot/Android.bp:157:1). #178 (2 lines):
+  "libhealthd_charger" needs
+  "android.hardware.health@1.0-convert"
+  (healthd/Android.bp:195:1); "apexd.microdroid" needs
+  "libprotobuf-cpp-full-ndk" (same line as #177). #179 (1
+  line): "libhealthd_charger" needs
+  "android.hardware.health@1.0-convert" (same line as #178).
+  UI-LOG NOTE: the UI-log read of #179 was ACCURATE this time
+  (1 of 1 genuine errors, matching the raw log exactly) -
+  contrast the #176 UI read, which was entirely phantom. The
+  "ninja: error ... libcharger_sysprop_rust.so ... missing and
+  no known rule to make it" line is a CONFIRMED PHANTOM again
+  (6 lines per raw log contain "libcharger_sysprop_rust", 0
+  genuine - all `#` comment echoes of the workflow's own
+  history comment in the prune step; the Build step log has 0
+  occurrences and 0 "no known rule" lines), same class as
+  #152/#161/#174. Fix: 6 new stubs, NO prunes, NO new projects
+  (still 32). Stubs (all in yuzora-stubs/Android.bp, each with
+  a prune-step check + pre-build guard check): ALL plain
+  cc_library (android.hardware.health@1.0-convert,
+  android.hardware.boot@1.0, android.hardware.boot@1.1,
+  android.hardware.boot-V1-ndk, libboot_control_client,
+  libprotobuf-cpp-full-ndk). No sdk_version on any new stub
+  (no consumer sets sdk_version - verified on every consumer
+  block). No prunes: the referencers are core platform
+  modules (system/core healthd + fs_mgr/libsnapshot,
+  system/apex apexd); the libsnapshot dir cannot be pruned -
+  synced, kept system/core/fastboot references
+  libsnapshot_nobinder (fastboot/Android.bp:200). Verified in
+  the synced tree (~/workspace/lights-local): 4 of the 6
+  modules are defined ONLY in pruned hardware/interfaces dirs
+  (health@1.0-convert in health/1.0/default, boot@1.0 in
+  boot/1.0, boot@1.1 in boot/1.1, libboot_control_client in
+  boot/aidl/client); 2 are defined NOWHERE
+  (android.hardware.boot-V1-ndk, libprotobuf-cpp-full-ndk).
+  Dep-closure verified: every other DIRECT dep of the
+  erroring consumers is defined in-tree or already stubbed -
+  no provably-next layer beyond these six. FIRST-EVER
+  reported: the first HIDL -convert lib (health@1.0-convert)
+  and the second/third HIDL @x.y libs (boot@1.0/@1.1, after
+  health@2.1 in #175). Checked, NOT stubbed (never reported
+  in any raw log, runs #6-#179): android.hardware.boot@1.2
+  (only referenced by the real libboot_control_client's
+  shared_libs; the stub has no deps so @1.2 never enters the
+  graph), android.hardware.graphics.common@1.1/@1.2,
+  allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+  libLibGuiProperties, libbootloader_message, liblmkd_utils,
+  libxml2, libhealthhalutils, libhealthshim, libfastbootshim,
+  libcharger_sysprop, libcom.android.sysprop.apex (both
+  sysprop-generated, never reported).
+
+  CACHE NOTE (runs #177/#178/#179): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS in
+  all three (1s on #179, sync 9m52s #177 / 10m47s #178 /
+  8m23s #179) and no "Cache saved" line appears in any raw
+  log - same as runs #118/#121/#124/#127/#130/#134/#137/
+  #140/#143/#146/#149/#152/#155/#158/#159/#160/#161/#162/
+  #163/#164/#165/#166/#167/#168/#169/#170/#171/#172/#173/
+  #174/#175/#176. The next run will also restore-miss and
+  sync ~9-12 min. The upstream-recommended fix is separate
+  restore + save steps (the save step with `if: always()`),
+  which touches the cache steps and needs his word - not
+  changed in this fix round.
+
   -->
 
 <manifest>
