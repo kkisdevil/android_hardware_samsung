@@ -2558,6 +2558,356 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~9-12 min
           # on the next run too.
+          # Runs #192/#193/#194 fix: stub 39 modules, no prunes.
+          # Runs #192 (45996579969, 14m54s, manifest push d5be373),
+          # #193 (45996789317, 13m46s, README push f652300) and #194
+          # (45996947386, 12m0s, manual dispatch ~17:44 IST
+          # 2026-11-27, head f652300 — the #187-#190 size-limit
+          # restructure, workflow e15e187) ALL FAILED at Soong
+          # ninja-file generation, 37-52s into the "Build lights
+          # HAL" step, on the SAME fix code. Raw-log verbatim
+          # (whole-job raw logs, browser job-log reads, counts
+          # re-verified with the error block fully rendered — the
+          # first #193 enumeration undercounted at 35 because the
+          # top 5 lines sat above the rendered window): #194 = 2
+          # lines, #192 = 5 lines, #193 = 40 lines; 39 distinct
+          # undefined modules in the union. The #186 fix HELD
+          # (zero genuine errors for any of its 3 modules in any
+          # raw log) and the #180/#181/#182 fix HELD (zero genuine
+          # errors for any of its 13 modules); zero "expected
+          # assignment or module definition" lines (the #185
+          # stray-# fix HELD). Pre-build guard PASSED in all three.
+          # Failure (verbatim, raw logs):
+          #   #194 (2): lshal_test needs
+          #   android.hardware.tests.inheritance@1.0
+          #   (frameworks/native/cmds/lshal/Android.bp:83:1);
+          #   libbinderthreadstateutils_test needs
+          #   binderthreadstateutilstest@1.0
+          #   (frameworks/native/libs/binderthreadstate/
+          #   Android.bp:66:1).
+          #   #192 (5): init_first_stage + init_first_stage.
+          #   microdroid need libfec_rs + libsquashfs_utils
+          #   (system/core/init/Android.bp:467:1 / :472:1);
+          #   libbinderthreadstateutils_test needs
+          #   binderthreadstateutilstest@1.0 (same as #194).
+          #   #193 (40): libstatshidl needs
+          #   android.frameworks.stats@1.0 +
+          #   android.frameworks.stats-V2-ndk
+          #   (frameworks/native/services/stats/Android.bp:15:1);
+          #   libsurfaceflinger_backend_headers needs
+          #   android.hardware.configstore-utils +
+          #   android.hardware.configstore@1.0 + @1.1
+          #   (frameworks/native/services/surfaceflinger/
+          #   Android.bp:163:1); remount needs libavb_user
+          #   (system/core/fs_mgr/Android.bp:198:1); usbd needs
+          #   android.hardware.usb.gadget@1.0 +
+          #   android.hardware.usb.gadget-V1-ndk
+          #   (system/core/usbd/Android.bp:5:1); libui needs
+          #   libimapper_stablec + libimapper_providerutils +
+          #   libaidlcommonsupport +
+          #   android.hardware.graphics.allocator@3.0 + @4.0 +
+          #   android.hardware.graphics.common@1.2 +
+          #   android.hardware.graphics.mapper@2.0 + @2.1 + @3.0
+          #   (frameworks/native/libs/ui/Android.bp:105:1);
+          #   libpowermanager needs android.hardware.power@1.0 +
+          #   @1.1 + @1.2 + @1.3 (frameworks/native/services/
+          #   powermanager/Android.bp:10:1); libidlcli needs
+          #   android.hardware.vibrator-V3-ndk +
+          #   android.hardware.vibrator@1.0 + @1.1 + @1.2 + @1.3
+          #   (frameworks/native/cmds/idlcli/Android.bp:44:1);
+          #   libmemtrackproxy needs
+          #   android.hardware.memtrack@1.0 +
+          #   android.hardware.memtrack-V1-ndk
+          #   (frameworks/native/services/memtrackproxy/
+          #   Android.bp:24:1); storageproxyd.system needs
+          #   libhardware_legacy (system/core/trusty/storage/
+          #   proxy/Android.bp:62:1); libvibratorservice needs
+          #   android.hardware.vibrator-V3-ndk +
+          #   android.hardware.vibrator@1.0 + @1.1 + @1.2 + @1.3
+          #   (frameworks/native/services/vibratorservice/
+          #   Android.bp:24:1); gatekeeperd needs libscrypt_static
+          #   + libgatekeeper +
+          #   lib_android_keymaster_keymint_utils +
+          #   android.hardware.gatekeeper-V1-ndk +
+          #   android.hardware.gatekeeper@1.0 +
+          #   android.security.authorization-ndk
+          #   (system/core/gatekeeperd/Android.bp:57:1).
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1, in all three.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: 19 lines in EACH raw log, ALL in the Prune
+          # step's "#" comment echo (the workflow file's own
+          # history comments) — ZERO in any Build step output,
+          # same class as #152/#161/#174/#177/#182/#186.
+          # FIRST-EVER reported: the first HIDL configstore libs,
+          # the first usb.gadget libs, the first graphics
+          # allocator@3.0/@4.0 + common@1.2 + mapper@2.0/2.1/3.0,
+          # the first power HIDL libs, the first vibrator HIDL
+          # libs, the first memtrack libs, the first stats
+          # HIDL/AIDL libs, the first gatekeeper HIDL/AIDL libs,
+          # the first libfec_rs / libsquashfs_utils / libavb_user /
+          # libhardware_legacy / libscrypt_static / libgatekeeper /
+          # lib_android_keymaster_keymint_utils, the first
+          # cc_library_headers stubs (libimapper_stablec +
+          # libimapper_providerutils), the first cc_library_static
+          # stubs for a reported module since #168. Note #194
+          # reported only 2 lines and #192 only 5 on the SAME code
+          # that gave #193 40 — subset variation is real and lossy,
+          # proven again (same pattern as #180/#181/#182: 11 vs 6
+          # vs 14).
+          # STUBS (39, all in build-lights/yuzora-stubs-Android.bp
+          # — the static file, NOT the workflow; the workflow only
+          # gains this comment block + the prune-step + guard
+          # checks below):
+          #   34 plain cc_library: 22 HIDL @x.y libs defined ONLY
+          #     in pruned dirs (hardware/interfaces/*, plus
+          #     frameworks/native/libs/binderthreadstate/1.0 —
+          #     pruned in #84): android.hardware.tests.inheritance
+          #     @1.0, binderthreadstateutilstest@1.0,
+          #     android.hardware.configstore@1.0 + @1.1,
+          #     android.hardware.usb.gadget@1.0,
+          #     android.hardware.graphics.allocator@3.0 + @4.0,
+          #     android.hardware.graphics.common@1.2,
+          #     android.hardware.graphics.mapper@2.0 + @2.1 + @3.0,
+          #     android.hardware.power@1.0 + @1.1 + @1.2 + @1.3,
+          #     android.hardware.vibrator@1.0 + @1.1 + @1.2 + @1.3,
+          #     android.hardware.memtrack@1.0,
+          #     android.hardware.gatekeeper@1.0,
+          #     android.frameworks.stats@1.0; 6 AIDL -ndk libs
+          #     (generated from aidl_interface defs in pruned dirs
+          #     or unsynced projects): android.frameworks.stats-
+          #     V2-ndk, android.hardware.usb.gadget-V1-ndk,
+          #     android.hardware.vibrator-V3-ndk,
+          #     android.hardware.memtrack-V1-ndk,
+          #     android.hardware.gatekeeper-V1-ndk,
+          #     android.security.authorization-ndk; 6 other
+          #     upstream cc_library / cc_library_shared libs from
+          #     unsynced projects: libfec_rs, libsquashfs_utils,
+          #     lib_android_keymaster_keymint_utils,
+          #     android.hardware.configstore-utils,
+          #     libhardware_legacy, libgatekeeper.
+          #   2 cc_library_headers: libimapper_stablec +
+          #     libimapper_providerutils — upstream
+          #     cc_library_headers (hardware/interfaces/graphics/
+          #     mapper/stable-c/Android.bp), referenced by libui
+          #     via header_libs; a plain cc_library stub would be
+          #     the wrong shape for a header_libs consumer.
+          #   3 cc_library_static: libavb_user, libscrypt_static,
+          #     libaidlcommonsupport — all upstream
+          #     cc_library_static (external/avb/Android.bp,
+          #     external/scrypt/Android.bp, hardware/interfaces/
+          #     common/support/Android.bp); libavb_user is consumed
+          #     via static_libs by remount, libscrypt_static via
+          #     static_libs by gatekeeperd, libaidlcommonsupport
+          #     via static_libs by libui.
+          #   A plain cc_library yields both variants, so one stub
+          #   satisfies the shared_libs consumers alike; same form
+          #   as the #156 allocator@2.0 stub (also a HIDL lib) and
+          #   the #174 health@2.1 stub. The three upstream
+          #   cc_library_shared modules (configstore-utils,
+          #   libhardware_legacy, libgatekeeper) are stubbed as
+          #   plain cc_library on the #122 libcrypto lesson
+          #   (shared -> plain) + the #186 both-variants reasoning:
+          #   a shared-only stub cannot provide a static variant
+          #   if a future consumer needs one.
+          #   libfec_rs is C (Reed-Solomon), NOT Rust: upstream
+          #   cc_library in platform/external/fec,
+          #   external/fec/Android.bp:37-65 (r32) — NOT in
+          #   platform/system/core/libfec (that path 404s at r32)
+          #   and NOT a rust_library. Same correction class as
+          #   #186's system/keymaster vs system/security/keymaster.
+          #   libavb_user is in top-level external/avb/Android.bp
+          #   :250-277 (r32), NOT system/core/libavb (404).
+          #   libhardware_legacy is in platform/hardware/
+          #   libhardware_legacy, hardware/libhardware_legacy/
+          #   Android.bp:86-113 (r32), NOT system/core (404); its
+          #   upstream shared_libs (android.system.suspend-V1-ndk
+          #   + libdl) do NOT enter the graph through the bare stub.
+          #   libscrypt_static is in top-level external/scrypt/
+          #   Android.bp:49-61 (r32), NOT lib/crypto (404); srcs
+          #   via defaults libscrypt_sources in sources.bp.
+          #   libgatekeeper is in platform/system/gatekeeper,
+          #   system/gatekeeper/Android.bp:21-48 (r32), NOT
+          #   system/core/gatekeeperd (which defines only
+          #   libgatekeeper_aidl).
+          #   lib_android_keymaster_keymint_utils is cc_library in
+          #   platform/system/keymaster, system/keymaster/
+          #   Android.bp:378-396 (r32); the #186 round listed it as
+          #   checked-not-stubbed because every in-tree reference
+          #   then was in a pruned dir — gatekeeperd (unpruned,
+          #   in-tree) now references it and it IS reported, so it
+          #   is stubbed this round.
+          #   android.security.authorization-ndk is generated from
+          #   aidl_interface android.security.authorization in
+          #   platform/system/security, system/security/keystore2/
+          #   aidl/Android.bp:24-44 (r32, ndk backend enabled).
+          #   android.frameworks.stats@1.0 + stats-V2-ndk live in
+          #   frameworks/hardware/interfaces/stats/ (NOT synced;
+          #   no such dir in the local tree) — their files were NOT
+          #   re-verified this round; the stub type does not depend
+          #   on them (every @x.y HIDL lib + every -ndk AIDL lib
+          #   in this project is stubbed as plain cc_library).
+          #   The -ndk libs' aidl_interface defs were verified
+          #   locally for the four in pruned dirs: usb.gadget,
+          #   vibrator, memtrack, gatekeeper (hardware/interfaces/
+          #   */aidl/Android.bp).
+          # CORRECTION to the carried-forward "NOT stubbed" list:
+          #   android.hardware.graphics.mapper@4.0 is ALREADY
+          #   stubbed (cc_library_shared, #111/#112/#113) — NOT
+          #   added again. android.hardware.power-ndk_export_shared
+          #   (cc_defaults) + android.os.hintmanager_aidl-ndk
+          #   (cc_library_static) are ALREADY stubbed, which closes
+          #   libpowermanager's dep closure. The remaining
+          #   carried-forward entries are still un-stubbed and
+          #   still unreported: android.hardware.boot@1.2,
+          #   android.hardware.graphics.common@1.1,
+          #   libLibGuiProperties, libhealthhalutils, libhealthshim,
+          #   libfastbootshim, libcom.android.sysprop.apex
+          #   (sysprop-generated); avf_build_flags_cc — ALREADY
+          #   stubbed (cc_defaults, earlier round).
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified by grep over all 15 consumer
+          # files — the only hits are min_sdk_version: libui
+          # "apex_inherit" + "29", libbinderthreadstateutils "29").
+          # Per the #159 lesson, min_sdk_version alone does NOT set
+          # UseSdk(), so a min_sdk_version-only consumer never
+          # demands the sdk variant. Upstream libscrypt_static
+          # carries sdk_version "17" — NOT mirrored (no consumer
+          # demands it). No stl on any upstream definition or
+          # consumer.
+          # NO PRUNES this round: unlike #186 (all 6 erroring
+          # consumers in one prunable file), the 15 erroring
+          # consumers live in 15 files across frameworks/native
+          # (8 files) + system/core (5 files) — pruning any of
+          # those dirs would delete modules the HAL closure needs
+          # (libui, libfs_mgr, init_first_stage, libstatshidl are
+          # real in-tree libraries, not test dirs).
+          # CHECKED, NOT STUBBED (never reported in any raw log,
+          # runs #6–#194 — do NOT stub unless a raw log reports
+          # one):
+          #   libcharger_sysprop — sysprop-generated; the CONFIRMED
+          #   PHANTOM (19 lines per raw log in #192/#193/#194, ALL
+          #   in the Prune step's "#" comment echo, zero in any
+          #   Build step output).
+          #   libsensorservice's other undefined deps:
+          #   android.hardware.sensors@1.0/@2.0/@2.1 (HIDL, pruned
+          #   dirs), libactivitymanager_aidl, libbatterystats_aidl,
+          #   libsensorprivacy, libpermission, libfmq,
+          #   packagemanager_aidl-cpp,
+          #   android.hardware.common-V2-ndk,
+          #   android.hardware.common.fmq-V1-ndk,
+          #   libaconfig_storage_read_api_cc,
+          #   android.hardware.sensors@1.0-convert,
+          #   framework-cppstream-protos. (libaidlcommonsupport
+          #   leaves this list — reported via libui in #193 and
+          #   stubbed this round.) libsensorservice IS in
+          #   build/make/target/product/base_system.mk:195
+          #   PRODUCT_PACKAGES yet has never errored in 194 runs
+          #   despite its undefined deps; the empirical rule stands:
+          #   never reported → do not stub.
+          #   Carried forward: android.hardware.boot@1.2,
+          #   android.hardware.graphics.common@1.1,
+          #   libLibGuiProperties, libhealthhalutils, libhealthshim,
+          #   libfastbootshim, libcom.android.sysprop.apex (both
+          #   sysprop-generated); libkeymaster_messages,
+          #   libkeymaster3device, android.hardware.keymaster@3.0
+          #   (reported in #186 but, after the trusty/keymaster
+          #   prune, referenced only in pruned hardware/interfaces/*
+          #   dirs).
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   lshal_test: libgmock / libvintf (stubbed #141) /
+          #     libvintf_static_user_defaults (stubbed) /
+          #     lshal_defaults (in-file) defined/stubbed.
+          #   libbinderthreadstateutils_test:
+          #     binderthreadstateutilstest.aidl-cpp (aidl_interface
+          #     in-file) / libbinderthreadstateutils (in-file) /
+          #     libbase / libbinder / libcutils / libhidlbase
+          #     (stubbed) / libutils / liblog defined/stubbed.
+          #   init_first_stage(.microdroid) via
+          #     init_first_stage_defaults: libfs_avb / libavf_cc_flags
+          #     (stubbed cc_defaults) / libfs_mgr / libfec (stubbed
+          #     #174) / libcrypto_utils / libavb (stubbed) / liblp /
+          #     libcrypto_static (stubbed) / libselinux (stubbed) /
+          #     libcap (stubbed #125) / libgsi (stubbed #111) /
+          #     liblzma (stubbed #125) / libunwindstack_no_dex
+          #     (stubbed #168) / libmodprobe / libext2_uuid (stubbed
+          #     #111) / libprotobuf-cpp-lite (stubbed) /
+          #     libsnapshot_cow / libsnapshot_init / liblz4 / libzstd
+          #     (stubbed #119) / update_metadata-protos (stubbed
+          #     #171) / libprocinfo (stubbed) / libbootloader_message
+          #     (stubbed #182) defined/stubbed; .microdroid adds
+          #     avf_build_flags_cc (stubbed cc_defaults).
+          #   libstatshidl: libbinder_ndk / libexpresslog /
+          #     libhidlbase (stubbed) / libstatslog (stubbed #141) /
+          #     libstatssocket (stubbed #99/#100/#101) / liblog /
+          #     libutils defined/stubbed.
+          #   libsurfaceflinger_backend_headers: libbinder_ndk /
+          #     libserviceutils defined.
+          #   remount: libgsid (stubbed #111) / libvold_binder
+          #     (stubbed #174) / libbootloader_message (stubbed
+          #     #182) / libfs_mgr_binder (in-tree) / libext4_utils
+          #     (stubbed #122) / liblp / libselinux (stubbed) /
+          #     libcrypto (stubbed) / libcutils_headers (in-tree) /
+          #     libbase / libbinder / libcutils / liblog / libutils
+          #     defined/stubbed; defaults fs_mgr_defaults (in-file,
+          #     no module deps).
+          #   usbd: libhardware (stubbed #135) / libbase /
+          #     libbinder_ndk / libhidlbase (stubbed) / liblog /
+          #     libutils defined/stubbed.
+          #   libui: allocator@2.0 (stubbed #156) / mapper@4.0
+          #     (stubbed #111) / libgralloctypes / libbase_headers /
+          #     libnativebase_headers / libnativewindow_headers /
+          #     libhardware_headers (stubbed) / libui_headers
+          #     (in-file) / libarect / libmath / libgrallocusage /
+          #     libui-types (in-file) / libbase / libbinder_ndk /
+          #     libcutils / libhidlbase (stubbed) / libsync /
+          #     libutils / liblog / libvndksupport defined/stubbed.
+          #   libpowermanager: android.hardware.power-ndk_export_
+          #     shared (stubbed cc_defaults) /
+          #     android.os.hintmanager_aidl-ndk (stubbed
+          #     cc_library_static) / libbinder / libbinder_ndk /
+          #     libhidlbase (stubbed) / liblog / libutils
+          #     defined/stubbed.
+          #   libidlcli: libbase / libbinder_ndk / libhidlbase
+          #     (stubbed) / liblog / libutils defined/stubbed.
+          #   libmemtrackproxy: libbase / libbinder_ndk / libbinder /
+          #     libhidlbase (stubbed) / liblog / libcutils / libutils
+          #     defined/stubbed.
+          #   storageproxyd.system via storageproxyd.defaults:
+          #     libfstab / libtrustystorageinterface / libtrusty /
+          #     libgsi_headers (stubbed #111) / libbase /
+          #     libbinder_ndk / libcutils / liblog defined/stubbed.
+          #   libvibratorservice: libbinder_ndk / libhidlbase
+          #     (stubbed) / liblog / libutils defined/stubbed.
+          #   gatekeeperd via gatekeeperd_defaults: libgsi (stubbed
+          #     #111) / libhardware (stubbed #135) / libcrypto
+          #     (stubbed) / libgatekeeper_aidl (in-file) /
+          #     keymint_use_latest_hal_aidl_ndk_shared (stubbed
+          #     cc_defaults) / libbinder / libbinder_ndk / libbase /
+          #     libutils / liblog / libhidlbase (stubbed)
+          #     defined/stubbed.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link — the two cc_library_headers stubs export
+          # real upstream header dirs (mapper stable-c include/ +
+          # implutils/include/); libvibratorservice's aidl
+          # include_dirs point at the pruned hardware/interfaces/
+          # vibrator/aidl/. The build target is ONLY
+          # android.hardware.light-service.samsung (shared_libs
+          # libbase, libbinder_ndk, android.hardware.light-V2-ndk)
+          # — NONE of the 39 new stubs is in its closure, verified
+          # locally — so bare stubs suffice for THIS target. If a
+          # future round fails past Soong, ship the headers/symbols
+          # then; do not pre-build them now. (Same watch-item form
+          # as #182/#186.)
+          # CACHE NOTE (runs #192/#193/#194): Restore 0-1s MISS in
+          # all three (sync 8m02s #194 / 12m19s #192 / 10m40s #193),
+          # no Save step — save-always still does not save; the
+          # separate restore+save steps need his word (see the
+          # manifest). Expect Restore to miss and sync ~9-12 min
+          # on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -3419,6 +3769,42 @@ jobs:
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "run #186 stubs created: libprotoutil + libkeymaster4 + android.hardware.keymaster@4.0 plain cc_library stubs; system/core/trusty/keymaster pruned whole."
+          # Runs #192/#193/#194 fix: verify the 39 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186 loops above).
+          for stub in android.hardware.tests.inheritance@1.0 binderthreadstateutilstest@1.0 libfec_rs libsquashfs_utils android.frameworks.stats@1.0 android.frameworks.stats-V2-ndk android.hardware.configstore-utils android.hardware.configstore@1.0 android.hardware.configstore@1.1 android.hardware.usb.gadget@1.0 android.hardware.usb.gadget-V1-ndk android.hardware.graphics.allocator@3.0 android.hardware.graphics.allocator@4.0 android.hardware.graphics.common@1.2 android.hardware.graphics.mapper@2.0 android.hardware.graphics.mapper@2.1 android.hardware.graphics.mapper@3.0 android.hardware.power@1.0 android.hardware.power@1.1 android.hardware.power@1.2 android.hardware.power@1.3 android.hardware.vibrator-V3-ndk android.hardware.vibrator@1.0 android.hardware.vibrator@1.1 android.hardware.vibrator@1.2 android.hardware.vibrator@1.3 android.hardware.memtrack@1.0 android.hardware.memtrack-V1-ndk libhardware_legacy libgatekeeper lib_android_keymaster_keymint_utils android.hardware.gatekeeper-V1-ndk android.hardware.gatekeeper@1.0 android.security.authorization-ndk libimapper_stablec libimapper_providerutils libavb_user libscrypt_static libaidlcommonsupport; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #192/#193/#194 fix: the 34 plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 / #168 / #171 / #174 / #177 / #180 / #186 checks): a
+          # cc_library_shared stub cannot provide the static variant
+          # the static_libs consumers need, and a cc_library_static
+          # stub cannot provide the shared variant the shared_libs
+          # consumers need.
+          for stub in android.hardware.tests.inheritance@1.0 binderthreadstateutilstest@1.0 libfec_rs libsquashfs_utils android.frameworks.stats@1.0 android.frameworks.stats-V2-ndk android.hardware.configstore-utils android.hardware.configstore@1.0 android.hardware.configstore@1.1 android.hardware.usb.gadget@1.0 android.hardware.usb.gadget-V1-ndk android.hardware.graphics.allocator@3.0 android.hardware.graphics.allocator@4.0 android.hardware.graphics.common@1.2 android.hardware.graphics.mapper@2.0 android.hardware.graphics.mapper@2.1 android.hardware.graphics.mapper@3.0 android.hardware.power@1.0 android.hardware.power@1.1 android.hardware.power@1.2 android.hardware.power@1.3 android.hardware.vibrator-V3-ndk android.hardware.vibrator@1.0 android.hardware.vibrator@1.1 android.hardware.vibrator@1.2 android.hardware.vibrator@1.3 android.hardware.memtrack@1.0 android.hardware.memtrack-V1-ndk libhardware_legacy libgatekeeper lib_android_keymaster_keymint_utils android.hardware.gatekeeper-V1-ndk android.hardware.gatekeeper@1.0 android.security.authorization-ndk; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #192/#193/#194 fix: the two headers stubs must be
+          # cc_library_headers (same grep -A1 form as the #171
+          # libnative_bridge_support_accessor_headers /
+          # libnativeloader-headers checks): a plain cc_library stub
+          # cannot satisfy a header_libs consumer.
+          for stub in libimapper_stablec libimapper_providerutils; do
+            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
+          done
+          # Runs #192/#193/#194 fix: the three static stubs must be
+          # cc_library_static (same grep -A1 form as the #153 /
+          # #168 checks): a plain cc_library stub would also satisfy
+          # a static_libs consumer, but the static form mirrors the
+          # upstream type (all three are cc_library_static upstream).
+          for stub in libavb_user libscrypt_static libaidlcommonsupport; do
+            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
+          done
+          echo "runs #192/#193/#194 stubs created: 34 plain cc_library + libimapper_stablec + libimapper_providerutils cc_library_headers + libavb_user + libscrypt_static + libaidlcommonsupport cc_library_static stubs. No prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -3438,6 +3824,8 @@ jobs:
           echo "runs #180/#181/#182 fix: libavf_cc_flags + libbootloader_message + liblmkd_utils + libxml2 + android.hardware.atrace@1.0 + gsi_aidl_interface-cpp + libnativeloader-headers + android.os.statsbootstrap_aidl-cpp + libincremental_aidl-cpp + android.debug_aidl-cpp + android.hardware.health@2.0 + android.hardware.health@1.0 + libnativeloader_lazy stubs created. No prunes, no type changes this round."
 
           echo "run #186 fix: libprotoutil + libkeymaster4 + android.hardware.keymaster@4.0 stubs created; system/core/trusty/keymaster pruned whole."
+
+          echo "runs #192/#193/#194 fix: 34 plain cc_library + 2 cc_library_headers + 3 cc_library_static stubs created (39 total). No prunes this round."
 
 
 
@@ -3892,6 +4280,29 @@ jobs:
           # step above).
           for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #192/#193/#194 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.tests.inheritance@1.0 binderthreadstateutilstest@1.0 libfec_rs libsquashfs_utils android.frameworks.stats@1.0 android.frameworks.stats-V2-ndk android.hardware.configstore-utils android.hardware.configstore@1.0 android.hardware.configstore@1.1 android.hardware.usb.gadget@1.0 android.hardware.usb.gadget-V1-ndk android.hardware.graphics.allocator@3.0 android.hardware.graphics.allocator@4.0 android.hardware.graphics.common@1.2 android.hardware.graphics.mapper@2.0 android.hardware.graphics.mapper@2.1 android.hardware.graphics.mapper@3.0 android.hardware.power@1.0 android.hardware.power@1.1 android.hardware.power@1.2 android.hardware.power@1.3 android.hardware.vibrator-V3-ndk android.hardware.vibrator@1.0 android.hardware.vibrator@1.1 android.hardware.vibrator@1.2 android.hardware.vibrator@1.3 android.hardware.memtrack@1.0 android.hardware.memtrack-V1-ndk libhardware_legacy libgatekeeper lib_android_keymaster_keymint_utils android.hardware.gatekeeper-V1-ndk android.hardware.gatekeeper@1.0 android.security.authorization-ndk libimapper_stablec libimapper_providerutils libavb_user libscrypt_static libaidlcommonsupport; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #192/#193/#194 fix: the 34 plain cc_library stubs
+          # must be plain cc_library at build time (same check as
+          # the prune step above).
+          for stub in android.hardware.tests.inheritance@1.0 binderthreadstateutilstest@1.0 libfec_rs libsquashfs_utils android.frameworks.stats@1.0 android.frameworks.stats-V2-ndk android.hardware.configstore-utils android.hardware.configstore@1.0 android.hardware.configstore@1.1 android.hardware.usb.gadget@1.0 android.hardware.usb.gadget-V1-ndk android.hardware.graphics.allocator@3.0 android.hardware.graphics.allocator@4.0 android.hardware.graphics.common@1.2 android.hardware.graphics.mapper@2.0 android.hardware.graphics.mapper@2.1 android.hardware.graphics.mapper@3.0 android.hardware.power@1.0 android.hardware.power@1.1 android.hardware.power@1.2 android.hardware.power@1.3 android.hardware.vibrator-V3-ndk android.hardware.vibrator@1.0 android.hardware.vibrator@1.1 android.hardware.vibrator@1.2 android.hardware.vibrator@1.3 android.hardware.memtrack@1.0 android.hardware.memtrack-V1-ndk libhardware_legacy libgatekeeper lib_android_keymaster_keymint_utils android.hardware.gatekeeper-V1-ndk android.hardware.gatekeeper@1.0 android.security.authorization-ndk; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #192/#193/#194 fix: the two headers stubs must be
+          # cc_library_headers at build time (same check as the
+          # prune step above).
+          for stub in libimapper_stablec libimapper_providerutils; do
+            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
+          done
+          # Runs #192/#193/#194 fix: the three static stubs must be
+          # cc_library_static at build time (same check as the prune
+          # step above).
+          for stub in libavb_user libscrypt_static libaidlcommonsupport; do
+            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
