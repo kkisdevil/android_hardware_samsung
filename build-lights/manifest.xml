@@ -1546,6 +1546,87 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #165 (45947910369, 14m15s, auto, manifest 5bb1797),
+  #166 (45948101732, 13m37s, auto, README 435b5bc) and #167
+  (45948263759, 15m39s, manual dispatch ~11:21 IST 2026-11-27,
+  head 435b5bc - the runs #162/#163/#164 fix, workflow
+  ddd6322): ALL FAILED at Soong ninja-file generation, 33-36s
+  into the "Build lights HAL" step, on the SAME fix code. The
+  #162/#163/#164 fix HELD COMPLETELY in all three (prune step
+  passed in 1-2s + pre-build guard passed; ZERO genuine
+  trusty_driver_test / py3-stdlib / py3-launcher-autorun /
+  libbpf errors in any raw log). Each run reports a different
+  subset on one commit (subset variation - the fix covers the
+  UNION of 12 undefined modules). Raw-log verbatim error union
+  (browser job-logs.txt read of all three raw logs; the first
+  UI-log report's "ninja: error ... libcharger_sysprop_rust.so
+  ... missing and no known rule to make it" appears NOWHERE in
+  either raw log - a CONFIRMED PHANTOM, same class as #152/#161):
+  #165 (6 lines): libmeminfo (bionic-benchmarks,
+  bionic-benchmarks-static, libBionicLoaderTests),
+  libnativetesthelper_jni (libnativehelper_internal_tests_jni),
+  librustutils (libprefetch_rs), libdexfile_support (libfdtrack);
+  #166 (15 lines): libmeminfo x5 (+ malloc-rss-benchmark,
+  bionic-stress-tests), libminui (libhealthd_draw), libminijail
+  (run-as), bpf_prog_headers + bpf_headers + libbpf_bcc +
+  libbpf_minimal (all via libtimeinstate), librustutils
+  (libprefetch_rs), libdexfile_support (libfdtrack),
+  libdmabufheap x2 (libtrusty_coverage, libtrusty_line_coverage);
+  #167 (3 lines): librustutils x2 (libcharger_sysprop_rust,
+  libcom_android_sysprop_apex_rust), libstatslog_rust_header
+  (libstatspull_rust). Fix: 11 new stubs + 4 dirs PRUNED whole,
+  NO new projects (still 32). Stubs (all in yuzora-stubs/
+  Android.bp, each with a prune-step check + pre-build guard
+  check): librustutils rust_library (crate_name rustutils, srcs
+  lib.rs, edition 2021); libdexfile_support + libdexfile +
+  libminui + libminijail + libdmabufheap + libmeminfo +
+  libbpf_bcc + libbpf_minimal plain cc_library; bpf_prog_headers
+  + bpf_headers cc_library_headers. Prunes (rm -rf + prune-step
+  check + pre-build guard check each): bionic/benchmarks,
+  libnativehelper/tests, libnativehelper/tests_mts/jni,
+  system/core/libstats/pull_rust. Verified in the synced tree
+  (~/workspace/lights-local): libmeminfo, libnativetesthelper_jni,
+  librustutils, libdexfile_support, libminui, libminijail,
+  libdmabufheap, the four bpf modules and libstatslog_rust_header
+  are each defined NOWHERE in the tree; every prune was checked
+  name-by-name for referencers outside the pruned dir. Three
+  corrections to the first draft of this fix: (1) bionic/tests is
+  NOT pruned - bionic/libfdtrack's fdtrack_test takes
+  whole_static_libs ["libBionicCtsGtestMain"], defined in
+  bionic/tests/Android.bp, so pruning tests/ would CREATE that
+  error; the libmeminfo stub covers the tests/ referencers.
+  (2) frameworks/native/libs/cputimeinstate is NOT pruned - the
+  same four bpf modules are also taken by kept
+  gpuservice/gpumem + gpuwork + tests/unittests (bpf_headers +
+  libbpf_bcc) and kept system/core/libsysutils (bpf_headers), so
+  pruning cputimeinstate alone would leave those four erroring;
+  the four stubs fix every referencer at once. (3)
+  system/core/trusty/coverage + line-coverage are NOT pruned -
+  kept trusty/fuzz takes libtrusty_coverage and kept
+  utils/coverage-controller takes libtrusty_line_coverage (and
+  coverage-controller itself takes libdmabufheap in shared_libs),
+  so pruning them would CREATE errors and would not fix
+  libdmabufheap; the libdmabufheap stub fixes all seven
+  referencers (also apploader, confirmationui, libtrusty/tipc-test,
+  utils/acvp). Also corrected: external/bpf was NOT pruned in the
+  #162 fix (the workflow never mentions it); libstatspull_bindgen's
+  libstatspull + libstatssocket deps are already stubbed, so the
+  pull_rust prune is for libstatspull_rust itself; and no prune of
+  system/apex/apexd or system/core/libstats exists in the workflow
+  (apexs is deliberately kept, runs #58/#61) - sysprop/Android.bp
+  erroring on librustutils is expected, not a prune gap. The
+  cache steps are untouched (see the save-always note below).
+
+  CACHE NOTE (runs #165/#166/#167): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS in
+  all three (0-1s) and no cache was saved - same as runs
+  #118/#121/#124/#127/#130/#134/#137/#140/#143/#146/#149/#152/
+  #155/#158/#159/#160/#161/#162/#163/#164. The next run will
+  also restore-miss and sync ~9-12 min. The upstream-recommended
+  fix is separate restore + save steps (the save step with
+  `if: always()`), which touches the cache steps and needs his
+  word - not changed in this fix round.
+
   -->
 
 <manifest>
