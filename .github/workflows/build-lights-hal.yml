@@ -1378,6 +1378,118 @@ jobs:
           rm -rf libnativehelper/tests
           rm -rf libnativehelper/tests_mts/jni
           rm -rf system/core/libstats/pull_rust
+          # Runs #168/#169/#170 fix: stub five modules, prune
+          # nothing. Runs #168 (45957321266, 14m30s, auto, manifest
+          # 754e76d), #169 (45957461669, 13m48s, auto, README 1a0adc5)
+          # and #170 (45957587395, 13m12s, manual dispatch ~12:48 IST
+          # 2026-11-27, head 1a0adc5 — the runs #165/#166/#167 fix,
+          # workflow 26403d9) ALL FAILED at Soong ninja-file
+          # generation, 24-35s into the "Build lights HAL" step, on
+          # the same fix code. The #165/#166/#167 fix HELD
+          # COMPLETELY in all three (prune step passed + pre-build
+          # guard passed; ZERO genuine errors for any of its 12
+          # modules in any raw log). Subset variation again: the fix
+          # covers the UNION (5 distinct undefined modules).
+          # Raw-log verbatim error union — verified TWICE (browser
+          # job-logs.txt read of all three raw logs + direct grep of
+          # the downloaded log archives; the two reads agree
+          # exactly, genuine "error:" lines only — each raw log also
+          # has 32 script-echo/comment matches for the phrase):
+          #   #168 (2 lines, 07:30:51Z) + #170 (2 lines, 07:31:56Z,
+          #     IDENTICAL to #168): "libc_malloc_debug" needs
+          #     "libmemory_trace" + "libmemunreachable"
+          #     (bionic/libc/malloc_debug/Android.bp:57:1).
+          #   #169 (6 lines, 07:31:23Z): those two PLUS
+          #     "tombstoned.microdroid" + "tombstoned" need
+          #     "libevent" (system/core/debuggerd/Android.bp:543:1 /
+          #     537:1) and "libdebuggerd" needs "scudo_headers" +
+          #     "gwp_asan_crash_handler" (Android.bp:232:1).
+          # UI-LOG TRUNCATION, not a new module: the first UI-log
+          # report said "libmemtrace" — the raw log says
+          # "libmemory_trace" (the UI view truncates the name).
+          # The "ninja: error ... libcharger_sysprop_rust.so ...
+          # missing and no known rule to make it" line: 1 match per
+          # raw log, 0 genuine — the only match is this file's own
+          # history comment echo. CONFIRMED PHANTOM, same class as
+          # #152/#161. FAILED line in all three is
+          # out/soong/build.yuzora_lights.ninja, soong bootstrap
+          # failed, exit status 1. Cache: Restore MISS 0-1s in all
+          # three (sync 10m43s on #170), no cache saved — same as
+          # every run since #118; the separate restore+save steps
+          # still need his word, NOT changed here.
+          # STUBS (5, all in yuzora-stubs/Android.bp below):
+          #   libmemory_trace — cc_library_static (whole_static_libs
+          #     consumer libc_malloc_debug; same form as the #153
+          #     libscudo + gwp_asan stubs). Defined NOWHERE in the
+          #     synced tree; only referencer is libc_malloc_debug.
+          #   libmemunreachable — plain cc_library (static_libs
+          #     consumer libc_malloc_debug + shared_libs consumer
+          #     android.hardware.audio-impl_default, which is a
+          #     cc_defaults NOT instantiated in this build graph —
+          #     out of graph, so it never errors; a plain cc_library
+          #     yields both variants, so one stub satisfies both
+          #     list types — same precedent as the #165
+          #     libdexfile_support stub, which satisfied
+          #     libfdtrack's + debuggerd's static_libs uses and has
+          #     not errored since). Defined NOWHERE in the tree.
+          #   libevent — plain cc_library (static_libs consumer
+          #     tombstoned_defaults, used by tombstoned +
+          #     tombstoned.microdroid; upstream type in unsynced
+          #     external/libevent). Defined NOWHERE in the tree.
+          #   scudo_headers — cc_library_headers (header_libs
+          #     consumer libdebuggerd; same form as the #165
+          #     bpf_headers stub). Defined NOWHERE in the tree.
+          #   gwp_asan_crash_handler — cc_library_static
+          #     (whole_static_libs consumer libdebuggerd; same form
+          #     as the #153 libscudo stub). Defined NOWHERE in the
+          #     synced tree. NOT the same module as gwp_asan (the
+          #     #153 stub, already present) or gwp_asan_headers
+          #     (already stubbed) — all three are distinct modules.
+          # NO PRUNES this round: the referencers are core platform
+          # modules — libc_malloc_debug lives in bionic/libc and
+          # tombstoned/libdebuggerd live in system/core/debuggerd;
+          # neither dir can be pruned. The stub-only fix is the
+          # whole fix.
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on all three consumer blocks:
+          # libc_malloc_debug, libdebuggerd, tombstoned_defaults
+          # — no sdk_version / min_sdk_version anywhere in them),
+          # so no stub needs the sdk variant (same rule as the
+          # #159/#160/#161 fix).
+          # CHECKED, NOT STUBBED (out-of-graph referencers only):
+          #   libnative_bridge_support_accessor_headers —
+          #     referenced ONLY by the crash_dump binary
+          #     (header_libs + target.android header_libs), which
+          #     is not in the lights build graph, so it never
+          #     errors; same for libtombstoned_client_static +
+          #     libnative_bridge_guest_state_accessor (crash_dump
+          #     static_libs). Do NOT stub any of these unless a raw
+          #     log reports one.
+          # DEP-CLOSURE VERIFIED (every other dep of the erroring
+          # consumers is defined in-tree or already stubbed, so
+          # there is no provably-next layer beyond these five):
+          #   libc_malloc_debug: libasync_safe + libbase +
+          #     libc_malloc_debug_backtrace defined in-tree,
+          #     libunwindstack already stubbed; its backtrace
+          #     lib's own deps are libbase + libasync_safe.
+          #   libdebuggerd: header_libs bionic_libc_platform_headers
+          #     + liblog_headers + libdebuggerd_common_headers
+          #     defined, gwp_asan_headers stubbed; static_libs
+          #     libdexfile_support + libunwindstack + liblzma
+          #     stubbed, libbase + libcutils defined;
+          #     whole_static_libs libdebuggerd_tombstone_proto_to_text
+          #     + libtombstone_proto + libasync_safe defined,
+          #     libprocinfo + libprotobuf-cpp-lite + libscudo
+          #     stubbed; target recovery/vendor_ramdisk excludes
+          #     reference libdexfile_support + libdexfile (stubbed).
+          #   tombstoned_defaults: libbase + libcutils + liblog
+          #     defined, libevent is the new stub; header_libs
+          #     defined in-tree. debuggerd binary: libbase +
+          #     libdebuggerd_client + liblog + libprocessgroup
+          #     defined in-tree, libprocinfo stubbed; required
+          #     crash_dump.policy is a prebuilt_etc defined in the
+          #     same debuggerd/Android.bp. libtinyxml2 (the
+          #     malloc_debug_unit_tests dep) is already stubbed.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -6231,6 +6343,64 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #168/#169/#170 fix: five new stubs (see the comment
+          // block in the prune step above for the per-module
+          // verification). libmemory_trace + gwp_asan_crash_handler
+          // are cc_library_static — both are whole_static_libs
+          // consumers (libc_malloc_debug / libdebuggerd), same form
+          // as the #153 libscudo + gwp_asan stubs. libmemunreachable
+          // + libevent are plain cc_library — a plain cc_library
+          // yields both variants, so one stub satisfies the
+          // static_libs consumer (libc_malloc_debug /
+          // tombstoned_defaults) and the shared_libs consumer
+          // (audio default, out of graph) alike; same form as the
+          // #165 libdexfile_support stub. scudo_headers is
+          // cc_library_headers (header_libs consumer libdebuggerd),
+          // same form as the #165 bpf_headers stub. No sdk_version
+          // on any new stub: no consumer sets sdk_version.
+          cc_library_static {
+              name: "libmemory_trace",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libmemunreachable",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libevent",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "scudo_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "gwp_asan_crash_handler",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -6589,6 +6759,34 @@ jobs:
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #165/#166/#167 stubs created: librustutils rust_library stub (+ lib.rs); libdexfile_support + libdexfile + libminui + libminijail + libdmabufheap + libmeminfo + libbpf_bcc + libbpf_minimal plain cc_library stubs; bpf_prog_headers + bpf_headers cc_library_headers stubs. No type changes this round."
+          # Runs #168/#169/#170 fix: verify the five new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165 loops above).
+          for stub in libmemory_trace libmemunreachable libevent scudo_headers gwp_asan_crash_handler; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #168/#169/#170 fix: the two plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 checks): a cc_library_shared stub cannot provide the
+          # static variant the static_libs consumers need, and a
+          # cc_library_static stub cannot provide the shared variant
+          # the shared_libs consumer needs.
+          for stub in libmemunreachable libevent; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #168/#169/#170 fix: the two whole_static_libs stubs
+          # must be cc_library_static (same grep -A1 form, with the
+          # static type): a plain cc_library stub has no guaranteed
+          # static variant for whole_static_libs consumers.
+          for stub in libmemory_trace gwp_asan_crash_handler; do
+            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
+          done
+          # Runs #168/#169/#170 fix: the headers stub must be
+          # cc_library_headers (same grep -A1 form, with the headers
+          # type): header_libs consumers need a headers module.
+          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "scudo_headers"' || { echo "::error::stub scudo_headers is not a cc_library_headers"; exit 1; }
+          echo "runs #168/#169/#170 stubs created: libmemory_trace + gwp_asan_crash_handler cc_library_static stubs; libmemunreachable + libevent plain cc_library stubs; scudo_headers cc_library_headers stub. No prunes, no type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -6596,6 +6794,8 @@ jobs:
           echo "runs #156/#157/#158 fix: android.hardware.graphics.allocator@2.0 + libstatspull_headers + libstatssocket_headers + vulkan_headers + libjsoncpp_ndk + ndk_system stubs created. No type changes this round."
 
           echo "runs #165/#166/#167 fix: librustutils + libdexfile_support + libdexfile + libminui + libminijail + libdmabufheap + libmeminfo + bpf_prog_headers + bpf_headers + libbpf_bcc + libbpf_minimal stubs created. No type changes this round."
+
+          echo "runs #168/#169/#170 fix: libmemory_trace + libmemunreachable + libevent + scudo_headers + gwp_asan_crash_handler stubs created. No prunes, no type changes this round."
 
 
 
@@ -6963,6 +7163,27 @@ jobs:
           for stub in libdexfile_support libdexfile libminui libminijail libdmabufheap libmeminfo libbpf_bcc libbpf_minimal; do
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
+          # Runs #168/#169/#170 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libmemory_trace libmemunreachable libevent scudo_headers gwp_asan_crash_handler; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #168/#169/#170 fix: the two plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in libmemunreachable libevent; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #168/#169/#170 fix: the two whole_static_libs stubs
+          # must be cc_library_static at build time (same check as
+          # the prune step above).
+          for stub in libmemory_trace gwp_asan_crash_handler; do
+            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
+          done
+          # Runs #168/#169/#170 fix: the headers stub must be
+          # cc_library_headers at build time (same check as the
+          # prune step above).
+          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "scudo_headers"' || { echo "::error::pre-build guard: stub scudo_headers is not a cc_library_headers"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
