@@ -5973,3 +5973,54 @@ cc_library_headers {
         "//visibility:public",
     ],
 }
+
+// Runs #223/#224/#225/#226 fix: 2 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// 2 plain cc_library — both consumed by the fsgen-generated
+// yuzora_lights_generated_system_image module via a filesystem Deps
+// (install) edge, which is type-agnostic:
+//   libcompiler_rt — definition NOT located in the synced tree
+//     (whole-tree grep: zero name: "libcompiler_rt" definitions;
+//     the only hits are the reference in
+//     build/make/target/product/generic/Android.bp:947 and binary
+//     strings inside the prebuilt clang binaries). Web search did
+//     not pin down an Android.bp definition either. Unlocated
+//     definition -> plain cc_library stub, per the #186
+//     libprotoutil / #202 libtestUtil precedent.
+//   update_engine_sideload — definition NOT in the synced tree
+//     (system/update_engine is unsynced; whole-tree grep: only
+//     the reference in generic/Android.bp:681, "// recovery").
+//     Web search confirms it is a real upstream module ("Compile
+//     update_engine_sideload as a static recovery program") but
+//     did not pin down its exact Android.bp module type at r32.
+//     Same precedent: plain cc_library stub. The filesystem Deps
+//     edge needs the module only to EXIST for dep resolution;
+//     the module is never compiled for this target (the build
+//     target is only android.hardware.light-service.samsung).
+// No sdk_version on either stub: the consumer is a generated
+// filesystem module (no sdk_version); min_sdk_version alone does
+// not set UseSdk() per #159/#161.
+// aosp_shared_system_image's 313 deps are NOT stubbed: that module
+// is DISABLED this round (enabled: false — see the workflow
+// comment). libjnigraphics is NOT stubbed either: it is reported
+// only via aosp_shared_system_image, and its only Soong consumer
+// remains the pruned renderengine benchmark dir.
+cc_library {
+    name: "libcompiler_rt",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "update_engine_sideload",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
