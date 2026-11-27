@@ -2152,6 +2152,41 @@ still 32 projects.
   `if: always()`), which touches the cache steps and needs his
   word - not changed in this fix round.
 
+  Runs #187 (45994472632, workflow push b078a98), #188
+  (45994586409, manifest push 0191dca), #189 (45994668468,
+  README push a7ea1ac) and #190 (45994859582, manual dispatch):
+  ALL FAILED AT STARTUP - no job ever started. Every run
+  carries the annotation: "Error: Workflow file exceeds the
+  maximum allowed size of 500 KB." The uploaded workflow file
+  is 511 KB (522,949 bytes), above GitHub's 500 KB (512,000
+  bytes) per-workflow-file limit. The run #186 fix was NEVER
+  tested. CORRECTION to a standing rule: the workflow-file
+  push DID auto-trigger a run (#187). GitHub runs a workflow
+  when its own file changes, regardless of the push paths
+  filter (which lists only aidl/light/** + build-lights/**).
+  The #185 round's belief ("workflow-only pushes trigger NO
+  run") was wrong - never verified. FIX (restructure, no
+  stub/prune changes): the 5056-line yuzora-stubs/Android.bp
+  heredoc (~239 KB) moved OUT of the workflow file into a
+  static repo file build-lights/yuzora-stubs-Android.bp
+  (byte-identical to what the quoted heredoc generated -
+  verified by extraction). The workflow now copies it (cp
+  .repo/manifests/build-lights/yuzora-stubs-Android.bp
+  yuzora-stubs/Android.bp); everything downstream is unchanged
+  (prune-step presence/type loops + pre-build guard still grep
+  the generated file; the conditional
+  core-module-lib-stubs-for-system-modules append still
+  applies). Workflow file: 9037 lines / 522,949 bytes -> 4006
+  lines / 285,818 bytes (well under 500 KB). FUTURE STUB
+  ROUNDS: add the stub to build-lights/yuzora-stubs-Android.bp
+  (NOT to the workflow file) + the prune-step + guard checks
+  in the workflow as before. Keep the workflow file under 500
+  KB - check with `wc -c` before upload. Upload order for
+  this round: static stubs file FIRST (its push auto-triggers
+  a run on the OLD oversized workflow - fails at startup,
+  harmless), then the workflow, then manifest + README, then
+  manual dispatch (primary watch).
+
   -->
 
 <manifest>
