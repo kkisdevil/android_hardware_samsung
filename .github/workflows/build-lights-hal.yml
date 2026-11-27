@@ -2083,6 +2083,258 @@ jobs:
           #     libupdate_engine_headers stubbed (#119).
           #   libsnapshot_test_helpers via libsnapshot_defaults
           #     (same as above): libcrypto stubbed.
+          # Runs #180/#181/#182 fix: stub thirteen modules, prune
+          # nothing. Runs #180 (45979326743, 16m28s, auto, manifest
+          # 191f287), #181 (45979571732, 14m20s, auto, README
+          # b74ed2a) and #182 (45979813017, 10m57s, manual dispatch
+          # ~15:40 IST 2026-11-27, head b74ed2a — the runs
+          # #177/#178/#179 fix, workflow 11948cb) ALL FAILED at
+          # Soong ninja-file generation, 51s (#180) / 37s (#181) /
+          # 36s (#182) into the "Build lights HAL" step, on the
+          # SAME fix code. The #177/#178/#179 fix HELD COMPLETELY
+          # in all three (prune step passed in all three — 1s/4s/4s
+          # — + pre-build guard passed in #182; ZERO genuine errors
+          # for any of its 6 modules in any raw job log). Subset
+          # variation again: #182 reports the libinit 4 + 6 others,
+          # #181 reports the same 6 non-libinit errors, #180 reports
+          # those 6 + the health pair — the fix covers the UNION
+          # (12 distinct undefined modules). Raw-log verbatim error
+          # union (runs #180/#181/#182 job logs):
+          #   #182: "libinit.microdroid" + "libinit" need
+          #     "libavf_cc_flags" + "libbootloader_message" +
+          #     "liblmkd_utils" + "libxml2"
+          #     (system/core/init/Android.bp, init_defaults);
+          #     "atrace" needs "android.hardware.atrace@1.0";
+          #     "libfs_mgr_binder" needs "gsi_aidl_interface-cpp";
+          #     "libgraphicsenv" needs "libnativeloader-headers";
+          #     "libstatsbootstrap" needs
+          #     "android.os.statsbootstrap_aidl-cpp";
+          #     "liblogd_binder" needs "libincremental_aidl-cpp";
+          #     "servicedispatcher" needs "android.debug_aidl-cpp".
+          #   #181: the same 6 non-libinit errors as #182.
+          #   #180: those 6 plus "charger" /
+          #     "libhealthd_charger_test" / "charger_test" need
+          #     "android.hardware.health@2.0" +
+          #     "android.hardware.health@1.0"
+          #     (system/core/healthd/Android.bp).
+          # The "ninja: error ... libcharger_sysprop_rust.so ..."
+          # line is a CONFIRMED PHANTOM again: 0 lines in #182's
+          # whole job log contain "libcharger_sysprop_rust", same
+          # class as #152/#161/#174/#177.
+          # STUBS (13: 12 plain cc_library + 1 cc_library_headers,
+          # all in yuzora-stubs/Android.bp below):
+          #   libavf_cc_flags — plain cc_library (static_libs
+          #     consumers libinit + libinit.microdroid via
+          #     init_defaults; upstream cc_aconfig_library
+          #     PRESUMED, definition NOT located — presumed
+          #     packages/modules/Virtualization; exact file not
+          #     found). Defined NOWHERE in the tree.
+          #   libbootloader_message — plain cc_library (same
+          #     consumers; upstream cc_library,
+          #     bootable/recovery/bootloader_message/Android.bp).
+          #     Defined NOWHERE (project unsynced).
+          #   liblmkd_utils — plain cc_library (same consumers;
+          #     upstream cc_library_static, system/memory/lmkd/
+          #     Android.bp — NOT system/core/lmkd, that path is
+          #     stale). Defined NOWHERE (project unsynced).
+          #   libxml2 — plain cc_library (same consumers; upstream
+          #     cc_library, external/libxml2/Android.bp). Defined
+          #     NOWHERE (project unsynced). Sibling libxml2_ndk is
+          #     a DIFFERENT module — do NOT copy its sdk_version
+          #     "current" onto this stub.
+          #   android.hardware.atrace@1.0 — plain cc_library
+          #     (shared_libs consumer atrace; upstream
+          #     hidl_interface, hardware/interfaces/atrace/1.0/
+          #     Android.bp). Defined ONLY in a pruned dir.
+          #   gsi_aidl_interface-cpp — plain cc_library
+          #     (whole_static_libs consumer libfs_mgr_binder via
+          #     libfiemap_binder_defaults; upstream aidl_interface,
+          #     system/gsid/Android.bp — NOT system/gsi, no such
+          #     project). Defined NOWHERE (project unsynced).
+          #     Siblings libgsi / libgsid / libgsi_headers are
+          #     ALREADY stubbed (do not duplicate).
+          #   libnativeloader-headers — cc_library_headers (the
+          #     ONE headers stub: header_libs consumer
+          #     libgraphicsenv; upstream cc_library_headers,
+          #     art/libnativeloader/Android.bp — NOT
+          #     system/core/libnativeloader, no such dir; art is
+          #     on the never-sync list). Defined NOWHERE. No srcs
+          #     (headers stub, same form as libgsi_headers).
+          #   android.os.statsbootstrap_aidl-cpp — plain cc_library
+          #     (shared_libs consumer libstatsbootstrap via
+          #     libstatsbootstrap_defaults; AIDL-generated by name,
+          #     definition NOT located — ruled out StatsD aidl/ +
+          #     system/core/libstats/). Defined NOWHERE.
+          #   libincremental_aidl-cpp — plain cc_library
+          #     (whole_static_libs consumer liblogd_binder;
+          #     AIDL-generated by name, definition NOT located —
+          #     ruled out system/incremental_delivery/). Defined
+          #     NOWHERE. The one module whose bare stub is
+          #     plausibly sufficient (no consumer source uses its
+          #     headers/symbols).
+          #   android.debug_aidl-cpp — plain cc_library
+          #     (shared_libs consumer servicedispatcher; AIDL-
+          #     generated by name, definition NOT located — likely
+          #     packages/modules/adbd, NOT aidl/Android.bp at r32).
+          #     Defined NOWHERE.
+          #   android.hardware.health@2.0 — plain cc_library
+          #     (shared_libs consumer charger + static_libs
+          #     charger_test / libhealthd_charger_test; upstream
+          #     hidl_interface, hardware/interfaces/health/2.0/
+          #     Android.bp; its interfaces include health@1.0 —
+          #     both stubs are needed together). Defined ONLY in a
+          #     pruned dir.
+          #   android.hardware.health@1.0 — plain cc_library
+          #     (static_libs consumers charger_test /
+          #     libhealthd_charger_test; upstream hidl_interface,
+          #     hardware/interfaces/health/1.0/Android.bp; NOT
+          #     health@1.0-convert, already stubbed in #177).
+          #     Defined ONLY in a pruned dir.
+          #   A plain cc_library yields both variants, so one stub
+          #   satisfies the shared_libs consumers (atrace, charger,
+          #   libstatsbootstrap, servicedispatcher) and the
+          #   static_libs / whole_static_libs consumers (libinit,
+          #   libinit.microdroid, libfs_mgr_binder, liblogd_binder,
+          #   charger_test, libhealthd_charger_test) alike; same
+          #   form as the #156 allocator@2.0 stub (also a HIDL
+          #   lib), the #174 health@2.1 stub and the #165
+          #   libdexfile_support stub.
+          # SIBLING (rule 4, #111 libgsi/libgsid precedent — one
+          # added, the rest checked and rejected):
+          #   libnativeloader_lazy — plain cc_library (upstream
+          #     cc_library_shared in art/libnativeloader/
+          #     Android.bp, the SAME file as
+          #     libnativeloader-headers; referenced in shared_libs
+          #     by libvulkan + libEGL, both unpruned and in the
+          #     graph — libvulkan also lists
+          #     libnativeloader-headers, which errored — so it WILL
+          #     surface in a later run; stubbed now). A plain
+          #     cc_library yields the shared variant the consumers
+          #     need, same as the #177 libboot_control_client note
+          #     (upstream cc_library there; here upstream is
+          #     cc_library_shared — the stub type follows the
+          #     project pattern, not the upstream type, except for
+          #     the headers stub above).
+          #   REJECTED siblings (do NOT stub unless a raw log
+          #     reports one):
+          #   libbootloader_message_vendor — referenced ONLY by
+          #     hardware/google/pixel/bootctrl + misc_writer, and
+          #     the prune deletes ALL hardware/google/pixel/*/
+          #     subdirs before Soong runs, so the reference never
+          #     enters the graph.
+          #   misctrl / gsid / gsi_tool — referenced ONLY in the
+          #     build/make/target/product/generic/Android.bp
+          #     product-packages list, which is NOT a Soong dep
+          #     edge (it also lists lmkd, defined nowhere in the
+          #     tree, never reported in runs #6–#182).
+          #   libstatslogc, libxml2_ndk, libnativeloader —
+          #     unreferenced anywhere in the synced tree.
+          #   libgsi / libgsid / libgsi_headers — already stubbed.
+          #   atrace/1.0, health/2.0, health/1.0 Android.bp files
+          #     define a single module each — no siblings.
+          #   libavf_cc_flags / android.os.statsbootstrap_aidl-cpp
+          #   / libincremental_aidl-cpp / android.debug_aidl-cpp:
+          #   defining file NOT located — no sibling check
+          #   possible.
+          # NO PRUNES this round: the referencers are core platform
+          # modules — system/core (init, fs_mgr, healthd, libstats,
+          # logd), system/apex (apexd), frameworks/native (atrace,
+          # graphicsenv, binder, vulkan, opengl) — none of those
+          # dirs can be pruned. Stubbing the 3 pruned-dir HIDL libs
+          # follows the #171 bufferqueue precedent (defined only in
+          # a pruned dir, stubbed plain cc_library).
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on every consumer block:
+          # init_defaults / libinit_defaults / libinit /
+          # libinit.microdroid, atrace, libfiemap_binder_defaults,
+          # libgraphicsenv, libstatsbootstrap_defaults /
+          # libstatsbootstrap, liblogd_binder, servicedispatcher,
+          # charger / charger_test / libhealthd_charger_test,
+          # libvulkan, libEGL — zero sdk_version lines in any of
+          # those blocks; the only sdk_version-adjacent lines
+          # anywhere near are min_sdk_version: "29" on
+          # libbinder_headers_base / libbinder_headers, which are
+          # NOT consumers, and min_sdk_version alone does NOT set
+          # UseSdk() per the #159 lesson). Do NOT copy
+          # sdk_version / min_sdk_version from sibling modules
+          # (libxml2_ndk "current", libgsi_headers min_sdk_version
+          # 31 belong to different modules).
+          # CHECKED, NOT STUBBED (never reported in any raw log,
+          # runs #6–#182 — do NOT stub unless a raw log reports
+          # one; stubbing a module Soong may consider defined
+          # risks a duplicate-definition error):
+          #   libcharger_sysprop — sysprop-generated; the ONE
+          #     undefined-but-unreported DIRECT dep of the
+          #     erroring consumers (dep-closure audit below).
+          #   avf_build_flags_cc — ALREADY stubbed (cc_defaults,
+          #     earlier round); not a missing module. Do NOT
+          #     confuse with libavf_cc_flags.
+          #   android.hardware.boot@1.2 (carried forward — only
+          #     referenced by the real libboot_control_client's
+          #     shared_libs; the stub has no deps so @1.2 never
+          #     enters the graph), android.hardware.graphics.common
+          #     @1.1/@1.2, allocator@3.0/@4.0, mapper@2.0/2.1/3.0/
+          #     4.0, libLibGuiProperties, libhealthhalutils,
+          #     libhealthshim, libfastbootshim, libcharger_sysprop,
+          #     libcom.android.sysprop.apex (both sysprop-generated).
+          # DEP-CLOSURE VERIFIED (audit script over the erroring
+          # consumers' DIRECT deps, following defaults one level —
+          # every other direct dep is defined in-tree (non-pruned)
+          # or already stubbed):
+          #   libinit / libinit.microdroid via init_defaults +
+          #     libinit_defaults: libavb/libbase/libbinder/libcap/
+          #     libcutils/libdl/libext4_utils/libfs_mgr/
+          #     libgenfslabelsversion.ffi/libgsi (stubbed)/
+          #     libkeyutils/liblog/liblogwrap/liblp/liblz4/
+          #     libmodprobe/libprocessgroup/libprocessgroup_setup/
+          #     libprocinfo/libpropertyinfoparser/
+          #     libpropertyinfoserializer/libprotobuf-cpp-lite/
+          #     libselinux/libsnapshot_cow/libsnapshot_init/
+          #     libunwindstack/libutils/libvendorsupport/libzstd/
+          #     update_metadata-protos (stubbed) + avf_build_flags_cc
+          #     (stubbed cc_defaults) + bootimg_headers defined.
+          #   atrace: libbase/libbinder/libcutils/libhidlbase/
+          #     liblog/libutils/libz defined.
+          #   libfs_mgr_binder via libfiemap_binder_defaults:
+          #     libbinder/libgsi/libgsid (stubbed)/libutils defined;
+          #     libfs_mgr_binder itself: libavb/libcrypto/
+          #     libcrypto_utils/libdm/libext2_uuid/libext4_utils/
+          #     libfec/libfiemap_headers/libfs_avb/libfstab/liblog/
+          #     liblogwrap/liblp/libselinux/
+          #     libstorage_literals_headers defined/stubbed.
+          #   libgraphicsenv: libbase/libbinder/libcutils/
+          #     libdl_android/liblog/libutils defined.
+          #   libstatsbootstrap: libbinder/libutils defined.
+          #   liblogd_binder: libbase/libbinder/libcutils_headers/
+          #     libutils/libz/libzstd defined.
+          #   servicedispatcher: libbase/libbinder/liblog/libutils
+          #     defined.
+          #   charger / charger_test / libhealthd_charger_test:
+          #     android.hardware.health-V4-ndk + @1.0-convert + @2.1
+          #     (stubbed), libhealth2impl + libhealthloop + libpng
+          #     (stubbed), libbatterymonitor/libhealthd_charger/
+          #     libhealthd_charger_nops/libhealthd_charger_ui/
+          #     libhealthd_draw/libminui/libsuspend defined,
+          #     libbase/libcutils/libhidlbase/liblog/libutils
+          #     defined; libcharger_sysprop sysprop-generated, NOT
+          #     stubbed (never reported).
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link — several consumers #include generated
+          # headers or call real functions (see
+          # research-182-modules.md §§1–12 for the per-module
+          # header/symbol notes). The build target is ONLY
+          # android.hardware.light-service.samsung (shared_libs
+          # libbase, libbinder_ndk, android.hardware.light-V2-ndk)
+          # — NONE of the 13 is in its closure, verified locally
+          # — so bare stubs suffice for THIS target. If a future
+          # round fails past Soong, ship the headers/symbols then;
+          # do not pre-build them now.
+          # CACHE NOTE (run #182): Restore 0s MISS, sync 7m12s, no
+          # Save step — save-always still does not save; the
+          # separate restore+save steps need his word (see the
+          # manifest). Expect Restore to miss and sync ~9-12 min
+          # on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -7315,6 +7567,141 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #180/#181/#182 fix: thirteen new stubs (see the comment
+          // block in the prune step above for the per-module
+          // verification). Twelve plain cc_library — a plain cc_library
+          // yields both variants, so one stub satisfies the shared_libs
+          // consumers (atrace, charger, libstatsbootstrap,
+          // servicedispatcher) and the static_libs / whole_static_libs
+          // consumers (libinit, libinit.microdroid, libfs_mgr_binder,
+          // liblogd_binder, charger_test, libhealthd_charger_test)
+          // alike; same form as the #156 allocator@2.0 stub (also a
+          // HIDL lib), the #174 health@2.1 stub and the #165
+          // libdexfile_support stub. libnativeloader_lazy is the rule-4
+          // sibling (same defining file as libnativeloader-headers,
+          # referenced by libvulkan + libEGL). No sdk_version on any new
+          // stub: no consumer sets sdk_version.
+          cc_library {
+              name: "libavf_cc_flags",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libbootloader_message",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "liblmkd_utils",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libxml2",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.atrace@1.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "gsi_aidl_interface-cpp",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.os.statsbootstrap_aidl-cpp",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libincremental_aidl-cpp",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.debug_aidl-cpp",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.health@2.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.health@1.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libnativeloader_lazy",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          // Runs #180/#181/#182 fix: the one cc_library_headers stub
+          // (libnativeloader-headers — header_libs consumer
+          // libgraphicsenv; upstream cc_library_headers, so the stub
+          // type follows the upstream type here, unlike the plain
+          // cc_library stubs above). No srcs (headers stub, same
+          // form as libgsi_headers).
+          cc_library_headers {
+              name: "libnativeloader-headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -7756,6 +8143,28 @@ jobs:
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #177/#178/#179 stubs created: android.hardware.health@1.0-convert + android.hardware.boot@1.0 + android.hardware.boot@1.1 + android.hardware.boot-V1-ndk + libboot_control_client + libprotobuf-cpp-full-ndk plain cc_library stubs. No prunes, no type changes this round."
+          # Runs #180/#181/#182 fix: verify the thirteen new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."` grep
+          # form as the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/#168/#171/#174/#177 loops above).
+          for stub in libavf_cc_flags libbootloader_message liblmkd_utils libxml2 android.hardware.atrace@1.0 gsi_aidl_interface-cpp android.os.statsbootstrap_aidl-cpp libincremental_aidl-cpp android.debug_aidl-cpp android.hardware.health@2.0 android.hardware.health@1.0 libnativeloader_lazy libnativeloader-headers; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #180/#181/#182 fix: the twelve plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 / #168 / #171 / #174 / #177 checks): a cc_library_shared stub cannot
+          # provide the static variant the static_libs consumers need,
+          # and a cc_library_static stub cannot provide the shared
+          # variant the shared_libs consumers need.
+          for stub in libavf_cc_flags libbootloader_message liblmkd_utils libxml2 android.hardware.atrace@1.0 gsi_aidl_interface-cpp android.os.statsbootstrap_aidl-cpp libincremental_aidl-cpp android.debug_aidl-cpp android.hardware.health@2.0 android.hardware.health@1.0 libnativeloader_lazy; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #180/#181/#182 fix: the headers stub must be
+          # cc_library_headers (same grep -A1 form as the #171
+          # libnative_bridge_support_accessor_headers check): a plain
+          # cc_library stub cannot satisfy a header_libs consumer.
+          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
+          echo "runs #180/#181/#182 stubs created: libavf_cc_flags + libbootloader_message + liblmkd_utils + libxml2 + android.hardware.atrace@1.0 + gsi_aidl_interface-cpp + android.os.statsbootstrap_aidl-cpp + libincremental_aidl-cpp + android.debug_aidl-cpp + android.hardware.health@2.0 + android.hardware.health@1.0 + libnativeloader_lazy plain cc_library stubs; libnativeloader-headers cc_library_headers stub. No prunes, no type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -7771,6 +8180,8 @@ jobs:
           echo "runs #174/#175/#176 fix: libfscrypt + libfec + perfetto_trace_protos + libhealthloop + android.hardware.health-V4-ndk + android.hardware.health-translate-ndk + libpng + android.hardware.health-V1-ndk + android.hardware.health-translate-V1-ndk + libhealth2impl + android.hardware.health@2.1 + libvold_binder + libmediautils + android.frameworks.schedulerservice@1.0 + lib_microdroid_metadata_proto + libsigningutils + libverity_tree stubs created. No prunes, no type changes this round."
 
           echo "runs #177/#178/#179 fix: android.hardware.health@1.0-convert + android.hardware.boot@1.0 + android.hardware.boot@1.1 + android.hardware.boot-V1-ndk + libboot_control_client + libprotobuf-cpp-full-ndk stubs created. No prunes, no type changes this round."
+
+          echo "runs #180/#181/#182 fix: libavf_cc_flags + libbootloader_message + liblmkd_utils + libxml2 + android.hardware.atrace@1.0 + gsi_aidl_interface-cpp + libnativeloader-headers + android.os.statsbootstrap_aidl-cpp + libincremental_aidl-cpp + android.debug_aidl-cpp + android.hardware.health@2.0 + android.hardware.health@1.0 + libnativeloader_lazy stubs created. No prunes, no type changes this round."
 
 
 
@@ -8196,6 +8607,21 @@ jobs:
           for stub in android.hardware.health@1.0-convert android.hardware.boot@1.0 android.hardware.boot@1.1 android.hardware.boot-V1-ndk libboot_control_client libprotobuf-cpp-full-ndk; do
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
+          # Runs #180/#181/#182 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libavf_cc_flags libbootloader_message liblmkd_utils libxml2 android.hardware.atrace@1.0 gsi_aidl_interface-cpp android.os.statsbootstrap_aidl-cpp libincremental_aidl-cpp android.debug_aidl-cpp android.hardware.health@2.0 android.hardware.health@1.0 libnativeloader_lazy libnativeloader-headers; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #180/#181/#182 fix: the twelve plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in libavf_cc_flags libbootloader_message liblmkd_utils libxml2 android.hardware.atrace@1.0 gsi_aidl_interface-cpp android.os.statsbootstrap_aidl-cpp libincremental_aidl-cpp android.debug_aidl-cpp android.hardware.health@2.0 android.hardware.health@1.0 libnativeloader_lazy; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #180/#181/#182 fix: the headers stub must be
+          # cc_library_headers at build time (same check as the prune
+          # step above).
+          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::pre-build guard: stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
