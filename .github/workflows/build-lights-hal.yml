@@ -1224,6 +1224,19 @@ jobs:
           rm -rf system/core/trusty/test
           rm -rf external/rust/android-crates-io/crates/libbpf-rs
           rm -rf external/rust/android-crates-io/crates/libbpf-sys
+          # Run #186 fix: prune system/core/trusty/keymaster whole.
+          # All 6 erroring consumers live in that one file (Trusty
+          # TEE keymaster / keymint services + test / set-attestation
+          # binaries); nothing else in the synced tree references
+          # anything defined there (whole-tree grep: zero refs to
+          # libtrusty_ipc, the @3.0/@4.0-service.trusty +
+          # keymint-service.trusty names, the set-attestation
+          # binaries, the xml modules; zero path refs; zero .mk
+          # PRODUCT_PACKAGES refs — the only .mk hit,
+          # system/core/trusty/keymint/trusty-keymint.mk:39, is
+          # itself referenced NOWHERE). Same form as the #162
+          # system/core/trusty/test prune above.
+          rm -rf system/core/trusty/keymaster
           # Runs #165/#166/#167 fix: prune four dirs and stub eleven
           # modules. Runs #165 (45947910369, 14m15s, auto, manifest
           # 5bb1797), #166 (45948101732, 13m37s, auto, README 435b5bc)
@@ -2335,6 +2348,216 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~9-12 min
           # on the next run too.
+          # Run #186 fix: prune one dir whole + stub three modules.
+          # Run #186 (45990278315, 12m59s, manual dispatch ~16:54
+          # IST 2026-11-27, head 6423961 — the run #185 stray-#
+          # fix, workflow 6423961) FAILED at Soong ninja-file
+          # generation, 38s into the "Build lights HAL" step.
+          # The #185 stray-# fix HELD (zero "expected assignment or
+          # module definition" lines anywhere in the whole raw job
+          # log) and the #180/#181/#182 fix HELD (prune step passed
+          # 1s + pre-build guard passed; ZERO genuine errors for any
+          # of its 13 modules in the raw log). Failure (verbatim
+          # from the #186 whole-job raw log, 11 lines at 11:37:50
+          # UTC, 6 distinct undefined modules):
+          #   "trusty_keymaster_set_attestation_key" /
+          #   "libtrusty_ipc" / "trusty_rkp_set_uds_cert" /
+          #   "trusty_keymaster_set_attestation_ids" /
+          #   "android.hardware.keymaster@4.0-service.trusty" /
+          #   "android.hardware.keymaster@3.0-service.trusty" (all
+          #   in system/core/trusty/keymaster/Android.bp) need
+          #   "libkeymaster_messages" (6x) + "libkeymaster4" +
+          #   "android.hardware.keymaster@4.0" +
+          #   "libkeymaster3device" + "android.hardware.keymaster@3.0";
+          #   "libgfxstats" needs "libprotoutil"
+          #   (frameworks/native/services/gpuservice/gpustats/
+          #   Android.bp:24:1).
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: 17 lines in the raw log, ALL in the 11:37:12
+          # script echo (# comments quoting earlier runs) — ZERO
+          # in the actual build output, same class as
+          # #152/#161/#174/#177/#182.
+          # FIRST-EVER reported: the first Trusty keymaster errors,
+          # the first keymaster HIDL libs, the first libprotoutil.
+          # Note the trusty keymaster dir existed in the tree for
+          # all 186 runs and only surfaced now — a consumer can stay
+          # silent for 185 runs and then appear (subset variation is
+          # real and lossy, proven by #180/#181/#182: 11 vs 6 vs 14
+          # lines on identical code).
+          # PRUNE (1 dir, whole — not stubbing the 10 keymaster
+          # lines): system/core/trusty/keymaster. All 6 erroring
+          # consumers live in that one file (Trusty TEE keymaster /
+          # keymint services + test / set-attestation binaries);
+          # NOTHING else in the synced tree references anything
+          # defined there (whole-tree grep, excluding the dir
+          # itself: zero refs to libtrusty_ipc, the @3.0/@4.0-
+          # service.trusty + keymint-service.trusty names, the
+          # set-attestation binaries, the xml modules; zero path
+          # refs; zero .mk PRODUCT_PACKAGES refs — the only .mk hit,
+          # system/core/trusty/keymint/trusty-keymint.mk:39, is
+          # itself referenced NOWHERE). Precedent: #162 pruned
+          # system/core/trusty/test whole on exactly this reasoning
+          # ("nothing in the synced tree references
+          # trusty_driver_test or py3-stdlib, so the whole dir
+          # goes"). The prune also removes
+          # android.hardware.security.keymint-service.trusty +
+          # the two prebuilt_etc xml modules, all unreferenced
+          # elsewhere (verified above). Sibling dirs
+          # (trusty/keymint/, libtrusty/, gatekeeper/,
+          # confirmationui/) are NOT touched.
+          # STUBS (3, all plain cc_library, all in
+          # yuzora-stubs/Android.bp below):
+          #   libprotoutil — plain cc_library (shared_libs consumer
+          #     libgfxstats via libgfxstats_deps; also
+          #     libsensorservice shared_libs + gpuservice unittests;
+          #     definition NOT located — bounded search ruled out
+          #     frameworks/native/libs/ (r32 listing, no protoutil/)
+          #     + packages/modules/StatsD/lib/ (r32 listing, no
+          #     libprotoutil/) + web search (no definition). No
+          #     consumer source includes its headers (GpuStats.cpp:
+          #     no protoutil include; sensorservice sources: zero
+          #     protoutil mentions) — bare stub plausibly
+          #     sufficient, same class as libincremental_aidl-cpp
+          #     in #182). Defined NOWHERE in the tree.
+          #   libkeymaster4 — plain cc_library (REPORTED in #186
+          #     via the trusty consumer AND a second, unpruned
+          #     in-graph consumer remains after the prune:
+          #     android.hardware.keymaster@4.0-service.samsung
+          #     (hardware/samsung/hidl/keymaster/Android.bp,
+          #     shared_libs) — Rule-4, #182 libnativeloader_lazy
+          #     precedent: the #186 subset did not report the
+          #     samsung consumer, same subset variation as
+          #     #180/#181/#182; upstream cc_library,
+          #     system/keymaster/Android.bp r32 lines 650–704 —
+          #     NOT system/security/keymaster, that path 404s at
+          #     r32). Defined NOWHERE (project unsynced). A bare
+          #     stub has no deps, so upstream's shared_libs
+          #     (libkeymaster_messages + keymaster@4.0 +
+          #     libkeymaster_portable + libpuresoftkeymasterdevice +
+          #     libkeymaster4support + ...) do NOT enter the graph.
+          #   android.hardware.keymaster@4.0 — plain cc_library
+          #     (same Rule-4 reasoning: REPORTED in #186 via trusty
+          #     + the samsung service lists it in shared_libs;
+          #     upstream hidl_interface,
+          #     hardware/interfaces/keymaster/4.0/Android.bp —
+          #     interfaces keymaster@3.0 + hidl.base@1.0,
+          #     gen_java false). Defined ONLY in a pruned dir. A
+          #     bare stub declares no interfaces, so NO @3.0 edge
+          #     is created through the stub (contrast #182's
+          #     health@2.0, where BOTH were stubbed because BOTH
+          #     were reported).
+          #   A plain cc_library yields both variants, so one stub
+          #   satisfies the shared_libs consumers (libgfxstats,
+          #   libsensorservice, the samsung keymaster service)
+          #   alike; same form as the #156 allocator@2.0 stub (also
+          #   a HIDL lib) and the #174 health@2.1 stub.
+          # SIBLINGS (rule 4 — checked, only the two above added):
+          #   system/keymaster siblings libkeymaster41 /
+          #   libkeymaster4support / libkeymaster_portable /
+          #   libpuresoftkeymasterdevice / libsoftkeymasterdevice /
+          #   libkeymasterconfig / libkeymint / libcppcose_rkp /
+          #   lib_android_keymaster_keymint_utils — EVERY in-tree
+          #   reference is in a pruned hardware/interfaces/* dir
+          #   (gatekeeper/aidl/software, identity/aidl/default|vts|
+          #   support, keymaster/3.0/default); libkeymaster41 has
+          #   zero references anywhere. None stubbed.
+          #   keymaster@4.0's upstream interfaces include @3.0 —
+          #   no stub edge (see above).
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified: trusty/keymaster file — none;
+          # samsung service — none; gpustats — none; sensorservice
+          # — none). Upstream libkeymaster4 / keymaster @3.0/@4.0
+          # carry no sdk_version either.
+          # CHECKED, NOT STUBBED (never reported from an unpruned
+          # consumer in any raw log, runs #6–#186 — do NOT stub
+          # unless a raw log reports one):
+          #   libkeymaster_messages — REPORTED in #186, but after
+          #     the prune its only remaining refs are
+          #     hardware/interfaces/identity/aidl/default (pruned
+          #     dir). Upstream cc_library_shared,
+          #     system/keymaster/Android.bp r32 lines 158–206.
+          #   libkeymaster3device — REPORTED in #186, but after the
+          #     prune its only remaining ref is
+          #     hardware/interfaces/keymaster/3.0/default (pruned
+          #     dir). Upstream cc_library_shared,
+          #     system/keymaster/Android.bp r32 lines 576–646.
+          #   android.hardware.keymaster@3.0 — REPORTED in #186, but
+          #     after the prune its only remaining refs are the
+          #     trusty consumer (pruned) + pruned keymaster dirs
+          #     (3.0/default, 4.0/support, 4.0/Android.bp
+          #     interfaces edge — all pruned). Upstream
+          #     hidl_interface, hardware/interfaces/keymaster/3.0/
+          #     Android.bp (interfaces hidl.base@1.0).
+          #   libcharger_sysprop — sysprop-generated; the CONFIRMED
+          #     PHANTOM (17 script-echo lines in #186, zero in
+          #     build output).
+          #   libsensorservice's other undefined deps:
+          #   android.hardware.sensors@1.0/@2.0/@2.1 (HIDL, pruned
+          #   dirs), libactivitymanager_aidl, libbatterystats_aidl,
+          #   libsensorprivacy, libpermission, libfmq,
+          #   packagemanager_aidl-cpp,
+          #   android.hardware.common-V2-ndk,
+          #   android.hardware.common.fmq-V1-ndk,
+          #   libaconfig_storage_read_api_cc, libaidlcommonsupport,
+          #   android.hardware.sensors@1.0-convert,
+          #   framework-cppstream-protos. libsensorservice IS in
+          #   build/make/target/product/base_system.mk:195
+          #   PRODUCT_PACKAGES (and generic/Android.bp:990) — the
+          #   same file that lists atrace (:34), which DOES surface
+          #   — yet libsensorservice has never errored in 186 runs
+          #   despite its undefined deps. The reporting mechanism
+          #   is not fully understood (Soong's subset reporting is
+          #   lossy/nondeterministic — #180/#181/#182 prove it on
+          #   identical code); the empirical rule stands: never
+          #   reported → do not stub.
+          #   Carried forward: android.hardware.boot@1.2,
+          #   android.hardware.graphics.common@1.1/@1.2,
+          #   allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+          #   libLibGuiProperties, libhealthhalutils, libhealthshim,
+          #   libfastbootshim, libcom.android.sysprop.apex (both
+          #   sysprop-generated); avf_build_flags_cc — ALREADY
+          #   stubbed (cc_defaults, earlier round); not a missing
+          #   module.
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   libgfxstats via libgfxstats_deps: libcutils /
+          #     libgraphicsenv / liblog / libstatslog (stubbed #141)
+          #     / libstatspull (stubbed #141) / libstatssocket
+          #     (stubbed #99/#100/#101) / libutils defined/stubbed;
+          #     libprotoutil STUBBED this round.
+          #   android.hardware.keymaster@4.0-service.samsung:
+          #     libbase / libcutils / libhardware (stubbed #135) /
+          #     libhidlbase / liblog / libutils defined/stubbed;
+          #     keymaster@4.0 + libkeymaster4 STUBBED this round;
+          #     select() takes the default [] branch (BoardConfig
+          #     sets no target_keymaster4_library — verified live
+          #     from the fork).
+          #   trusty/keymaster consumers: PRUNED whole dir; their
+          #     other deps are moot.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link — hardware/samsung/hidl/keymaster/
+          # service.cpp includes
+          # <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+          # (generated HIDL header) + <AndroidKeymaster4Device.h>
+          # (from libkeymaster4's ng/include); if the build ever
+          # compiles that service, the generated headers + stub
+          # functions will be needed. The build target is ONLY
+          # android.hardware.light-service.samsung (shared_libs
+          # libbase, libbinder_ndk, android.hardware.light-V2-ndk)
+          # — NONE of the 3 new stubs is in its closure, verified
+          # locally — so bare stubs suffice for THIS target. If a
+          # future round fails past Soong, ship the headers/symbols
+          # then; do not pre-build them now. (Same watch-item form
+          # as #182.)
+          # CACHE NOTE (run #186): Restore 0s MISS, sync 8m41s, no
+          # Save step — save-always still does not save; the
+          # separate restore+save steps need his word (see the
+          # manifest). Expect Restore to miss and sync ~9-12 min
+          # on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -2459,6 +2682,10 @@ jobs:
             echo "::error::prune failed — system/core/trusty/test present"
             exit 1
           fi
+          if [ -d system/core/trusty/keymaster ]; then
+            echo "::error::prune failed — system/core/trusty/keymaster present"
+            exit 1
+          fi
           if [ -d external/rust/android-crates-io/crates/libbpf-rs ]; then
             echo "::error::prune failed — external/rust/android-crates-io/crates/libbpf-rs present"
             exit 1
@@ -2499,6 +2726,8 @@ jobs:
           echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
           echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats."
           echo "runs #162/#163/#164 pruned: system/core/trusty/test + external/rust/android-crates-io/crates/libbpf-rs + crates/libbpf-sys."
+
+          echo "run #186 pruned: system/core/trusty/keymaster."
           echo "runs #165/#166/#167 pruned: bionic/benchmarks + libnativehelper/tests + libnativehelper/tests_mts/jni + system/core/libstats/pull_rust."
           echo "runs #75/#76/#77 pruned: system/apex/tests + system/core/init/test_upgrade_mte + system/core/debuggerd/test_permissive_mte."
           # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
@@ -7702,6 +7931,45 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Run #186 fix: three new stubs (see the comment block in
+          // the prune step above for the per-module verification).
+          // Three plain cc_library — a plain cc_library yields both
+          // variants, so one stub satisfies the shared_libs consumers
+          // (libgfxstats, libsensorservice, the samsung keymaster
+          // service) alike; same form as the #156 allocator@2.0 stub
+          // (also a HIDL lib) and the #174 health@2.1 stub.
+          // libprotoutil is the reported module (libgfxstats); the
+          // other two are Rule-4 siblings (reported in #186 via the
+          // trusty consumers, second unpruned in-graph consumer is
+          // the samsung keymaster service). No sdk_version on any new
+          // stub: no consumer sets sdk_version.
+          cc_library {
+              name: "libprotoutil",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libkeymaster4",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.keymaster@4.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -8165,6 +8433,23 @@ jobs:
           # cc_library stub cannot satisfy a header_libs consumer.
           grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
           echo "runs #180/#181/#182 stubs created: libavf_cc_flags + libbootloader_message + liblmkd_utils + libxml2 + android.hardware.atrace@1.0 + gsi_aidl_interface-cpp + android.os.statsbootstrap_aidl-cpp + libincremental_aidl-cpp + android.debug_aidl-cpp + android.hardware.health@2.0 + android.hardware.health@1.0 + libnativeloader_lazy plain cc_library stubs; libnativeloader-headers cc_library_headers stub. No prunes, no type changes this round."
+          # Run #186 fix: verify the three new stubs are present in
+          # yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/#168/#171/#174/#177/#180 loops above).
+          for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Run #186 fix: the three plain cc_library stubs must be
+          # plain cc_library (same grep -A1 form as the libjsoncpp /
+          # libz / libcrypto / libselinux / libpcre2 / #165 / #168 /
+          # #171 / #174 / #177 / #180 checks): a cc_library_shared
+          # stub cannot provide the static variant the static_libs
+          # consumers need, and a cc_library_static stub cannot
+          # provide the shared variant the shared_libs consumers need.
+          for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          echo "run #186 stubs created: libprotoutil + libkeymaster4 + android.hardware.keymaster@4.0 plain cc_library stubs; system/core/trusty/keymaster pruned whole."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -8182,6 +8467,8 @@ jobs:
           echo "runs #177/#178/#179 fix: android.hardware.health@1.0-convert + android.hardware.boot@1.0 + android.hardware.boot@1.1 + android.hardware.boot-V1-ndk + libboot_control_client + libprotobuf-cpp-full-ndk stubs created. No prunes, no type changes this round."
 
           echo "runs #180/#181/#182 fix: libavf_cc_flags + libbootloader_message + liblmkd_utils + libxml2 + android.hardware.atrace@1.0 + gsi_aidl_interface-cpp + libnativeloader-headers + android.os.statsbootstrap_aidl-cpp + libincremental_aidl-cpp + android.debug_aidl-cpp + android.hardware.health@2.0 + android.hardware.health@1.0 + libnativeloader_lazy stubs created. No prunes, no type changes this round."
+
+          echo "run #186 fix: libprotoutil + libkeymaster4 + android.hardware.keymaster@4.0 stubs created; system/core/trusty/keymaster pruned whole."
 
 
 
@@ -8312,6 +8599,10 @@ jobs:
           fi
           if [ -d system/core/trusty/test ]; then
             echo "::error::pre-build guard: system/core/trusty/test present at build time"
+            exit 1
+          fi
+          if [ -d system/core/trusty/keymaster ]; then
+            echo "::error::pre-build guard: system/core/trusty/keymaster present at build time"
             exit 1
           fi
           if [ -d external/rust/android-crates-io/crates/libbpf-rs ]; then
@@ -8622,6 +8913,17 @@ jobs:
           # cc_library_headers at build time (same check as the prune
           # step above).
           grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::pre-build guard: stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
+          # Run #186 fix: the new stubs must be present at build time
+          # (same `name: "..."` grep form as above).
+          for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Run #186 fix: the three plain cc_library stubs must be
+          # plain cc_library at build time (same check as the prune
+          # step above).
+          for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
