@@ -5614,3 +5614,76 @@ genrule {
         "//visibility:public",
     ],
 }
+// Runs #203/#204/#205/#206 fix: 6 new stubs (see the comment block in
+// the prune step of .github/workflows/build-lights-hal.yml for the
+// per-module verification).
+// 5 plain cc_library — a plain cc_library yields both variants,
+// so one stub satisfies the shared_libs consumer (libnativewindow)
+// and the static_libs consumers (surfaceflinger) alike; same form
+// as the #194 common@1.2 stub and the #128/#135 aconfig stubs.
+// 1 is a HIDL @x.y lib (graphics.common@1.1), 4 are aconfig libs
+// (all cc_aconfig_library upstream in frameworks/base/AconfigFlags.bp
+// at r32).
+// 1 rust_library (libselinux_bindgen — upstream rust_bindgen in
+// external/selinux, unsynced; NOT plain cc_library because the
+// consumer references it via rustlibs, which requires a Rust library
+// module type; shape mirrors the libcxx #96 / libbssl_sys #116 /
+// librustutils #165 stubs; crate_name "selinux_bindgen" upstream;
+// lib.rs already created by the workflow + guarded).
+// No sdk_version on any new stub: no consumer sets sdk_version
+// (verified on all three consumer files).
+cc_library {
+    name: "android.hardware.graphics.common@1.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "aconfig_hardware_flags_c_lib",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.os.flags-aconfig-cc",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.os.flags-aconfig-cc-test",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.server.display.flags-aconfig-cc",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+rust_library {
+    name: "libselinux_bindgen",
+    crate_name: "selinux_bindgen",
+    srcs: ["lib.rs"],
+    edition: "2021",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
