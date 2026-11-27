@@ -1237,6 +1237,21 @@ jobs:
           # itself referenced NOWHERE). Same form as the #162
           # system/core/trusty/test prune above.
           rm -rf system/core/trusty/keymaster
+          # Runs #195/#196/#197/#198 fix: prune three dirs whole
+          # (same form as the #186 trusty/keymaster prune above).
+          # frameworks/native/services/sensorservice/tests holds ONLY
+          # test-sensorservice (cc_binary) + its .cpp; zero refs to
+          # test-sensorservice anywhere else in the synced tree.
+          # hardware/interfaces/light/aidl/vts holds ONLY functional/
+          # (VtsHalLightTargetTest + its .cpp); zero refs to the test
+          # anywhere else; the light aidl dir itself STAYS.
+          # system/core/trusty/keymint holds the rust_defaults + the
+          # two rust_binary keymint services + fuzz/ + src/ + .rc/.xml
+          # + trusty-keymint.mk; zero refs to either binary name, the
+          # defaults name, or the .mk anywhere outside the dir.
+          rm -rf frameworks/native/services/sensorservice/tests
+          rm -rf hardware/interfaces/light/aidl/vts
+          rm -rf system/core/trusty/keymint
           # Runs #165/#166/#167 fix: prune four dirs and stub eleven
           # modules. Runs #165 (45947910369, 14m15s, auto, manifest
           # 5bb1797), #166 (45948101732, 13m37s, auto, README 435b5bc)
@@ -2908,6 +2923,243 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~9-12 min
           # on the next run too.
+          # Runs #195/#196/#197/#198 fix: stub 10 modules, prune 3 dirs.
+          # Runs #195 (46013432537, 12m41s), #196 (46014181177, 15m27s),
+          # #197 (46014519921, 15m39s) and #198 (46015052689, 19m41s)
+          # ALL FAILED at Soong ninja-file generation, 35-45s into the
+          # "Build lights HAL" step, on the SAME fix code (head 9ddd0ea
+          # — the 39-stub fix, workflow 401485b). Raw-log verbatim
+          # (whole-job raw logs, browser job-log reads): #195 = 21
+          # lines / 16 distinct modules; #196 = 6 lines / 6 modules
+          # (same set as #197); #197 = 6 lines / 6 modules; #198 = 4
+          # lines / 4 modules. UNION across all four runs is exactly
+          # #195's 16 — #196/#197/#198 add nothing new. The 39-stub
+          # fix HELD completely in all four runs (zero genuine errors
+          # for any of its 39 modules in any raw log); zero "expected
+          # assignment or module definition" lines (the #185 stray-#
+          # fix HELD). Pre-build guard PASSED in all four.
+          # Failure (verbatim, raw logs — consumer file paths verified
+          # locally in ~/workspace/lights-local; Soong-reported line
+          # numbers are not recorded in the daily-log verdict, so no
+          # line numbers are quoted here rather than guessed):
+          #   test-sensorservice needs libandroid
+          #   (frameworks/native/services/sensorservice/tests/
+          #   Android.bp, shared_libs).
+          #   libsensorservicehidl needs
+          #   android.hardware.sensors@1.0-convert (static_libs) +
+          #   android.frameworks.sensorservice@1.0 +
+          #   android.hardware.sensors@1.0 (shared_libs)
+          #   (frameworks/native/services/sensorservice/hidl/
+          #   Android.bp).
+          #   VtsHalLightTargetTest needs libhidl_gtest_helper +
+          #   VtsHalHidlTestUtils (via defaults VtsHalTargetTestDefaults)
+          #   (hardware/interfaces/light/aidl/vts/functional/
+          #   Android.bp).
+          #   keymint-service.rust.trusty.system.nonsecure needs
+          #   libkmr_wire + libkmr_hal (via rust_defaults
+          #   android.hardware.security.keymint-service.rust.trusty.
+          #   default, rustlibs) + libkmr_hal_nonsecure (own rustlibs)
+          #   (system/core/trusty/keymint/Android.bp).
+          #   libstoraged needs libhealthhalutils + libhealthshim
+          #   (via cc_defaults storaged_defaults, static_libs)
+          #   (system/core/storaged/Android.bp).
+          #   dumpstate_test + dumpstate_smoke_test (+ the dumpstate
+          #   binary, same defaults) need android.tracing.flags_c_lib
+          #   (static_libs) + android.hardware.dumpstate@1.0 + @1.1 +
+          #   android.hardware.dumpstate-V1-ndk +
+          #   device_policy_aconfig_flags_c_lib (shared_libs)
+          #   (via cc_defaults dumpstate_defaults,
+          #   frameworks/native/cmds/dumpstate/Android.bp).
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1, in all four.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: script echo/comments only — ZERO in any Build step
+          # output, same class as #152/#161/#174/#177/#182/#186/#194.
+          # FIRST-EVER reported: the first sensors HIDL libs, the first
+          # sensorservice HIDL lib, the first VTS test-helper libs, the
+          # first keymint Rust libs, the first health-halutils/shim libs,
+          # the first dumpstate HIDL/AIDL libs, the first aconfig
+          # flags_c_lib libs, the first libandroid. Note #198 reported
+          # only 4 lines and #196/#197 only 6 on the SAME code that gave
+          # #195 21 — subset variation is real and lossy, proven again
+          # (same pattern as #180/#181/#182: 11 vs 6 vs 14, and
+          # #192/#193/#194: 5 vs 40 vs 2).
+          # STUBS (10, all in build-lights/yuzora-stubs-Android.bp
+          # — the static file, NOT the workflow; the workflow only
+          # gains this comment block + the prune-step + guard
+          # checks below):
+          #   8 plain cc_library: 4 HIDL @x.y libs defined ONLY in
+          #     pruned dirs or unsynced projects:
+          #     android.hardware.sensors@1.0 (hidl_interface in
+          #     hardware/interfaces/sensors/1.0/Android.bp, pruned),
+          #     android.frameworks.sensorservice@1.0 (hidl_interface
+          #     in frameworks/hardware/interfaces/sensorservice/1.0/
+          #     Android.bp at r32 — verified via googlesource TEXT;
+          #     unsynced project, frameworks/ locally holds only
+          #     native/), android.hardware.dumpstate@1.0 + @1.1
+          #     (hidl_interface in hardware/interfaces/dumpstate/
+          #     1.0 + 1.1/Android.bp, pruned); 1 HIDL -convert lib
+          #     (android.hardware.sensors@1.0-convert, generated from
+          #     the sensors@1.0 hidl_interface — same -convert
+          #     precedent as health@1.0-convert, #177, plain); 1 AIDL
+          #     -ndk lib (android.hardware.dumpstate-V1-ndk, generated
+          #     from aidl_interface android.hardware.dumpstate in
+          #     hardware/interfaces/dumpstate/aidl/Android.bp —
+          #     stability vintf, frozen true, backend cpp disabled,
+          #     java enabled, NO ndk block so the ndk backend defaults
+          #     to enabled); 2 aconfig-generated cc_aconfig_library
+          #     libs (android.tracing.flags_c_lib, consumed via
+          #     static_libs, + device_policy_aconfig_flags_c_lib,
+          #     consumed via shared_libs — a plain cc_library stub
+          #     yields both variants, same precedent as
+          #     android.os.vibrator.flags-aconfig-cc, #125, plain).
+          #   2 cc_library_static: libhealthhalutils +
+          #     libhealthshim — both upstream cc_library_static
+          #     (hardware/interfaces/health/2.0/utils/
+          #     libhealthhalutils/Android.bp and
+          #     hardware/interfaces/health/utils/libhealthshim/
+          #     Android.bp — both pruned dirs), both consumed via
+          #     static_libs by libstoraged through storaged_defaults.
+          #     The static form mirrors the upstream type (same as
+          #     the #194 libavb_user / libscrypt_static /
+          #     libaidlcommonsupport stubs).
+          # PRUNES (3 dirs, each verified in the synced tree — whole-dir
+          # prune, same form as the #186 trusty/keymaster prune):
+          #   frameworks/native/services/sensorservice/tests — holds
+          #     ONLY test-sensorservice (cc_binary) + its .cpp; zero
+          #     refs to test-sensorservice anywhere else in the tree.
+          #     Kills libandroid.
+          #   hardware/interfaces/light/aidl/vts — holds ONLY
+          #     functional/ (VtsHalLightTargetTest + its .cpp); zero
+          #     refs to VtsHalLightTargetTest anywhere else; the
+          #     defaults VtsHalTargetTestDefaults has NO users outside
+          #     hardware/interfaces/* (all in pruned vts dirs). The
+          #     light aidl dir itself STAYS (the HAL needs
+          #     android.hardware.light-V2-ndk). Kills
+          #     libhidl_gtest_helper + VtsHalHidlTestUtils. NOTE:
+          #     use_libaidlvintf_gtest_helper_static (the test's other
+          #     defaults entry) is defined NOWHERE in the synced tree
+          #     — it would likely surface next round if the test were
+          #     kept; the prune removes that whole closure.
+          #   system/core/trusty/keymint — holds the rust_defaults +
+          #     the two rust_binary keymint services + fuzz/ + src/ +
+          #     .rc/.xml + trusty-keymint.mk; zero refs to either
+          #     rust_binary name, the defaults name, or the .mk
+          #     anywhere outside the dir (the only .mk hit,
+          #     trusty-keymint.mk:39, is itself referenced NOWHERE —
+          #     the same finding the #186 round recorded for this
+          #     file). Kills libkmr_wire + libkmr_hal +
+          #     libkmr_hal_nonsecure.
+          # DIVERGENCE from the timed-out prior worker's "11 stubs +
+          # 2 prunes" proposal: this design prunes
+          # sensorservice/tests instead of stubbing libandroid
+          # (test-dir prune precedent #162/#165; libandroid's upstream
+          # definition was not located — whole-tree grep 0 hits — so
+          # no stub type could be verified for it).
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified by grep over all 7 consumer files
+          # + the root hardware/interfaces/Android.bp — zero hits).
+          # Per the #159 lesson, min_sdk_version alone does NOT set
+          # UseSdk(). The dumpstate aidl_interface's java-backend
+          # sdk_version "module_current" does not propagate to the
+          # -ndk lib.
+          # NOT STUBBED (never reported in any raw log, runs #6–#198
+          # — do NOT stub unless a raw log reports one):
+          #   libandroid, libhidl_gtest_helper, VtsHalHidlTestUtils,
+          #   libkmr_wire, libkmr_hal, libkmr_hal_nonsecure (all six
+          #   consumers pruned this round); use_libaidlvintf_gtest_
+          #   helper_static (not defined in the synced tree; consumer
+          #   pruned); libcharger_sysprop (sysprop-generated phantom).
+          #   libsensorservice's other undefined deps:
+          #   android.hardware.sensors@2.0/@2.1,
+          #   libactivitymanager_aidl, libbatterystats_aidl,
+          #   libsensorprivacy, libpermission, libfmq,
+          #   android.hardware.common-V2-ndk,
+          #   android.hardware.common.fmq-V1-ndk,
+          #   libaconfig_storage_read_api_cc,
+          #   android.hardware.sensors-V1-convert,
+          #   android.hardware.sensors-V3-ndk,
+          #   sensorservice_flags_c_lib, framework-cppstream-protos.
+          #   (android.hardware.sensors@1.0 +
+          #   sensors@1.0-convert leave this list — reported in #195,
+          #   stubbed this round. CORRECTION: packagemanager_aidl-cpp
+          #   was listed here in #194 but IS defined in-tree —
+          #   aidl_interface packagemanager_aidl in frameworks/native/
+          #   libs/binder/Android.bp:868 — it leaves the list.)
+          #   Carried forward: android.hardware.boot@1.2,
+          #   android.hardware.graphics.common@1.1,
+          #   libLibGuiProperties, libfastbootshim,
+          #   libcom.android.sysprop.apex (sysprop-generated);
+          #   libkeymaster_messages, libkeymaster3device,
+          #   android.hardware.keymaster@3.0 (reported in #186 but,
+          #   after the trusty/keymaster prune, referenced only in
+          #   pruned hardware/interfaces/* dirs); avf_build_flags_cc
+          #   (ALREADY stubbed as cc_defaults). (libhealthhalutils +
+          #   libhealthshim leave this list — reported in #195,
+          #   stubbed this round.)
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   test-sensorservice: libutils / libsensor defined.
+          #   VtsHalLightTargetTest: VtsHalTargetTestDefaults (defined
+          #     in the root hardware/interfaces/Android.bp, which
+          #     stays) / libbinder / android.hardware.light-V2-cpp
+          #     (generated from the KEPT light/aidl dir) defined.
+          #   keymint-service.rust.trusty.system.nonsecure: defaults +
+          #     rustlibs all in-file / in-dir (pruned with it).
+          #   libsensorservicehidl: libbase / libutils / libsensor /
+          #     jni_headers (libnativehelper) defined; libhidlbase
+          #     stubbed.
+          #   libstoraged via storaged_defaults: health@1.0 +
+          #     health@2.0 (stubbed #180) / health-V4-ndk +
+          #     health-translate-ndk (stubbed #174) / libbase /
+          #     libbinder / libbinder_ndk / libcutils / libhidlbase
+          #     (stubbed) / liblog / libprotobuf-cpp-lite (stubbed) /
+          #     libutils / libz (stubbed #119) /
+          #     packagemanager_aidl-cpp (defined, see above) /
+          #     libbatteryservice_headers (defined) — the storaged
+          #     binary is in-graph (required by the dumpstate
+          #     binary), so libstoraged cannot be pruned.
+          #   dumpstate_defaults: libziparchive (stubbed #122) /
+          #     libbase / libbinder / libbinder_ndk / libcrypto
+          #     (stubbed) / libcutils / libdebuggerd_client (defined)
+          #     / libdumpstateaidl + libdumpstateutil (in-file) /
+          #     libdumputils (defined) / libhardware_legacy (stubbed
+          #     #194) / libhidlbase (stubbed) / liblog / libutils /
+          #     libvintf (stubbed #141) / libbinderdebug (defined) /
+          #     packagemanager_aidl-cpp (defined) /
+          #     server_configurable_flags (stubbed #119) /
+          #     libincidentcompanion (defined) / libdumpsys (defined)
+          #     / libserviceutils (defined) /
+          #     aconfig_lib_cc_static_link.defaults (resolves — no
+          #     error in #195–#198). The dumpstate binary's required:
+          #     list all resolved without error. The dumpstate binary
+          #     is real, so its dir cannot be pruned — hence the 5
+          #     dumpstate stubs.
+          #   NOTE (unresolved, recorded honestly): libsensorservicehidl
+          #     has NO locatable in-graph edge — whole-tree grep finds
+          #     no .bp/.mk reference to it outside its own definition
+          #     file (base_system.mk lists libsensorservice + the
+          #     sensorservice binary, not the hidl lib). The #195 raw
+          #     log proves it IS in-graph. Same class as the #186
+          #     libsensorservice puzzle (a module can be in-graph
+          #     without an obvious local edge). The fix does not depend
+          #     on the edge: its 3 missing deps are stubbed.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link. The build target is ONLY
+          # android.hardware.light-service.samsung — NONE of the 10
+          # new stubs is in its closure, verified locally — so bare
+          # stubs suffice for THIS target. If a future round fails
+          # past Soong, ship the headers/symbols then; do not
+          # pre-build them now. (Same watch-item form as #182/#186/
+          # #194.)
+          # CACHE NOTE (runs #195/#196/#197/#198): Restore 0-1s MISS in
+          # all four (sync 8m51s #195 / ~10-12m #196/#197/#198),
+          # no Save step — save-always still does not save; the
+          # separate restore+save steps need his word (see the
+          # manifest). Expect Restore to miss and sync ~9-12 min
+          # on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -3036,6 +3288,18 @@ jobs:
             echo "::error::prune failed — system/core/trusty/keymaster present"
             exit 1
           fi
+          if [ -d frameworks/native/services/sensorservice/tests ]; then
+            echo "::error::prune failed — frameworks/native/services/sensorservice/tests present"
+            exit 1
+          fi
+          if [ -d hardware/interfaces/light/aidl/vts ]; then
+            echo "::error::prune failed — hardware/interfaces/light/aidl/vts present"
+            exit 1
+          fi
+          if [ -d system/core/trusty/keymint ]; then
+            echo "::error::prune failed — system/core/trusty/keymint present"
+            exit 1
+          fi
           if [ -d external/rust/android-crates-io/crates/libbpf-rs ]; then
             echo "::error::prune failed — external/rust/android-crates-io/crates/libbpf-rs present"
             exit 1
@@ -3078,6 +3342,8 @@ jobs:
           echo "runs #162/#163/#164 pruned: system/core/trusty/test + external/rust/android-crates-io/crates/libbpf-rs + crates/libbpf-sys."
 
           echo "run #186 pruned: system/core/trusty/keymaster."
+
+          echo "runs #195/#196/#197/#198 pruned: frameworks/native/services/sensorservice/tests + hardware/interfaces/light/aidl/vts + system/core/trusty/keymint."
           echo "runs #165/#166/#167 pruned: bionic/benchmarks + libnativehelper/tests + libnativehelper/tests_mts/jni + system/core/libstats/pull_rust."
           echo "runs #75/#76/#77 pruned: system/apex/tests + system/core/init/test_upgrade_mte + system/core/debuggerd/test_permissive_mte."
           # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
@@ -3805,6 +4071,34 @@ jobs:
             grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
           done
           echo "runs #192/#193/#194 stubs created: 34 plain cc_library + libimapper_stablec + libimapper_providerutils cc_library_headers + libavb_user + libscrypt_static + libaidlcommonsupport cc_library_static stubs. No prunes this round."
+          # Runs #195/#196/#197/#198 fix: verify the 10 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186/#192 loops above).
+          for stub in android.hardware.sensors@1.0-convert android.frameworks.sensorservice@1.0 android.hardware.sensors@1.0 android.hardware.dumpstate@1.0 android.hardware.dumpstate@1.1 android.hardware.dumpstate-V1-ndk android.tracing.flags_c_lib device_policy_aconfig_flags_c_lib libhealthhalutils libhealthshim; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #195/#196/#197/#198 fix: the 8 plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 / #168 / #171 / #174 / #177 / #180 / #186 / #192
+          # checks): a cc_library_shared stub cannot provide the static
+          # variant the static_libs consumers need, and a
+          # cc_library_static stub cannot provide the shared variant
+          # the shared_libs consumers need.
+          for stub in android.hardware.sensors@1.0-convert android.frameworks.sensorservice@1.0 android.hardware.sensors@1.0 android.hardware.dumpstate@1.0 android.hardware.dumpstate@1.1 android.hardware.dumpstate-V1-ndk android.tracing.flags_c_lib device_policy_aconfig_flags_c_lib; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #195/#196/#197/#198 fix: the two static stubs must be
+          # cc_library_static (same grep -A1 form as the #153 /
+          # #168 / #192 checks): a plain cc_library stub would also
+          # satisfy a static_libs consumer, but the static form mirrors
+          # the upstream type (both are cc_library_static upstream).
+          for stub in libhealthhalutils libhealthshim; do
+            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
+          done
+          echo "runs #195/#196/#197/#198 stubs created: 8 plain cc_library + libhealthhalutils + libhealthshim cc_library_static stubs (10 total); 3 dirs pruned (sensorservice/tests + light/aidl/vts + trusty/keymint)."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -3826,6 +4120,8 @@ jobs:
           echo "run #186 fix: libprotoutil + libkeymaster4 + android.hardware.keymaster@4.0 stubs created; system/core/trusty/keymaster pruned whole."
 
           echo "runs #192/#193/#194 fix: 34 plain cc_library + 2 cc_library_headers + 3 cc_library_static stubs created (39 total). No prunes this round."
+
+          echo "runs #195/#196/#197/#198 fix: 8 plain cc_library + 2 cc_library_static stubs created (10 total); frameworks/native/services/sensorservice/tests + hardware/interfaces/light/aidl/vts + system/core/trusty/keymint pruned whole."
 
 
 
@@ -3960,6 +4256,18 @@ jobs:
           fi
           if [ -d system/core/trusty/keymaster ]; then
             echo "::error::pre-build guard: system/core/trusty/keymaster present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/services/sensorservice/tests ]; then
+            echo "::error::pre-build guard: frameworks/native/services/sensorservice/tests present at build time"
+            exit 1
+          fi
+          if [ -d hardware/interfaces/light/aidl/vts ]; then
+            echo "::error::pre-build guard: hardware/interfaces/light/aidl/vts present at build time"
+            exit 1
+          fi
+          if [ -d system/core/trusty/keymint ]; then
+            echo "::error::pre-build guard: system/core/trusty/keymint present at build time"
             exit 1
           fi
           if [ -d external/rust/android-crates-io/crates/libbpf-rs ]; then
@@ -4302,6 +4610,23 @@ jobs:
           # cc_library_static at build time (same check as the prune
           # step above).
           for stub in libavb_user libscrypt_static libaidlcommonsupport; do
+            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
+          done
+          # Runs #195/#196/#197/#198 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.sensors@1.0-convert android.frameworks.sensorservice@1.0 android.hardware.sensors@1.0 android.hardware.dumpstate@1.0 android.hardware.dumpstate@1.1 android.hardware.dumpstate-V1-ndk android.tracing.flags_c_lib device_policy_aconfig_flags_c_lib libhealthhalutils libhealthshim; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #195/#196/#197/#198 fix: the 8 plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in android.hardware.sensors@1.0-convert android.frameworks.sensorservice@1.0 android.hardware.sensors@1.0 android.hardware.dumpstate@1.0 android.hardware.dumpstate@1.1 android.hardware.dumpstate-V1-ndk android.tracing.flags_c_lib device_policy_aconfig_flags_c_lib; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #195/#196/#197/#198 fix: the two static stubs must be
+          # cc_library_static at build time (same check as the prune
+          # step above).
+          for stub in libhealthhalutils libhealthshim; do
             grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
