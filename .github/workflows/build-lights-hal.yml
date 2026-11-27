@@ -5721,6 +5721,115 @@ jobs:
           // libjsoncpp_ndk stubs are bare too (empty.c, no symbols);
           // the HAL closure never links libgrallocusage /
           // libvkjson_ndk / libomp, so those may never surface.
+          // Runs #159/#160/#161 fix: runs #159 (45939727734, 15m39s,
+          // auto, manifest 05d7ff1), #160 (45939796587, 14m41s, auto,
+          // README 22c7771) and #161 (45939833196, 13m01s, manual
+          // dispatch ~09:55 IST 2026-11-27, head 22c7771 - the runs
+          // #156/#157/#158 fix, workflow d83cd90) ALL FAILED at
+          // Soong ninja-file generation, 38-54s into the build step,
+          // on the SAME fix code. The #156/#157/#158 fix HELD
+          // COMPLETELY in all three (prune step passed + pre-build
+          // guard passed; ZERO genuine "depends on undefined module"
+          // lines in any raw log). NEW failure class - "missing
+          // variant", exactly ONE genuine error per run, different
+          // each time (subset variation - the fix covers the UNION).
+          // All fail at Soong bootstrap [100% 114/114] analyzing,
+          // FAILED: out/soong/build.yuzora_lights.ninja, soong
+          // bootstrap failed exit status 1. Raw-log verbatim error
+          // union (browser job-logs.txt read of all three raw logs;
+          // the earlier UI report of "android.hardware.lights-
+          // service.samsung / product m51 / missing and no known
+          // rule" is a CONFIRMED PHANTOM - it appears nowhere
+          // genuine in any raw log, same class as #152):
+          //   error: prebuilts/clang/host/linux-x86/Android.bp:48:1:
+          //     dependency "ndk_system" of "libomp" missing variant:
+          //     (#161) requested variant
+          //     os:android,arch:arm64_armv8-a,sdk:sdk; available
+          //     variants os:linux_glibc,arch:x86_64,
+          //     os:linux_glibc,arch:x86, os:windows,arch:x86,
+          //     os:windows,arch:x86_64, os:android,arch:arm64_armv8-a.
+          //   error: prebuilts/clang/host/linux-x86/Android.bp:337:1:
+          //     dependency "ndk_system" of "libsimpleperf_readelf"
+          //     missing variant: (#160) same requested + available
+          //     variants.
+          //   error: frameworks/native/vulkan/vkprofiles/Android.bp:44:1:
+          //     dependency "vulkan_headers" of "libvkprofiles_ndk"
+          //     missing variant: (#159) same requested + available
+          //     variants.
+          // Root cause, verified in the synced Soong source
+          // (manifest-pinned tree ~/workspace/lights-local/build/
+          // soong): the bare cc_library_headers stubs resolve as
+          // modules but only build the PLATFORM variant. The sdk
+          // transition mutator (cc/sdk.go Split) creates the
+          // {"sdk", "sdk"} variation ONLY for a module whose
+          // UseSdk() is true, and UseSdk() (cc/cc.go:1309) is true
+          // exactly when Sdk_version is set (canUseSdk + non-empty
+          // sdk_version); without one the module gets only the ""
+          // (platform) variation. The NDK consumers all set
+          // sdk_version, so they request the sdk:sdk variant of
+          // their deps: libomp + libsimpleperf_readelf are
+          // llvm_prebuilt_library_static with sdk_version "minimum"
+          // (prebuilts/clang/host/linux-x86/Android.bp:48/:337,
+          // verified in the manifest-pinned tree); libvkprofiles_ndk
+          // + libvkjson_ndk are cc_library_static with sdk_version
+          // "24" (frameworks/native/vulkan/vkprofiles/Android.bp +
+          // vkjson/Android.bp, same tree). A bare stub with no
+          // sdk_version can never satisfy an sdk consumer, however
+          // many modules are stubbed.
+          // Fix: NO new stubs, NO new projects (still 32). Three
+          // sdk_version lines INSERTED into the existing d83cd90
+          // stub blocks below, so the diff vs d83cd90 is
+          // additions-only (the lines are insertions, not edits of
+          // existing lines - justified here because the stub type
+          // and every other property are unchanged):
+          //   vulkan_headers: sdk_version: "24" - mirrors upstream
+          //   r32 (external/vulkan-headers/Android.bp, sdk_version
+          //   24); both sdk consumers are 24, so the NDK link check
+          //   (cc/cc.go: an NDK lib must not link a dep built
+          //   against a NEWER api) passes exactly. "current" would
+          //   be WRONG: a non-current consumer may not link a
+          //   "current" dep.
+          //   ndk_system: sdk_version: "minimum" - there is NO
+          //   upstream module to mirror (zero mentions in any synced
+          //   .bp; Soong-internal STL pseudo-dep, build/soong/cc/
+          //   stl.go:168-173); both consumers are "minimum", and
+          //   "minimum" is the LOWEST value so every consumer's link
+          //   check passes ("current" would fail it). Precedent:
+          //   the ndk_prebuilt STL defaults in the synced
+          //   prebuilts/clang/host/linux-x86/Android.bp carry
+          //   sdk_version "minimum". No self-dependency: stl.go
+          //   begin() gives a cc_library_headers module SelectedStl
+          //   "" (ctx.header() -> stl "none"), so the stub does NOT
+          //   gain an ndk_system dep on itself.
+          //   libjsoncpp_ndk: sdk_version: "9" - mirrors upstream
+          //   r32 (external/jsoncpp/Android.bp, sdk_version 9); the
+          //   provably-next layer, not speculation: libvkjson_ndk
+          //   (sdk_version 24) takes this stub in whole_static_libs,
+          //   so it WILL demand the sdk variant on the next run.
+          //   Its sdk variant's STL deps (ndk_libc++_static +
+          //   ndk_libc++abi + libunwind, stl.go:175-180) are all
+          //   defined in the synced prebuilts/clang/host/linux-x86/
+          //   Android.bp (:509/:515/:521/:315) with sdk variants of
+          //   their own (sdk_version "minimum" via defaults), so no
+          //   new undefined-module layer opens; the link check passes
+          //   (dep 9 < consumer 24).
+          // NOT changed now, verified with evidence:
+          // libstatspull_headers + libstatssocket_headers - no sdk
+          // consumer exists in the closure: libstatspull_lazy +
+          // libstatssocket_lazy carry no sdk_version (system/core/
+          // libstats/pull_lazy + socket_lazy/Android.bp),
+          // libstatspush_compat carries only min_sdk_version "29"
+          // (push_compat/Android.bp:60), and libinput (the only other
+          // libstatssocket_lazy consumer) carries no sdk_version.
+          // android.hardware.graphics.allocator@2.0 - no sdk consumer
+          // either: libgrallocusage carries only min_sdk_version
+          // "29", libs/ui only min_sdk_version, surfaceflinger none
+          // - and min_sdk_version alone does NOT set UseSdk()
+          // (cc/cc.go:1309 - only Sdk_version does). If a future run
+          // reports a missing-variant line for any of these three,
+          // the fix is the same one-line sdk_version addition.
+          // The prune step + the pre-build guard both verify the
+          // three sdk_version lines (sed block range, #110-safe).
           cc_library {
               name: "android.hardware.graphics.allocator@2.0",
               srcs: ["empty.c"],
@@ -5745,6 +5854,13 @@ jobs:
           cc_library_headers {
               name: "vulkan_headers",
               host_supported: true,
+              // Runs #159/#160/#161 fix: sdk_version "24" (see the
+              // comment block above the allocator@2.0 stub). Without
+              // it the stub builds only the platform variant, and
+              // the sdk_version-24 NDK consumers libvkjson_ndk +
+              // libvkprofiles_ndk fail with "missing variant" for
+              // the requested sdk:sdk variant.
+              sdk_version: "24",
               visibility: [
                   "//visibility:public",
               ],
@@ -5753,6 +5869,12 @@ jobs:
               name: "libjsoncpp_ndk",
               srcs: ["empty.c"],
               stl: "libc++_static",
+              // Runs #159/#160/#161 fix: sdk_version "9" (see the
+              // comment block above the allocator@2.0 stub). The
+              // provably-next layer: libvkjson_ndk (sdk_version 24)
+              // takes this stub in whole_static_libs, so it will
+              // demand the sdk variant on the next run.
+              sdk_version: "9",
               visibility: [
                   "//visibility:public",
               ],
@@ -5760,6 +5882,13 @@ jobs:
           cc_library_headers {
               name: "ndk_system",
               host_supported: true,
+              // Runs #159/#160/#161 fix: sdk_version "minimum"
+              // (see the comment block above the allocator@2.0
+              // stub). Without it the stub builds only the platform
+              // variant, and the sdk_version-"minimum" consumers
+              // libomp + libsimpleperf_readelf fail with "missing
+              // variant" for the requested sdk:sdk variant.
+              sdk_version: "minimum",
               visibility: [
                   "//visibility:public",
               ],
@@ -6096,6 +6225,15 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #156/#157/#158 stubs created: android.hardware.graphics.allocator@2.0 plain cc_library stub; libstatspull_headers + libstatssocket_headers + vulkan_headers + ndk_system cc_library_headers stubs; libjsoncpp_ndk cc_library_static stub (stl: \"libc++_static\"). No type changes this round."
+          # Runs #159/#160/#161 fix: the three stubs NDK consumers
+          # need in sdk variant must carry sdk_version in
+          # yuzora-stubs/Android.bp (sed block range, not
+          # fixed-window grep - #110: the target line sits below
+          # the name: line by a varying number of lines).
+          sed -n '/name: "vulkan_headers"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "24"' || { echo "::error::stub vulkan_headers missing sdk_version 24 after creation"; exit 1; }
+          sed -n '/name: "libjsoncpp_ndk"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "9"' || { echo "::error::stub libjsoncpp_ndk missing sdk_version 9 after creation"; exit 1; }
+          sed -n '/name: "ndk_system"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "minimum"' || { echo "::error::stub ndk_system missing sdk_version minimum after creation"; exit 1; }
+          echo "runs #159/#160/#161 fix: sdk_version on vulkan_headers (24) + libjsoncpp_ndk (9) + ndk_system (minimum). No new stubs, no type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -6424,6 +6562,11 @@ jobs:
           for stub in android.hardware.graphics.allocator@2.0 libstatspull_headers libstatssocket_headers vulkan_headers libjsoncpp_ndk ndk_system; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
+          # Runs #159/#160/#161 fix: the three sdk_version lines
+          # must be present at build time (sed block range, #110).
+          sed -n '/name: "vulkan_headers"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "24"' || { echo "::error::pre-build guard: stub vulkan_headers missing sdk_version 24"; exit 1; }
+          sed -n '/name: "libjsoncpp_ndk"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "9"' || { echo "::error::pre-build guard: stub libjsoncpp_ndk missing sdk_version 9"; exit 1; }
+          sed -n '/name: "ndk_system"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "minimum"' || { echo "::error::pre-build guard: stub ndk_system missing sdk_version minimum"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
