@@ -1691,6 +1691,82 @@ still 32 projects.
   steps (the save step with `if: always()`), which touches the
   cache steps and needs his word - not changed in this fix round.
 
+  Runs #171 (45963013734, 14m39s, auto, manifest b55e406),
+  #172 (45963169508, 14m15s, auto, README bbbab53) and #173
+  (45963299051, 13m26s, manual dispatch ~13:37 IST 2026-11-27,
+  head bbbab53 - the runs #168/#169/#170 fix, workflow
+  09d5008): ALL FAILED at Soong ninja-file generation, 36s
+  (#171/#173) / 44s (#172) into the "Build lights HAL" step,
+  on the SAME fix code. The #168/#169/#170 fix HELD
+  COMPLETELY in all three (prune step passed + pre-build
+  guard passed; ZERO genuine errors for any of its 5 modules
+  in any raw log). Each run reports a different subset on one
+  commit (subset variation - the fix covers the UNION of 9
+  undefined modules, 12 error lines). Raw-log verbatim error
+  union, verified TWICE (browser job-logs.txt read + direct
+  grep of the downloaded log archives; the two reads agree
+  exactly): #171 (4 lines): "libsnapshot_headers" needs
+  "update_metadata-protos" (fs_mgr/libsnapshot/Android.bp:99:1);
+  "crash_dump" needs "libnative_bridge_support_accessor_headers"
+  + "libnative_bridge_guest_state_accessor"
+  (debuggerd/Android.bp:438:1); "libnetutils" needs
+  "libip_checksum" (libnetutils/Android.bp:18:1). #172 (5
+  lines): "libgui_headers" needs "android.hidl.token@1.0-utils"
+  + "android.hardware.graphics.bufferqueue@1.0" + "@2.0"
+  (libs/gui/Android.bp:49:1); "android.hardware.confirmationui
+  .not-so-secure-input" needs "libteeui_hal_support"
+  (trusty/confirmationui/Android.bp:105:1);
+  "trusty_acvp_modulewrapper" needs "libacvp_modulewrapper"
+  (trusty/utils/acvp/Android.bp:18:1). #173 (3 lines): the
+  "libgui_headers" trio, identical to #172's first three.
+  UI-LOG WARNING: the first UI-log read of #173 was ENTIRELY
+  PHANTOM - it invented "libsamsung_symbols" errors
+  (libprocessgroup/libbase/liblog/libutils/libcutils) that
+  appear NOWHERE in any raw log, plus a nonexistent step
+  name; the raw log is authoritative. The "ninja: error ...
+  libcharger_sysprop_rust.so ... missing and no known rule to
+  make it" line is a CONFIRMED PHANTOM again (1 match per raw
+  log, 0 genuine - the workflow's own history comment echo),
+  same class as #152/#161. Fix: 9 new stubs, NO prunes, NO new
+  projects (still 32). Stubs (all in yuzora-stubs/Android.bp,
+  each with a prune-step check + pre-build guard check): 8
+  plain cc_library (android.hidl.token@1.0-utils,
+  android.hardware.graphics.bufferqueue@1.0, @2.0,
+  update_metadata-protos,
+  libnative_bridge_guest_state_accessor, libip_checksum,
+  libteeui_hal_support, libacvp_modulewrapper) + 1
+  cc_library_headers
+  (libnative_bridge_support_accessor_headers). No sdk_version
+  on any new stub (no consumer sets sdk_version - verified
+  on every consumer block). No prunes: the referencers are
+  core platform modules (frameworks/native libgui, system/core
+  fs_mgr/debuggerd/libnetutils/trusty/fastboot/init). Verified
+  in the synced tree (~/workspace/lights-local): 7 of the 9
+  modules are defined NOWHERE in the tree; bufferqueue@1.0/@2.0
+  are defined only in hardware/interfaces/graphics/bufferqueue
+  (pruned by the closure prune). Dep-closure verified: every
+  other DIRECT dep of the erroring consumers is defined in-tree
+  or already stubbed - no provably-next layer beyond these nine.
+  CORRECTION of the #168 assessment: libnative_bridge_support_
+  accessor_headers + libnative_bridge_guest_state_accessor were
+  listed as "out-of-graph, do NOT stub" - #171 proves crash_dump
+  IS evaluated by Soong. Checked, NOT stubbed (never reported
+  in any raw log, runs #6-#173): android.hardware.graphics
+  .common@1.1/@1.2, allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+  libLibGuiProperties, libbootloader_message, liblmkd_utils,
+  libxml2, libhealthhalutils, libhealthshim, libfastbootshim.
+
+  CACHE NOTE (runs #171/#172/#173): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS in
+  all three (0s, sync 9m18s on #173) and no cache was saved -
+  same as runs #118/#121/#124/#127/#130/#134/#137/#140/#143/
+  #146/#149/#152/#155/#158/#159/#160/#161/#162/#163/#164/#165/
+  #166/#167/#168/#169/#170. The next run will also restore-miss
+  and sync ~9-12 min. The upstream-recommended fix is separate
+  restore + save steps (the save step with `if: always()`),
+  which touches the cache steps and needs his word - not changed
+  in this fix round.
+
   -->
 
 <manifest>
