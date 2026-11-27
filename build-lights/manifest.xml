@@ -1034,6 +1034,97 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #150 (45923995039, 12m51s, auto, manifest 261cf27),
+  #151 (45924127939, 13m45s, auto, README 5a43a82) and #152
+  (45924377917, 13m21s, manual dispatch ~07:15 IST 2026-11-27,
+  head 5a43a82 - the runs #147/#148/#149 fix, workflow
+  05ebd43): ALL FAILED at Soong ninja-file generation, 35-37s
+  into the "Build lights HAL" step. The #147/#148/#149 fix
+  HELD in all three (prune step passed in 1s + pre-build guard
+  passed, ZERO llvmlibc / libjemalloc5 /
+  libarm-optimized-routines lines in any raw log). NO subset
+  variation this round: all three report the identical 2
+  lines. Raw-log verbatim error union (browser job-logs.txt
+  read; the other "error:" matches in each log are the runner
+  echoing the Build step script itself - the pre-build-guard
+  echo commands that did not fire - NOT build errors; no
+  genuine "missing variant" line in any run):
+  system/core/fastboot/Android.bp:374:1 "fastboot_test"
+  depends on undefined module "AdbWinApi";
+  system/core/fastboot/Android.bp:335:1 "fastboot" depends on
+  undefined module "AdbWinApi". FAILED line is
+  out/soong/build.yuzora_lights.ninja. PHANTOM CORRECTION:
+  the first UI-log read of #152 invented
+  'hardware/samsung/lights/Android.bp:26:1: module
+  "android.hardware.lights-service.samsung" ... missing
+  dependencies: AdbWinApi' - WRONG; the raw log has NO such
+  line, no lights/ dir exists in the fork (live lineage-22.2
+  tree verified: no lights/, the HAL is aidl/light/Android.bp
+  defining the singular android.hardware.light-service.samsung)
+  - same phantom class as #30/#33/#84/#96/#107/#131.
+  Line numbers verified against the manifest-pinned tree:
+  the fastboot block starts at :336 (Soong :335:1) and
+  fastboot_test at :375 (Soong :374:1) - Soong attributes
+  through the defaults expansion by one line, same caveat as
+  the #122 liblp/libapex paths and the #125 fastboot/init
+  lines. Usage (synced system/core/fastboot/Android.bp):
+  fastboot (cc_binary_host) target.windows.required
+  ["AdbWinUsbApi"] + target.windows.shared_libs ["AdbWinApi"];
+  fastboot_test (cc_test_host) target.windows.shared_libs
+  ["AdbWinApi"] + a windows_x86_64 enabled:false block
+  ("Avoid trying to build for win64"). The dep is
+  windows-x86-only (32-bit), matching upstream
+  compile_multilib "32". Root causes, verified live at AOSP
+  android-15.0.0_r32 (which IS the LineageOS lineage-22.2
+  source for these paths - the LineageOS manifest pins the
+  AOSP remote to r32; the defining project development is
+  UNSYNCED): AdbWinApi + AdbWinUsbApi are BOTH
+  cc_prebuilt_library_shared in development/host/windows/
+  Android.bp (r32, 32 lines; AdbWinApi lines 19-26,
+  AdbWinUsbApi lines 28-32), sharing the cc_defaults
+  AdbWinApi_defaults (lines 5-17: host_supported true,
+  enabled false, device_supported false, compile_multilib
+  "32", target.windows.enabled true). AdbWinApi: srcs
+  prebuilt/usb/AdbWinApi.dll, windows_import_lib
+  prebuilt/usb/AdbWinApi.lib, export_include_dirs ["usb/api"].
+  AdbWinUsbApi: srcs prebuilt/usb/AdbWinUsbApi.dll. Both are
+  prebuilt DLLs - no DLL is available here, so the stubs are
+  plain cc_library with srcs empty.c (plain builds both
+  static and shared variants, satisfying the shared_libs use
+  - same reasoning as libssl #105 / libcrypto #122 / libz
+  #119). CORRECTIONS to the first guesses:
+  system/libadbwinapi/Android.bp does NOT exist at r32 (no
+  such repo; the phantom UI read's citation was invented),
+  and development/host/windows/usb/api/Android.bp does NOT
+  exist at r32 either (that dir holds legacy VS/MAKEFILE
+  sources, no .bp). Both stubs carry stl: "none" (upstream
+  carries none - the real modules are prebuilts; the empty.c
+  stub needs no STL, and it avoids a libwinpthread-class
+  default-STL dep). Both carry host_supported: true +
+  target windows enabled (the #78 shape - the dep is
+  windows-only). AdbWinUsbApi is stubbed too although no run
+  errored on it: it sits in the same target.windows block of
+  the same consumer (fastboot :364, required) - one
+  subset-reporting layer away (#111 sibling precedent);
+  required-only deps never errored in any run, but the stub
+  costs one block and a re-run costs 13 min. COMPILE-STAGE
+  CAVEAT: both stubs are bare (srcs empty.c, no real symbols,
+  no DLL). fastboot / fastboot_test are host tools NOT in the
+  HAL closure - the lights target never links them - so the
+  empty stubs can never surface at link time here; they exist
+  only so Soong's dependency resolution passes. The cache
+  steps are untouched (see the save-always note below).
+
+  CACHE NOTE (run #152): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took 10m14s, and "Post Restore repo cache" was SKIPPED
+  (0s), so no cache was saved - same as runs #118/#121/#124/
+  #127/#130/#134/#137/#140/#143/#146/#149. The next run will
+  also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
