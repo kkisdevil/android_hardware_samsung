@@ -1252,6 +1252,18 @@ jobs:
           rm -rf frameworks/native/services/sensorservice/tests
           rm -rf hardware/interfaces/light/aidl/vts
           rm -rf system/core/trusty/keymint
+          # Runs #207/#208/#209/#210 fix: prune one dir whole
+          # (same form as the #195 prunes above).
+          # frameworks/native/libs/nativewindow/tests/benchmark holds
+          # ONLY the cc_benchmark nativewindow_buffer_benchmarks_cc
+          # (+ its defaults) and the rust_benchmark
+          # nativewindow_buffer_benchmarks_rs; zero refs to either
+          # benchmark name anywhere else in the synced tree. The
+          # cc benchmark is libgoogle-benchmark-main's ONLY in-tree
+          # consumer; the rust benchmark's rustlibs include
+          # libcriterion (unsynced Rust crate) — pruning the dir
+          # kills both future error sources at once.
+          rm -rf frameworks/native/libs/nativewindow/tests/benchmark
           # Runs #165/#166/#167 fix: prune four dirs and stub eleven
           # modules. Runs #165 (45947910369, 14m15s, auto, manifest
           # 5bb1797), #166 (45948101732, 13m37s, auto, README 435b5bc)
@@ -3528,6 +3540,239 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~9-12 min
           # on the next run too.
+          # Runs #207/#208/#209/#210 fix: stub 3 modules, prune 1 dir,
+          # and fix the pre-build guard SIGPIPE race (52 sites).
+          # Runs #207 (46045935357, 12m21s, stubs push ea8c68a), #208
+          # (46046374152, 12m47s, manifest push 027ed0c), #209
+          # (46046593411, 12m12s, README push 243c737) and #210
+          # (46046756612, 12m23s, manual dispatch ~23:35 IST on commit
+          # 243c737) ALL FAILED on the SAME fix code (head 243c737 —
+          # the runs #203/#204/#205/#206 6-stub fix, workflow
+          # d98cb70). The 6-stub fix HELD completely in #207/#209/
+          # #210 (zero genuine errors for any of its 6 in any raw
+          # log); zero "expected assignment or module definition"
+          # lines (the #185 stray-# fix HELD). Pre-build guard PASSED
+          # in #207/#209/#210 — #208 is the exception, and it is a
+          # different failure (the race below), not a stub failure.
+          # #207 ran the PRE-FIX workflow file (3c7da5e —
+          # staged-commit artifact, same as #195/#199: the workflow
+          # push d98cb70 landed after #207 started) but the synced
+          # stubs file WAS the new ea8c68a, so its 3 lines genuinely
+          # test the 6 stubs.
+          # Subset variation again: #207 reports 3 lines, #208 0,
+          # #209 4, #210 4 — on the SAME code (same pattern as
+          # #192/#193/#194: 5 vs 40 vs 2; #195–#198: 21 vs 6 vs 4;
+          # #199–#202: 6 vs 1; #203–#206: 6 vs 7 vs 1 vs 7).
+          # Failure (verbatim, whole raw job logs — parent read, jobs
+          # 140665103912 / 140666550962 / 140667284033 / 140667832059,
+          # counting only lines starting "error: ... depends on
+          # undefined module ...", excluding "#" comment echoes and
+          # "Or did you mean...?" lines; 11 genuine line instances,
+          # 4 distinct modules; consumer file paths verified locally
+          # in ~/workspace/lights-local):
+          #   libtimestats needs
+          #   android.hardware.graphics.composer@2.4 (shared_libs,
+          #   via libtimestats_deps cc_defaults)
+          #   (frameworks/native/services/surfaceflinger/TimeStats/
+          #   Android.bp:36:1) — in #209 + #210 ONLY.
+          #   nativewindow_buffer_benchmarks_cc needs
+          #   libgoogle-benchmark-main (static_libs, via
+          #   nativewindow_benchmark_defaults_cc)
+          #   (frameworks/native/libs/nativewindow/tests/benchmark/
+          #   Android.bp:33:1) — in #207 + #209 + #210.
+          #   libvulkan needs libnativebridge_lazy (shared_libs)
+          #   + android.hardware.graphics.common@1.0 (shared_libs)
+          #   (frameworks/native/vulkan/libvulkan/Android.bp:44:1)
+          #   — in #207 + #209 + #210.
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1, in #207/#209/#210.
+          #   #208 never ran Soong: it failed in the pre-build guard
+          #   (the race below), 0 genuine Soong lines.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: script echo/comments only — ZERO in any Build
+          # step output, same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198/#202/#206.
+          # FIRST-EVER reported: the first graphics.composer@2.4,
+          # the first graphics.common@1.0, the first
+          # libnativebridge_lazy, the first libgoogle-benchmark-main,
+          # and the first pre-build guard SIGPIPE race failure (#208).
+          # THE #208 RACE — root cause, reproduced, fixed this round:
+          # #208 failed ~11s into the Build step, before `m` ran,
+          # with exactly two ##[error] lines in the whole raw log:
+          #   grep: write error: Broken pipe
+          #   ##[error]pre-build guard: stub
+          #   android.hardware.health-translate-V1-ndk is not a plain
+          #   cc_library
+          # The stub IS a plain cc_library in the synced stubs file
+          # (local line 4738; the guard's presence loop for the same
+          # stub PASSED — it runs before the type loop; #207/#209/
+          # #210 passed the same check on the same file). The stub
+          # is fine; THE CHECK is flaky. Root cause: the type-check
+          # form (producer grep -A1 piped to consumer grep -Fq)
+          # under set -o pipefail (Build step: set -eo pipefail;
+          # prune step: set -euo pipefail). The consumer grep -q
+          # exits the moment it matches; the producer grep -A1
+          # still has output to write (~700 lines / ~27KB across
+          # ~340 cc_library blocks, flushed in several 4KB stdio
+          # chunks) — its next write hits the closed pipe, it dies
+          # of SIGPIPE (exit 141), and pipefail makes the pipeline
+          # status 141, so the || error branch fires spuriously.
+          # REPRODUCED locally: 17 spurious failures in 3000
+          # iterations of the exact guard-loop invocation for
+          # health-translate-V1-ndk (set -eo pipefail); a diagnostic
+          # run of the bare pipeline exited 141 (128+SIGPIPE). The
+          # per-invocation rate is low and runner timing differs
+          # (which is why it took ~200 runs to fire once — each run
+          # executes ~300 such pipeline invocations across all
+          # rounds' loops), but the form is provably flaky and #208
+          # is its first live firing.
+          # FIX (this round, mechanical, all 52 sites): wrap every
+          # producer as { grep ... || true; } — the compound exits 0
+          # regardless of the producer's SIGPIPE death, so the
+          # pipeline status is exactly the consumer's status (0 =
+          # stub has the right type, 1 = it does not). Semantics
+          # preserved exactly; the new checks added this round are
+          # written in the wrapped form directly. Validation
+          # stress-replays the new form 3000x (0 failures) and the
+          # old form 3000x (fails, proving the test can detect it),
+          # plus negative controls (stub type changed / stub
+          # removed) that still fail with the new form.
+          # NOT the same class (checked, safe by construction, NOT
+          # changed): the sed -n range-print checks (14 sites:
+          # stl / sdk_version / system_shared_libs) — the producer
+          # prints ONE stub block (~10 lines / ~300 bytes, a single
+          # stdio flush at exit after scanning to EOF), so the
+          # consumer can only match after that flush, when the
+          # producer has no more writes pending — no SIGPIPE is
+          # possible. The echo | grep -q line and the du | sort |
+          # head || true line are likewise safe (single small write
+          # / || true). WATCH ITEM (not changed): nm | grep -q in
+          # the Verify-built-binary step has the same
+          # early-exit-consumer shape over a large producer output
+          # — never failed, post-build only; wrap it the same way
+          # if it ever fires spuriously.
+          # STUBS (3, all in build-lights/yuzora-stubs-Android.bp
+          # — the static file, NOT the workflow; the workflow only
+          # gains this comment block + the prune + the prune-step +
+          # guard checks below):
+          #   2 plain cc_library: both HIDL @x.y libs defined ONLY
+          #     in pruned dirs: android.hardware.graphics.composer@2.4
+          #     (hidl_interface in hardware/interfaces/graphics/
+          #     composer/2.4/Android.bp — interfaces common@1.0/
+          #     @1.1/@1.2 + composer@2.1/@2.2/@2.3 + hidl.base@1.0,
+          #     gen_java false; dir pruned by the #42 closure
+          #     prune; the stub is bare so the interfaces list is
+          #     inert) and android.hardware.graphics.common@1.0
+          #     (hidl_interface in hardware/interfaces/graphics/
+          #     common/1.0/Android.bp — srcs types.hal, gen_java
+          #     true; dir pruned by the #42 closure prune; @1.1
+          #     stubbed #206, @1.2 stubbed #194, same shape).
+          #     A plain cc_library yields both variants, so one
+          #     stub satisfies the shared_libs consumers
+          #     (libtimestats, libvulkan) alike.
+          #   1 cc_library_shared: libnativebridge_lazy — upstream
+          #     cc_library_shared in platform/art/libnativebridge/
+          #     Android.bp at r32 (fetched live from
+          #     android.googlesource.com); its visibility lists
+          #     EXACTLY the two consumers (//frameworks/native/
+          #     opengl/libs + //frameworks/native/vulkan/libvulkan),
+          #     both via shared_libs — a cc_library_static stub
+          #     could not provide the shared variant, and the
+          #     upstream type is verified so it is mirrored (same
+          #     rule as libhealthhalutils/libhealthshim #195).
+          #     Plain libnativebridge has ZERO in-tree references
+          #     (whole-tree grep) — NOT stubbed (it is only a
+          #     runtime_lib of the lazy lib, inert in a bare stub).
+          # PRUNE (1 dir, whole): frameworks/native/libs/nativewindow/
+          # tests/benchmark — kills libgoogle-benchmark-main's ONLY
+          # in-tree consumer (nativewindow_benchmark_defaults_cc;
+          # whole-tree grep for the benchmark names outside that
+          # dir: zero hits) plus the rust benchmark in the same dir
+          # (rustlibs libnativewindow_rs + libcriterion — an
+          # unsynced Rust crate that would otherwise be a future
+          # round). Test-dir prune precedent (#162 trusty/test,
+          # #165 libnativehelper/tests, #195 sensorservice/tests).
+          # Contrast #186 libtestUtil, where prune was rejected
+          # because other consumers (libglTest + libhwcTest) would
+          # surface it later — here there are NO other consumers.
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on all four consumer files —
+          # zero hits; libvulkan is llndk but sets none;
+          # min_sdk_version alone does NOT set UseSdk() per
+          # #159/#161).
+          # NOT STUBBED (never reported in any raw log, runs #6–#210
+          # — do NOT stub unless a raw log reports one):
+          #   android.hardware.graphics.composer@2.1/@2.2/@2.3 (only
+          #   ever listed as @2.4's hidl interfaces, never as a
+          #   consumer dep); libnativebridge (zero in-tree refs);
+          #   libgoogle-benchmark (ALREADY stubbed as
+          #   cc_library_static — a different module from -main; its
+          #   only other in-tree consumer is bionic/benchmarks/spawn,
+          #   and bionic/benchmarks is pruned);
+          #   libcharger_sysprop (sysprop-generated phantom);
+          #   Carried forward: android.hardware.boot@1.2,
+          #   allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+          #   libLibGuiProperties, libhealthhalutils,
+          #   libhealthshim, libfastbootshim,
+          #   libcom.android.sysprop.apex (sysprop-generated);
+          #   libkeymaster_messages, libkeymaster3device,
+          #   android.hardware.keymaster@3.0 (reported in #186 but,
+          #   after the trusty/keymaster prune, referenced only in
+          #   pruned hardware/interfaces/* dirs); libactivitymanager_aidl,
+          #   libbatterystats_aidl, libpower (libsensorservice deps,
+          #   undefined, never reported); avf_build_flags_cc
+          #   (ALREADY stubbed as cc_defaults).
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   libtimestats: shared libbase / libcutils / liblog /
+          #     libprotobuf-cpp-lite / libtimestats_atoms_proto
+          #     (in-tree) / libui / libutils / libtracing_perfetto
+          #     (in-tree) + composer@2.4 (NEW); static
+          #     libtimestats_proto (in-tree) /
+          #     libsurfaceflinger_common (in-tree); header
+          #     libscheduler_headers (in-tree).
+          #   libvulkan: shared configstore@1.0 + configstore-utils
+          #     (stubbed #194) / libziparchive (stubbed) /
+          #     libhardware (stubbed #135, cc_library_shared) /
+          #     libsync (in-tree) / libbase / libhidlbase (stubbed) /
+          #     liblog / libui / libgraphicsenv (in-tree) / libutils /
+          #     libcutils / libz (stubbed) / libnativebridge_lazy
+          #     (NEW) / libnativeloader_lazy (stubbed #182) /
+          #     libnativewindow (in-tree) / libvndksupport (in-tree) /
+          #     libdl_android (in-tree) / common@1.0 (NEW) /
+          #     libSurfaceFlingerProp (in-tree); static
+          #     libgrallocusage (in-tree) / libvulkanflags (same
+          #     file); header hwvulkan_headers /
+          #     libnativeloader-headers (stubbed #182) /
+          #     vulkan_headers (stubbed #156) /
+          #     libsurfaceflinger_headers (in-tree).
+          #   libEGL (second libnativebridge_lazy consumer): shared
+          #     libvndksupport / configstore@1.0 / configstore-utils /
+          #     libbase / libegl_flags (in-tree) / libhidlbase /
+          #     libnativebridge_lazy (NEW) / libnativeloader_lazy /
+          #     libutils / libSurfaceFlingerProp / libunwindstack
+          #     (in-tree) / libz; static libEGL_getProcAddress /
+          #     libEGL_blobCache (same file).
+          #   Benchmark test: shared libnativewindow (in-tree);
+          #     static libbase (in-tree) + libgoogle-benchmark-main
+          #     (pruned with the dir); the rust benchmark's
+          #     libcriterion is pruned with the dir too.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link. The build target is ONLY
+          # android.hardware.light-service.samsung — NONE of the 3
+          # new stubs is in its closure, verified locally — so bare
+          # stubs suffice for THIS target. If a future round fails
+          # past Soong, ship the headers/symbols then; do not
+          # pre-build them now. (Same watch-item form as #182/#186/
+          # #194/#195/#202/#206.)
+          # CACHE NOTE (runs #207/#208/#209/#210): Restore is expected
+          # to miss (0-1s, sync ~9-12 min) and no Save step is
+          # expected — save-always still does not save; the
+          # separate restore+save steps need his word (see the
+          # manifest). Expect Restore to miss and sync ~9-12 min
+          # on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -3660,6 +3905,10 @@ jobs:
             echo "::error::prune failed — frameworks/native/services/sensorservice/tests present"
             exit 1
           fi
+          if [ -d frameworks/native/libs/nativewindow/tests/benchmark ]; then
+            echo "::error::prune failed — frameworks/native/libs/nativewindow/tests/benchmark present"
+            exit 1
+          fi
           if [ -d hardware/interfaces/light/aidl/vts ]; then
             echo "::error::prune failed — hardware/interfaces/light/aidl/vts present"
             exit 1
@@ -3712,6 +3961,7 @@ jobs:
           echo "run #186 pruned: system/core/trusty/keymaster."
 
           echo "runs #195/#196/#197/#198 pruned: frameworks/native/services/sensorservice/tests + hardware/interfaces/light/aidl/vts + system/core/trusty/keymint."
+          echo "runs #207/#208/#209/#210 pruned: frameworks/native/libs/nativewindow/tests/benchmark."
           echo "runs #165/#166/#167 pruned: bionic/benchmarks + libnativehelper/tests + libnativehelper/tests_mts/jni + system/core/libstats/pull_rust."
           echo "runs #75/#76/#77 pruned: system/apex/tests + system/core/init/test_upgrade_mte + system/core/debuggerd/test_permissive_mte."
           # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
@@ -4105,24 +4355,24 @@ jobs:
           # a cc_library_shared stub cannot provide the static variant
           # libprocessgroup_proto_test needs. (No comment line in this
           # file contains `cc_library {`, so the grep is exact.)
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::libjsoncpp stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::libjsoncpp stub is not a plain cc_library"; exit 1; }
           # libz must be a plain cc_library now (runs #119/#120/#121
           # fix): same check as libjsoncpp above - the static variant
           # libsnapshot_cow needs cannot come from a cc_library_shared
           # stub. (No comment line in the generated file contains
           # `cc_library {`, so the grep is exact.)
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libz"' || { echo "::error::libz stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libz"' || { echo "::error::libz stub is not a plain cc_library"; exit 1; }
           # libcrypto + libselinux must be plain cc_library stubs now
           # (runs #122/#123/#124 fix): same check as libz/libjsoncpp
           # above - the static variant (libcrypto) / shared variant
           # (libselinux) the new consumers need cannot come from a
           # shared-only / static-only stub.
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libcrypto"' || { echo "::error::libcrypto stub is not a plain cc_library"; exit 1; }
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libselinux"' || { echo "::error::libselinux stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libcrypto"' || { echo "::error::libcrypto stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libselinux"' || { echo "::error::libselinux stub is not a plain cc_library"; exit 1; }
           # Runs #131/#132/#133/#134 fix: libpcre2 must be a plain cc_library
           # at creation time (same check as the libz/libcrypto/libselinux
           # checks above) - host-apex-verifier needs the shared variant.
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libpcre2"' || { echo "::error::libpcre2 stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libpcre2"' || { echo "::error::libpcre2 stub is not a plain cc_library"; exit 1; }
           # Runs #144/#145/#146 fix: libwinpthread must carry stl: "none"
           # (same block-range form as the #110 defaults check - the stl:
           # line sits below the name: line, so a fixed -A<N> window
@@ -4278,7 +4528,7 @@ jobs:
           # cc_library_static stub cannot provide the shared variant
           # the shared_libs consumers need.
           for stub in libdexfile_support libdexfile libminui libminijail libdmabufheap libmeminfo libbpf_bcc libbpf_minimal; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #165/#166/#167 stubs created: librustutils rust_library stub (+ lib.rs); libdexfile_support + libdexfile + libminui + libminijail + libdmabufheap + libmeminfo + libbpf_bcc + libbpf_minimal plain cc_library stubs; bpf_prog_headers + bpf_headers cc_library_headers stubs. No type changes this round."
           # Runs #168/#169/#170 fix: verify the five new stubs are present
@@ -4295,19 +4545,19 @@ jobs:
           # cc_library_static stub cannot provide the shared variant
           # the shared_libs consumer needs.
           for stub in libmemunreachable libevent; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #168/#169/#170 fix: the two whole_static_libs stubs
           # must be cc_library_static (same grep -A1 form, with the
           # static type): a plain cc_library stub has no guaranteed
           # static variant for whole_static_libs consumers.
           for stub in libmemory_trace gwp_asan_crash_handler; do
-            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
           done
           # Runs #168/#169/#170 fix: the headers stub must be
           # cc_library_headers (same grep -A1 form, with the headers
           # type): header_libs consumers need a headers module.
-          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "scudo_headers"' || { echo "::error::stub scudo_headers is not a cc_library_headers"; exit 1; }
+          { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "scudo_headers"' || { echo "::error::stub scudo_headers is not a cc_library_headers"; exit 1; }
           echo "runs #168/#169/#170 stubs created: libmemory_trace + gwp_asan_crash_handler cc_library_static stubs; libmemunreachable + libevent plain cc_library stubs; scudo_headers cc_library_headers stub. No prunes, no type changes this round."
           # Runs #171/#172/#173 fix: verify the nine new stubs are present
           # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
@@ -4323,12 +4573,12 @@ jobs:
           # and a cc_library_static stub cannot provide the shared
           # variant the shared_libs consumers need.
           for stub in android.hidl.token@1.0-utils android.hardware.graphics.bufferqueue@1.0 android.hardware.graphics.bufferqueue@2.0 update_metadata-protos libnative_bridge_guest_state_accessor libip_checksum libteeui_hal_support libacvp_modulewrapper; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #171/#172/#173 fix: the headers stub must be
           # cc_library_headers (same grep -A1 form, with the headers
           # type): header_libs consumers need a headers module.
-          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnative_bridge_support_accessor_headers"' || { echo "::error::stub libnative_bridge_support_accessor_headers is not a cc_library_headers"; exit 1; }
+          { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libnative_bridge_support_accessor_headers"' || { echo "::error::stub libnative_bridge_support_accessor_headers is not a cc_library_headers"; exit 1; }
           echo "runs #171/#172/#173 stubs created: android.hidl.token@1.0-utils + android.hardware.graphics.bufferqueue@1.0 + @2.0 + update_metadata-protos + libnative_bridge_guest_state_accessor + libip_checksum + libteeui_hal_support + libacvp_modulewrapper plain cc_library stubs; libnative_bridge_support_accessor_headers cc_library_headers stub. No prunes, no type changes this round."
           # Runs #174/#175/#176 fix: verify the seventeen new stubs are present
           # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
@@ -4344,7 +4594,7 @@ jobs:
           # and a cc_library_static stub cannot provide the shared
           # variant the shared_libs consumers need.
           for stub in libfscrypt libfec perfetto_trace_protos libhealthloop android.hardware.health-V4-ndk android.hardware.health-translate-ndk libpng android.hardware.health-V1-ndk android.hardware.health-translate-V1-ndk libhealth2impl android.hardware.health@2.1 libvold_binder libmediautils android.frameworks.schedulerservice@1.0 lib_microdroid_metadata_proto libsigningutils libverity_tree; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #174/#175/#176 stubs created: libfscrypt + libfec + perfetto_trace_protos + libhealthloop + android.hardware.health-V4-ndk + android.hardware.health-translate-ndk + libpng + android.hardware.health-V1-ndk + android.hardware.health-translate-V1-ndk + libhealth2impl + android.hardware.health@2.1 + libvold_binder + libmediautils + android.frameworks.schedulerservice@1.0 + lib_microdroid_metadata_proto + libsigningutils + libverity_tree plain cc_library stubs. No prunes, no type changes this round."
           # Runs #177/#178/#179 fix: verify the six new stubs are present
@@ -4361,7 +4611,7 @@ jobs:
           # and a cc_library_static stub cannot provide the shared
           # variant the shared_libs consumers need.
           for stub in android.hardware.health@1.0-convert android.hardware.boot@1.0 android.hardware.boot@1.1 android.hardware.boot-V1-ndk libboot_control_client libprotobuf-cpp-full-ndk; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #177/#178/#179 stubs created: android.hardware.health@1.0-convert + android.hardware.boot@1.0 + android.hardware.boot@1.1 + android.hardware.boot-V1-ndk + libboot_control_client + libprotobuf-cpp-full-ndk plain cc_library stubs. No prunes, no type changes this round."
           # Runs #180/#181/#182 fix: verify the thirteen new stubs are
@@ -4378,13 +4628,13 @@ jobs:
           # and a cc_library_static stub cannot provide the shared
           # variant the shared_libs consumers need.
           for stub in libavf_cc_flags libbootloader_message liblmkd_utils libxml2 android.hardware.atrace@1.0 gsi_aidl_interface-cpp android.os.statsbootstrap_aidl-cpp libincremental_aidl-cpp android.debug_aidl-cpp android.hardware.health@2.0 android.hardware.health@1.0 libnativeloader_lazy; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #180/#181/#182 fix: the headers stub must be
           # cc_library_headers (same grep -A1 form as the #171
           # libnative_bridge_support_accessor_headers check): a plain
           # cc_library stub cannot satisfy a header_libs consumer.
-          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
+          { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
           echo "runs #180/#181/#182 stubs created: libavf_cc_flags + libbootloader_message + liblmkd_utils + libxml2 + android.hardware.atrace@1.0 + gsi_aidl_interface-cpp + android.os.statsbootstrap_aidl-cpp + libincremental_aidl-cpp + android.debug_aidl-cpp + android.hardware.health@2.0 + android.hardware.health@1.0 + libnativeloader_lazy plain cc_library stubs; libnativeloader-headers cc_library_headers stub. No prunes, no type changes this round."
           # Run #186 fix: verify the three new stubs are present in
           # yuzora-stubs/Android.bp (same `name: "..."` grep form as
@@ -4400,7 +4650,7 @@ jobs:
           # consumers need, and a cc_library_static stub cannot
           # provide the shared variant the shared_libs consumers need.
           for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "run #186 stubs created: libprotoutil + libkeymaster4 + android.hardware.keymaster@4.0 plain cc_library stubs; system/core/trusty/keymaster pruned whole."
           # Runs #192/#193/#194 fix: verify the 39 new stubs are
@@ -4420,7 +4670,7 @@ jobs:
           # stub cannot provide the shared variant the shared_libs
           # consumers need.
           for stub in android.hardware.tests.inheritance@1.0 binderthreadstateutilstest@1.0 libfec_rs libsquashfs_utils android.frameworks.stats@1.0 android.frameworks.stats-V2-ndk android.hardware.configstore-utils android.hardware.configstore@1.0 android.hardware.configstore@1.1 android.hardware.usb.gadget@1.0 android.hardware.usb.gadget-V1-ndk android.hardware.graphics.allocator@3.0 android.hardware.graphics.allocator@4.0 android.hardware.graphics.common@1.2 android.hardware.graphics.mapper@2.0 android.hardware.graphics.mapper@2.1 android.hardware.graphics.mapper@3.0 android.hardware.power@1.0 android.hardware.power@1.1 android.hardware.power@1.2 android.hardware.power@1.3 android.hardware.vibrator-V3-ndk android.hardware.vibrator@1.0 android.hardware.vibrator@1.1 android.hardware.vibrator@1.2 android.hardware.vibrator@1.3 android.hardware.memtrack@1.0 android.hardware.memtrack-V1-ndk libhardware_legacy libgatekeeper lib_android_keymaster_keymint_utils android.hardware.gatekeeper-V1-ndk android.hardware.gatekeeper@1.0 android.security.authorization-ndk; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #192/#193/#194 fix: the two headers stubs must be
           # cc_library_headers (same grep -A1 form as the #171
@@ -4428,7 +4678,7 @@ jobs:
           # libnativeloader-headers checks): a plain cc_library stub
           # cannot satisfy a header_libs consumer.
           for stub in libimapper_stablec libimapper_providerutils; do
-            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
+            { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
           done
           # Runs #192/#193/#194 fix: the three static stubs must be
           # cc_library_static (same grep -A1 form as the #153 /
@@ -4436,7 +4686,7 @@ jobs:
           # a static_libs consumer, but the static form mirrors the
           # upstream type (all three are cc_library_static upstream).
           for stub in libavb_user libscrypt_static libaidlcommonsupport; do
-            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
           done
           echo "runs #192/#193/#194 stubs created: 34 plain cc_library + libimapper_stablec + libimapper_providerutils cc_library_headers + libavb_user + libscrypt_static + libaidlcommonsupport cc_library_static stubs. No prunes this round."
           # Runs #195/#196/#197/#198 fix: verify the 10 new stubs are
@@ -4456,7 +4706,7 @@ jobs:
           # cc_library_static stub cannot provide the shared variant
           # the shared_libs consumers need.
           for stub in android.hardware.sensors@1.0-convert android.frameworks.sensorservice@1.0 android.hardware.sensors@1.0 android.hardware.dumpstate@1.0 android.hardware.dumpstate@1.1 android.hardware.dumpstate-V1-ndk android.tracing.flags_c_lib device_policy_aconfig_flags_c_lib; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #195/#196/#197/#198 fix: the two static stubs must be
           # cc_library_static (same grep -A1 form as the #153 /
@@ -4464,7 +4714,7 @@ jobs:
           # satisfy a static_libs consumer, but the static form mirrors
           # the upstream type (both are cc_library_static upstream).
           for stub in libhealthhalutils libhealthshim; do
-            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
           done
           echo "runs #195/#196/#197/#198 stubs created: 8 plain cc_library + libhealthhalutils + libhealthshim cc_library_static stubs (10 total); 3 dirs pruned (sensorservice/tests + light/aidl/vts + trusty/keymint)."
           # Runs #199/#200/#201/#202 fix: verify the 7 new stubs are
@@ -4484,14 +4734,14 @@ jobs:
           # cc_library_static stub cannot provide the shared variant
           # the shared_libs consumers need.
           for stub in libtestUtil libfmq android.hardware.sensors@2.0 android.hardware.sensors@2.1 android.hardware.common.fmq-V1-ndk; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #199/#200/#201/#202 fix: the headers stub must be
           # cc_library_headers (same grep -A1 form as the #194 /
           # #156 checks): libsensorservice consumes it via
           # header_libs, which needs the headers variant.
           for stub in android.hardware.sensors@2.X-shared-utils; do
-            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
+            { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
           done
           # Runs #199/#200/#201/#202 fix: the protos stub must be a
           # genrule (same grep -A1 form): Soong requires a
@@ -4499,7 +4749,7 @@ jobs:
           # cc_library stub would fail with "module ... is not a
           # genrule" at Soong (build/soong/cc/cc.go:3027-3045).
           for stub in framework-cppstream-protos; do
-            grep -A1 'genrule {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a genrule"; exit 1; }
+            { grep -A1 'genrule {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a genrule"; exit 1; }
           done
           echo "runs #199/#200/#201/#202 stubs created: 5 plain cc_library + android.hardware.sensors@2.X-shared-utils cc_library_headers + framework-cppstream-protos genrule stubs (7 total). No prunes this round."
           # Runs #203/#204/#205/#206 fix: verify the 6 new stubs are
@@ -4519,7 +4769,7 @@ jobs:
           # cc_library_static stub cannot provide the shared variant
           # the shared_libs consumers need.
           for stub in android.hardware.graphics.common@1.1 aconfig_hardware_flags_c_lib android.os.flags-aconfig-cc android.os.flags-aconfig-cc-test android.server.display.flags-aconfig-cc; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #203/#204/#205/#206 fix: the bindgen stub must be a
           # rust_library (same grep -A1 form as the libcxx / libbssl_sys /
@@ -4527,9 +4777,37 @@ jobs:
           # rustlibs, which requires a Rust library module type — a plain
           # cc_library stub would fail Soong's rustlibs type check.
           for stub in libselinux_bindgen; do
-            grep -A1 'rust_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a rust_library"; exit 1; }
+            { grep -A1 'rust_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a rust_library"; exit 1; }
           done
           echo "runs #203/#204/#205/#206 stubs created: 5 plain cc_library + libselinux_bindgen rust_library stubs (6 total). No prunes this round."
+          # Runs #207/#208/#209/#210 fix: verify the 3 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186/#192/#195/#202/#206 loops
+          # above).
+          for stub in android.hardware.graphics.composer@2.4 android.hardware.graphics.common@1.0 libnativebridge_lazy; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #207/#208/#209/#210 fix: the 2 plain cc_library stubs
+          # must be plain cc_library (same check as the #206 loops
+          # above, in the SIGPIPE-safe wrapped form — see EDIT R:
+          # the bare producer | consumer form fails spuriously under
+          # pipefail when the producer dies of SIGPIPE, run #208).
+          for stub in android.hardware.graphics.composer@2.4 android.hardware.graphics.common@1.0; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #207/#208/#209/#210 fix: the lazy-bridge stub must be
+          # a cc_library_shared (same wrapped form): both consumers
+          # reference it via shared_libs, which requires the shared
+          # variant — a plain cc_library stub would also satisfy
+          # shared_libs, but the upstream type is cc_library_shared
+          # and is mirrored, so the check pins the shared type; a
+          # cc_library_static stub would fail this check.
+          for stub in libnativebridge_lazy; do
+            { grep -A1 'cc_library_shared {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_shared"; exit 1; }
+          done
+          echo "runs #207/#208/#209/#210 stubs created: 2 plain cc_library + libnativebridge_lazy cc_library_shared stubs (3 total); frameworks/native/libs/nativewindow/tests/benchmark pruned whole; all 52 grep -A1 type-check sites wrapped SIGPIPE-safe."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -4557,6 +4835,8 @@ jobs:
           echo "runs #199/#200/#201/#202 fix: 5 plain cc_library + 1 cc_library_headers + 1 genrule stubs created (7 total). No prunes this round."
 
           echo "runs #203/#204/#205/#206 fix: 5 plain cc_library + 1 rust_library stubs created (6 total). No prunes this round."
+
+          echo "runs #207/#208/#209/#210 fix: 2 plain cc_library + 1 cc_library_shared stubs created (3 total); frameworks/native/libs/nativewindow/tests/benchmark pruned whole; all 52 grep -A1 type-check sites wrapped SIGPIPE-safe (run #208 race fix)."
 
 
 
@@ -4695,6 +4975,10 @@ jobs:
           fi
           if [ -d frameworks/native/services/sensorservice/tests ]; then
             echo "::error::pre-build guard: frameworks/native/services/sensorservice/tests present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/nativewindow/tests/benchmark ]; then
+            echo "::error::pre-build guard: frameworks/native/libs/nativewindow/tests/benchmark present at build time"
             exit 1
           fi
           if [ -d hardware/interfaces/light/aidl/vts ]; then
@@ -4938,7 +5222,7 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in libdexfile_support libdexfile libminui libminijail libdmabufheap libmeminfo libbpf_bcc libbpf_minimal; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #168/#169/#170 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
@@ -4949,18 +5233,18 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in libmemunreachable libevent; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #168/#169/#170 fix: the two whole_static_libs stubs
           # must be cc_library_static at build time (same check as
           # the prune step above).
           for stub in libmemory_trace gwp_asan_crash_handler; do
-            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
           done
           # Runs #168/#169/#170 fix: the headers stub must be
           # cc_library_headers at build time (same check as the
           # prune step above).
-          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "scudo_headers"' || { echo "::error::pre-build guard: stub scudo_headers is not a cc_library_headers"; exit 1; }
+          { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "scudo_headers"' || { echo "::error::pre-build guard: stub scudo_headers is not a cc_library_headers"; exit 1; }
           # Runs #171/#172/#173 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in android.hidl.token@1.0-utils android.hardware.graphics.bufferqueue@1.0 android.hardware.graphics.bufferqueue@2.0 update_metadata-protos libnative_bridge_support_accessor_headers libnative_bridge_guest_state_accessor libip_checksum libteeui_hal_support libacvp_modulewrapper; do
@@ -4970,12 +5254,12 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in android.hidl.token@1.0-utils android.hardware.graphics.bufferqueue@1.0 android.hardware.graphics.bufferqueue@2.0 update_metadata-protos libnative_bridge_guest_state_accessor libip_checksum libteeui_hal_support libacvp_modulewrapper; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #171/#172/#173 fix: the headers stub must be
           # cc_library_headers at build time (same check as the
           # prune step above).
-          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnative_bridge_support_accessor_headers"' || { echo "::error::pre-build guard: stub libnative_bridge_support_accessor_headers is not a cc_library_headers"; exit 1; }
+          { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libnative_bridge_support_accessor_headers"' || { echo "::error::pre-build guard: stub libnative_bridge_support_accessor_headers is not a cc_library_headers"; exit 1; }
           # Runs #174/#175/#176 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in libfscrypt libfec perfetto_trace_protos libhealthloop android.hardware.health-V4-ndk android.hardware.health-translate-ndk libpng android.hardware.health-V1-ndk android.hardware.health-translate-V1-ndk libhealth2impl android.hardware.health@2.1 libvold_binder libmediautils android.frameworks.schedulerservice@1.0 lib_microdroid_metadata_proto libsigningutils libverity_tree; do
@@ -4985,7 +5269,7 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in libfscrypt libfec perfetto_trace_protos libhealthloop android.hardware.health-V4-ndk android.hardware.health-translate-ndk libpng android.hardware.health-V1-ndk android.hardware.health-translate-V1-ndk libhealth2impl android.hardware.health@2.1 libvold_binder libmediautils android.frameworks.schedulerservice@1.0 lib_microdroid_metadata_proto libsigningutils libverity_tree; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #177/#178/#179 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
@@ -4996,7 +5280,7 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in android.hardware.health@1.0-convert android.hardware.boot@1.0 android.hardware.boot@1.1 android.hardware.boot-V1-ndk libboot_control_client libprotobuf-cpp-full-ndk; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #180/#181/#182 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
@@ -5007,12 +5291,12 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in libavf_cc_flags libbootloader_message liblmkd_utils libxml2 android.hardware.atrace@1.0 gsi_aidl_interface-cpp android.os.statsbootstrap_aidl-cpp libincremental_aidl-cpp android.debug_aidl-cpp android.hardware.health@2.0 android.hardware.health@1.0 libnativeloader_lazy; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #180/#181/#182 fix: the headers stub must be
           # cc_library_headers at build time (same check as the prune
           # step above).
-          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::pre-build guard: stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
+          { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libnativeloader-headers"' || { echo "::error::pre-build guard: stub libnativeloader-headers is not a cc_library_headers"; exit 1; }
           # Run #186 fix: the new stubs must be present at build time
           # (same `name: "..."` grep form as above).
           for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
@@ -5022,7 +5306,7 @@ jobs:
           # plain cc_library at build time (same check as the prune
           # step above).
           for stub in libprotoutil libkeymaster4 android.hardware.keymaster@4.0; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #192/#193/#194 fix: the new stubs must be present
           # at build time (same `name: "..."` grep form as above).
@@ -5033,19 +5317,19 @@ jobs:
           # must be plain cc_library at build time (same check as
           # the prune step above).
           for stub in android.hardware.tests.inheritance@1.0 binderthreadstateutilstest@1.0 libfec_rs libsquashfs_utils android.frameworks.stats@1.0 android.frameworks.stats-V2-ndk android.hardware.configstore-utils android.hardware.configstore@1.0 android.hardware.configstore@1.1 android.hardware.usb.gadget@1.0 android.hardware.usb.gadget-V1-ndk android.hardware.graphics.allocator@3.0 android.hardware.graphics.allocator@4.0 android.hardware.graphics.common@1.2 android.hardware.graphics.mapper@2.0 android.hardware.graphics.mapper@2.1 android.hardware.graphics.mapper@3.0 android.hardware.power@1.0 android.hardware.power@1.1 android.hardware.power@1.2 android.hardware.power@1.3 android.hardware.vibrator-V3-ndk android.hardware.vibrator@1.0 android.hardware.vibrator@1.1 android.hardware.vibrator@1.2 android.hardware.vibrator@1.3 android.hardware.memtrack@1.0 android.hardware.memtrack-V1-ndk libhardware_legacy libgatekeeper lib_android_keymaster_keymint_utils android.hardware.gatekeeper-V1-ndk android.hardware.gatekeeper@1.0 android.security.authorization-ndk; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #192/#193/#194 fix: the two headers stubs must be
           # cc_library_headers at build time (same check as the
           # prune step above).
           for stub in libimapper_stablec libimapper_providerutils; do
-            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
+            { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
           done
           # Runs #192/#193/#194 fix: the three static stubs must be
           # cc_library_static at build time (same check as the prune
           # step above).
           for stub in libavb_user libscrypt_static libaidlcommonsupport; do
-            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
           done
           # Runs #195/#196/#197/#198 fix: the new stubs must be present
           # at build time (same `name: "..."` grep form as above).
@@ -5056,13 +5340,13 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in android.hardware.sensors@1.0-convert android.frameworks.sensorservice@1.0 android.hardware.sensors@1.0 android.hardware.dumpstate@1.0 android.hardware.dumpstate@1.1 android.hardware.dumpstate-V1-ndk android.tracing.flags_c_lib device_policy_aconfig_flags_c_lib; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #195/#196/#197/#198 fix: the two static stubs must be
           # cc_library_static at build time (same check as the prune
           # step above).
           for stub in libhealthhalutils libhealthshim; do
-            grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
           done
           # Runs #199/#200/#201/#202 fix: the new stubs must be present
           # at build time (same `name: "..."` grep form as above).
@@ -5073,18 +5357,18 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in libtestUtil libfmq android.hardware.sensors@2.0 android.hardware.sensors@2.1 android.hardware.common.fmq-V1-ndk; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #199/#200/#201/#202 fix: the headers stub must be
           # cc_library_headers at build time (same check as the prune
           # step above).
           for stub in android.hardware.sensors@2.X-shared-utils; do
-            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
+            { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
           done
           # Runs #199/#200/#201/#202 fix: the protos stub must be a
           # genrule at build time (same check as the prune step above).
           for stub in framework-cppstream-protos; do
-            grep -A1 'genrule {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a genrule"; exit 1; }
+            { grep -A1 'genrule {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a genrule"; exit 1; }
           done
           # Runs #203/#204/#205/#206 fix: the new stubs must be present
           # at build time (same `name: "..."` grep form as above).
@@ -5095,26 +5379,43 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in android.hardware.graphics.common@1.1 aconfig_hardware_flags_c_lib android.os.flags-aconfig-cc android.os.flags-aconfig-cc-test android.server.display.flags-aconfig-cc; do
-            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #203/#204/#205/#206 fix: the bindgen stub must be a
           # rust_library at build time (same check as the prune step above).
           for stub in libselinux_bindgen; do
-            grep -A1 'rust_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a rust_library"; exit 1; }
+            { grep -A1 'rust_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a rust_library"; exit 1; }
+          done
+          # Runs #207/#208/#209/#210 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.graphics.composer@2.4 android.hardware.graphics.common@1.0 libnativebridge_lazy; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #207/#208/#209/#210 fix: the 2 plain cc_library stubs
+          # must be plain cc_library at build time (same wrapped check
+          # as the prune step above).
+          for stub in android.hardware.graphics.composer@2.4 android.hardware.graphics.common@1.0; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #207/#208/#209/#210 fix: the lazy-bridge stub must be
+          # a cc_library_shared at build time (same wrapped check as
+          # the prune step above).
+          for stub in libnativebridge_lazy; do
+            { grep -A1 'cc_library_shared {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_shared"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
           # Runs #119/#120/#121 fix: libz must be a plain cc_library at
           # build time (same check as the prune step above).
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libz"' || { echo "::error::pre-build guard: libz stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libz"' || { echo "::error::pre-build guard: libz stub is not a plain cc_library"; exit 1; }
           # Runs #122/#123/#124 fix: libcrypto + libselinux must be plain
           # cc_library stubs at build time (same check as the prune step).
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libcrypto"' || { echo "::error::pre-build guard: libcrypto stub is not a plain cc_library"; exit 1; }
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libselinux"' || { echo "::error::pre-build guard: libselinux stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libcrypto"' || { echo "::error::pre-build guard: libcrypto stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libselinux"' || { echo "::error::pre-build guard: libselinux stub is not a plain cc_library"; exit 1; }
           # Runs #131/#132/#133/#134 fix: libpcre2 must be a plain cc_library
           # at build time (same check as the prune step above).
-          grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libpcre2"' || { echo "::error::pre-build guard: libpcre2 stub is not a plain cc_library"; exit 1; }
+          { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libpcre2"' || { echo "::error::pre-build guard: libpcre2 stub is not a plain cc_library"; exit 1; }
           # Runs #144/#145/#146 fix: libwinpthread must carry stl: "none"
           # at build time (same check as the prune step above).
           sed -n '/name: "libwinpthread"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'stl: "none"' || { echo "::error::pre-build guard: libwinpthread stub must carry stl: \"none\" (runs #144/#145/#146 cycle fix)"; exit 1; }
