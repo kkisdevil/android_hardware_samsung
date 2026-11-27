@@ -2600,6 +2600,99 @@ still 32 projects.
   which touches the cache steps and needs his word - not changed in
   this fix round.
 
+  Runs #207 (46045935357, 12m21s, stubs push ea8c68a), #208
+  (46046374152, 12m47s, manifest push 027ed0c), #209 (46046593411,
+  12m12s, README push 243c737) and #210 (46046756612, 12m23s, manual
+  dispatch ~23:35 IST on commit 243c737) ALL FAILED on the SAME fix
+  code (head 243c737 - the 6-stub fix, workflow d98cb70). The 6-stub
+  fix HELD completely in #207/#209/#210 (zero genuine errors for any
+  of its 6). UNION across the four runs = 4 distinct modules (11
+  genuine line instances: #207 3, #208 0, #209 4, #210 4 - subset
+  variation again). Whole raw job logs read by the parent (jobs
+  140665103912 / 140666550962 / 140667284033 / 140667832059),
+  counting only lines starting "error: ... depends on undefined
+  module ...". libtimestats needs
+  android.hardware.graphics.composer@2.4 (shared_libs)
+  (frameworks/native/services/surfaceflinger/TimeStats/Android.bp:36:1)
+  - in #209 + #210 ONLY. nativewindow_buffer_benchmarks_cc needs
+  libgoogle-benchmark-main (static_libs)
+  (frameworks/native/libs/nativewindow/tests/benchmark/Android.bp:33:1)
+  - in #207 + #209 + #210. libvulkan needs libnativebridge_lazy +
+  android.hardware.graphics.common@1.0 (shared_libs)
+  (frameworks/native/vulkan/libvulkan/Android.bp:44:1) - in #207 +
+  #209 + #210. #208 never ran Soong: it failed in the pre-build
+  guard (the SIGPIPE race below), 0 genuine Soong lines. The
+  "libcharger_sysprop" lines are a CONFIRMED PHANTOM again (script
+  echo/comments only - ZERO in any Build step output), same class as
+  #152/#161/#174/#177/#182/#186/#194/#198/#202/#206. FIRST-EVER
+  reported: the first graphics.composer@2.4, the first
+  graphics.common@1.0, the first libnativebridge_lazy, the first
+  libgoogle-benchmark-main, and the first pre-build guard SIGPIPE
+  race failure (#208). THE #208 RACE: #208 failed ~11s into the
+  Build step, before `m` ran, with "grep: write error: Broken pipe"
+  then "pre-build guard: stub
+  android.hardware.health-translate-V1-ndk is not a plain
+  cc_library". The stub IS plain cc_library (its presence loop
+  passed; #207/#209/#210 passed the same check on the same file).
+  Root cause: the type-check form (producer grep -A1 piped to
+  consumer grep -Fq) under set -o pipefail - the consumer exits on
+  match while the producer still has output to write, so the
+  producer dies of SIGPIPE (exit 141) and pipefail fails the
+  pipeline spuriously. REPRODUCED locally: 17 spurious failures in
+  3000 iterations of the exact guard-loop invocation. Fix: wrap
+  every producer as { grep ... || true; } (all 52 grep -A1 sites,
+  prune-step + guard, all rounds) - the pipeline status is then
+  exactly the consumer's. Fix: 3 new stubs + 1 dir pruned whole
+  (frameworks/native/libs/nativewindow/tests/benchmark -
+  libgoogle-benchmark-main's only in-tree consumer) + the 52-site
+  SIGPIPE wrap, no new projects (still 32). Stubs (all in
+  build-lights/yuzora-stubs-Android.bp, each with a prune-step check
+  + pre-build guard check, both in the wrapped form): 2 plain
+  cc_library (android.hardware.graphics.composer@2.4,
+  android.hardware.graphics.common@1.0 - both hidl_interface in
+  pruned hardware/interfaces dirs); 1 cc_library_shared
+  (libnativebridge_lazy - upstream cc_library_shared in
+  platform/art/libnativebridge at r32; its visibility lists exactly
+  libEGL + libvulkan, both shared_libs consumers). No sdk_version
+  on any new stub (no consumer sets one). Verified in the synced
+  tree (~/workspace/lights-local) + upstream AOSP
+  android-15.0.0_r32. Dep-closure verified (audit over the erroring
+  consumers' DIRECT deps): every other direct dep is defined
+  in-tree (non-pruned) or already stubbed. NOT stubbed:
+  android.hardware.graphics.composer@2.1/@2.2/@2.3 (only ever
+  listed as @2.4's hidl interfaces); libnativebridge (zero in-tree
+  refs); libgoogle-benchmark (ALREADY stubbed as cc_library_static
+  - a different module from -main); libcharger_sysprop (phantom);
+  android.hardware.boot@1.2, allocator@3.0/@4.0,
+  mapper@2.0/2.1/3.0/4.0, libLibGuiProperties, libhealthhalutils,
+  libhealthshim, libfastbootshim, libcom.android.sysprop.apex
+  (sysprop-generated); libkeymaster_messages, libkeymaster3device,
+  android.hardware.keymaster@3.0 (reported in #186 but, after the
+  prune, referenced only in pruned hardware/interfaces/* dirs);
+  libactivitymanager_aidl, libbatterystats_aidl, libpower
+  (libsensorservice deps, undefined, never reported);
+  avf_build_flags_cc (ALREADY stubbed as cc_defaults). WATCH ITEMS
+  (not implemented): headers/symbols may be needed later IF a
+  future round fails past Soong at compile/link - the build target
+  is only android.hardware.light-service.samsung and none of the 3
+  new stubs is in its closure, so bare stubs suffice for this target;
+  nm | grep -q in the Verify-built-binary step has the same
+  early-exit-consumer shape - never failed, post-build only, left
+  unchanged.
+
+  CACHE NOTE (runs #207/#208/#209/#210): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~9-12 min) and no Save step is expected to run - same as
+  runs #118/#121/#124/#127/#130/#134/#137/#140/#143/#146/#149/
+  #152/#155/#158/#159/#160/#161/#162/#163/#164/#165/#166/#167/
+  #168/#169/#170/#171/#172/#173/#174/#175/#176/#177/#178/#179/
+  #180/#181/#182/#183/#184/#185/#186/#192/#193/#194/#195/#196/
+  #197/#198/#199/#200/#201/#202/#203/#204/#205/#206. The next run
+  will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps and
+  needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
