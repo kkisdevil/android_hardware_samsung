@@ -5601,6 +5601,169 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #156/#157/#158 fix: runs #156 (45935286393, 16m34s,
+          // auto, manifest a9d18f4), #157 (45935437929, 12m48s, auto,
+          // README 82c941c) and #158 (45935609318, 12m47s, manual
+          // dispatch ~09:11 IST 2026-11-27, head 82c941c - the runs
+          // #153/#154/#155 fix, workflow 61ded3f) ALL FAILED at Soong
+          // ninja-file generation, ~37s into the build step, on the
+          // SAME fix code. The #153/#154/#155 fix HELD in all three
+          // (prune step passed in 2-4s + pre-build guard passed;
+          // ZERO dependency-cycle lines in any raw log - the
+          // gwp_asan/libscudo system_shared_libs fix resolved).
+          // Subset variation again: #156 reports 8 lines, #157/#158
+          // report 7. The fix covers the UNION (8 lines, 6 distinct
+          // modules). Raw-log verbatim error union (browser
+          // job-logs.txt read of all three raw logs; the other
+          // "error:" matches in each log are the runner echoing the
+          // Build step script itself - the pre-build-guard echo
+          // commands that did not fire - NOT build errors; no
+          // genuine "missing variant" line in any run):
+          //   error: system/core/libgrallocusage/Android.bp:32:1:
+          //     "libgrallocusage" depends on undefined module
+          //     "android.hardware.graphics.allocator@2.0".
+          //   error: system/core/libstats/pull_lazy/Android.bp:8:1:
+          //     "libstatspull_lazy" depends on undefined module
+          //     "libstatspull_headers".
+          //   error: system/core/libstats/pull_lazy/Android.bp:8:1:
+          //     "libstatspull_lazy" depends on undefined module
+          //     "libstatssocket_headers".
+          //   error: frameworks/native/vulkan/vkjson/Android.bp:43:1:
+          //     "libvkjson_ndk" depends on undefined module
+          //     "vulkan_headers".
+          //   error: frameworks/native/vulkan/vkjson/Android.bp:43:1:
+          //     "libvkjson_ndk" depends on undefined module
+          //     "libjsoncpp_ndk".
+          //   error: frameworks/native/vulkan/vkprofiles/Android.bp:44:1:
+          //     "libvkprofiles_ndk" depends on undefined module
+          //     "vulkan_headers".
+          //   error: system/core/libstats/socket_lazy/Android.bp:8:1:
+          //     "libstatssocket_lazy" depends on undefined module
+          //     "libstatssocket_headers".
+          //   error: prebuilts/clang/host/linux-x86/Android.bp:48:1:
+          //     "libomp" depends on undefined module "ndk_system".
+          //     (#156 only)
+          // Root causes, verified live at AOSP android-15.0.0_r32 /
+          // LineageOS lineage-22.2 (all 6 defining projects
+          // UNSYNCED unless noted):
+          // android.hardware.graphics.allocator@2.0 is hidl_interface
+          // in hardware/interfaces/graphics/allocator/2.0/Android.bp
+          // (lineage-22.2, srcs IAllocator.hal, interfaces common@1.0
+          // + mapper@2.0 + hidl.base@1.0, gen_java false).
+          // hardware/interfaces IS synced, but the closure prune keeps
+          // ONLY light/aidl + compatibility_matrices + common/aidl +
+          // input/common/aidl, so allocator/2.0 is pruned - same story
+          // as mapper@4.0 (#105). Used in shared_libs by
+          // libgrallocusage (system/core/libgrallocusage/Android.bp:44,
+          // verified in the manifest-pinned tree) and by libs/ui +
+          // surfaceflinger. Stubbed plain cc_library (both variants;
+          // the #105 mapper@4.0 shared-only precedent is narrower
+          // than the subset-reporting lesson allows).
+          // libstatspull_headers is cc_library_headers in
+          // packages/modules/StatsD/lib/libstatspull/Android.bp (r32,
+          // line 80, export_include_dirs ["include"]) -
+          // packages/modules/StatsD is NOT synced; used in header_libs
+          // (+ export_header_lib_headers) by libstatspull_lazy
+          // (system/core/libstats/pull_lazy/Android.bp:11/15).
+          // libstatssocket_headers is cc_library_headers in
+          // packages/modules/StatsD/lib/libstatssocket/Android.bp
+          // (r32, line 87, export_include_dirs ["include"], apex
+          // com.android.resolv + platform, min_sdk_version 29) - same
+          // project, NOT synced; used in header_libs (+
+          // export_header_lib_headers) by libstatspull_lazy (:12) and
+          // libstatssocket_lazy
+          // (system/core/libstats/socket_lazy/Android.bp:17/20) and in
+          // header_libs by libstats push_compat (:41/:56).
+          // vulkan_headers is cc_library_headers in
+          // external/vulkan-headers/Android.bp (r32, lines 71-84,
+          // export_include_dirs ["include"], host_supported,
+          // vendor_available, sdk_version 24, llndk_headers true) -
+          // external/vulkan-headers is NOT synced; used in header_libs
+          // (+ export_header_lib_headers) by libvkjson_ndk
+          // (frameworks/native/vulkan/vkjson/Android.bp:64) and
+          // libvkprofiles_ndk (:64) and by libvulkan + nulldrv. NOTE:
+          // the synced frameworks/native/vulkan/Android.bp defines
+          // only hwvulkan_headers (the libhardware HAL headers) - a
+          // DIFFERENT module; Soong's "Or did you mean
+          // hwvulkan_headers?" suggestion is a red herring.
+          // libjsoncpp_ndk is cc_library_static in
+          // external/jsoncpp/Android.bp (r32, lines 85-90, defaults
+          // libjsoncpp_defaults, sdk_version 9, stl libc++_static) -
+          // external/jsoncpp is NOT synced; used in whole_static_libs
+          // by libvkjson_ndk (vkjson/Android.bp:61). Stub mirrors
+          // upstream: cc_library_static with stl: "libc++_static"
+          // (device-only module, no windows variant, so no
+          // libwinpthread-class cycle).
+          // ndk_system (#156 only): libomp is
+          // llvm_prebuilt_library_static in
+          // prebuilts/clang/host/linux-x86/Android.bp (:48,
+          // sdk_version "minimum", no stl:). Soong's stl.go makes any
+          // sdk_version module with no stl: take SelectedStl
+          // "ndk_system" (useSdk && Device), and the ndk_system STL
+          // case appends "ndk_system" to HeaderLibs - so the dep is a
+          // HEADER_LIBS use. The real module is NOT defined anywhere
+          // in the synced tree (zero mentions in any synced .bp; not
+          // in bionic/libc or prebuilts/sdk at r32 - home not traced,
+          // same class as #105 libgtest_isolated/libprocinfo).
+          // Stubbed cc_library_headers. NOTE: the same STL case also
+          // appends "libstdc++" to SharedLibs - no stub needed there,
+          // libstdc++ IS defined in the synced
+          // bionic/libc/Android.bp (:1947/:2333), which is why it
+          // never errored.
+          // COMPILE-STAGE CAVEAT: the four cc_library_headers stubs
+          // are bare (no export_include_dirs, no real headers), as
+          // all earlier headers stubs were - a bare stub passes
+          // Soong; dummy headers will be needed only if the next run
+          // fails at compile/link because libstatspull_lazy /
+          // libstatssocket_lazy / libvkjson_ndk / libvkprofiles_ndk
+          // actually include the headers (same class as the #111
+          // libgsi / #135 flatbuffer caveats). The allocator@2.0 +
+          // libjsoncpp_ndk stubs are bare too (empty.c, no symbols);
+          // the HAL closure never links libgrallocusage /
+          // libvkjson_ndk / libomp, so those may never surface.
+          cc_library {
+              name: "android.hardware.graphics.allocator@2.0",
+              srcs: ["empty.c"],
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libstatspull_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libstatssocket_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "vulkan_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libjsoncpp_ndk",
+              srcs: ["empty.c"],
+              stl: "libc++_static",
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "ndk_system",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -5926,10 +6089,18 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #155 stubs created: gwp_asan + libscudo cc_library_static stubs (both stl: \"none\", system_shared_libs: []); system_shared_libs: [] added to gwp_asan_headers + libarm-optimized-routines-mem/-string/-math + libjemalloc5 + llvmlibc (external/llvm-libc). No type changes this round."
+          # Runs #156/#157/#158 fix: verify the six new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147/#152/#155 loops above).
+          for stub in android.hardware.graphics.allocator@2.0 libstatspull_headers libstatssocket_headers vulkan_headers libjsoncpp_ndk ndk_system; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #156/#157/#158 stubs created: android.hardware.graphics.allocator@2.0 plain cc_library stub; libstatspull_headers + libstatssocket_headers + vulkan_headers + ndk_system cc_library_headers stubs; libjsoncpp_ndk cc_library_static stub (stl: \"libc++_static\"). No type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
           echo "runs #155 fix: gwp_asan + libscudo cc_library_static stubs created (both stl: \"none\", system_shared_libs: []); system_shared_libs: [] added to the 6 libc-closure stubs. No type changes this round."
+          echo "runs #156/#157/#158 fix: android.hardware.graphics.allocator@2.0 + libstatspull_headers + libstatssocket_headers + vulkan_headers + libjsoncpp_ndk + ndk_system stubs created. No type changes this round."
 
 
 
@@ -6246,6 +6417,11 @@ jobs:
           # Runs #155 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in gwp_asan libscudo; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #156/#157/#158 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.graphics.allocator@2.0 libstatspull_headers libstatssocket_headers vulkan_headers libjsoncpp_ndk ndk_system; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
