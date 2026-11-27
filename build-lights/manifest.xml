@@ -1125,6 +1125,133 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #153 (45929013520, 15m37s, auto, manifest 71371a6),
+  #154 (45929119919, 13m20s, auto, README 1732445) and #155
+  (45929338979, 12m50s, manual dispatch ~08:06 IST 2026-11-27,
+  head 1732445 - the runs #150/#151/#152 fix, workflow
+  ebb5a3d): ALL FAILED at Soong ninja-file generation, 35-46s
+  into the "Build lights HAL" step. The #150/#151/#152 fix
+  HELD in all three (prune step passed in 0-4s + pre-build
+  guard passed, ZERO undefined-module / missing-variant lines
+  in any raw log). NO subset variation this round: all three
+  report the identical 7-line cycle. Raw-log verbatim error
+  union (browser job-logs.txt read of all three raw logs; the
+  other "error:" matches in each log are the runner echoing
+  the Build step script itself - the pre-build-guard echo
+  commands that did not fire - NOT build errors; no genuine
+  "missing variant" line in any run):
+  bionic/libc/Android.bp:1653:1 "encountered dependency cycle:"
+  - yuzora-stubs/Android.bp:1515:1 module "gwp_asan_headers"
+  variant "android_arm64_armv8-a" depends on module "libc"
+  variant "android_arm64_armv8-a_shared" - bionic/libc/
+  Android.bp:1653:1 module "libc" variant
+  "android_arm64_armv8-a_shared" depends on module "libc"
+  variant "android_arm64_armv8-a_shared_current" - same line
+  "android_arm64_armv8-a_shared_current" depends on
+  "android_arm64_armv8-a_shared_30" - same line
+  "android_arm64_armv8-a_shared_30" depends on
+  "android_arm64_armv8-a_shared_29" - same line
+  "android_arm64_armv8-a_shared_29" depends on
+  "android_arm64_armv8-a_static" - same line
+  "android_arm64_armv8-a_static" depends on module
+  "gwp_asan_headers" variant "android_arm64_armv8-a".
+  FAILED line is out/soong/build.yuzora_lights.ninja.
+  Root cause, verified in the SYNCED Soong source
+  (build/soong/cc): (1) every cc module gets an implicit dep
+  on libc + libm + libdl - baseLinker.linkerDeps (linker.go)
+  gives every cc module a default system_shared_libs (the
+  toolchain's DefaultSharedLibraries; config/bionic.go:
+  libc, libm, libdl) unless the module declines it, and
+  appends them to LateSharedLibs. The bare gwp_asan_headers
+  stub (cc_library_headers, #96 fix) carries no
+  system_shared_libs, so it depends on libc shared. (2) The
+  real libc depends back on the stub:
+  libc_native_allocator_defaults (bionic/libc/Android.bp:199,
+  manifest-pinned tree) has header_libs:
+  ["gwp_asan_headers"], and libc uses that defaults via
+  libc_library_defaults. The two edges close a cycle. The fix
+  is system_shared_libs: [] on the stub - the sanctioned
+  decline (linker.go: "If an empty list [] is specified, it
+  implies that the module declines the default
+  system_shared_libs"), the same property bionic's own
+  modules carry (libc_defaults, and the cc_library_headers
+  bionic_libc_platform_headers in the same file). Same class
+  as the #144 libwinpthread cycle (an implicit dep on a
+  stub), but the implicit dep here is system_shared_libs,
+  not the default STL. CORRECTION to the #144-body claim: the
+  cycle check does NOT run "once all modules resolve".
+  Blueprint runs the cycle check (updateDependencies) at the
+  end of each mutator group (build/blueprint/context.go
+  runMutator) and a cycle found there replaces the errors
+  that group collected - which is why #153/#154/#155 report
+  ONLY the cycle even though libc's defaults also reference
+  the undefined gwp_asan + libscudo below: those surface
+  only once the cycle is fixed. THE WHOLE CLASS, fixed now
+  (Soong reports one cycle per run - the #144 precedent - so
+  fixing only the reported edge would cost one 13-minute
+  round per cycle): system_shared_libs: [] is added to every
+  cc stub the real libc / libm / libdl closure consumes:
+  gwp_asan_headers (header_libs by
+  libc_native_allocator_defaults);
+  libarm-optimized-routines-string (whole_static_libs by
+  libc_common, itself whole_static_libs by
+  libc_common_static, itself whole_static_libs by libc);
+  libarm-optimized-routines-math (whole_static_libs by libm,
+  which carries target.bionic.system_shared_libs ["libc"]);
+  libarm-optimized-routines-mem (whole_static_libs by
+  librust_baremetal - no path back from libc, but the
+  property is inert on an empty stub and kills the class);
+  libjemalloc5 (static_libs by libc_jemalloc_wrapper - only
+  via the malloc_low_memory-gated product_variable, same
+  inert reasoning); llvmlibc (whole_static_libs by
+  libc_bionic, itself whole_static_libs by libc_common).
+  All keep their types and stl: "none". NEW STUBS (same
+  round): gwp_asan + libscudo are referenced
+  unconditionally by libc's own defaults - gwp_asan in
+  whole_static_libs by libc_library_defaults (static: +
+  shared:, bionic/libc/Android.bp:1567/:1576) and libscudo
+  in whole_static_libs by libc_native_allocator_defaults
+  (:193) - and NEITHER is defined anywhere in the synced
+  tree (no *.bp defines them) nor stubbed before now: they
+  are the undefined-module layer the cycle was masking,
+  stubbed now (#111 sibling precedent) so the next run does
+  not spend 13 minutes reporting them. Both are static
+  allocator libraries whole-archived into libc
+  (external/gwp-asan + external/scudo, both UNSYNCED), so
+  both stubs are cc_library_static with srcs empty.c,
+  stl: "none" (the #147 whole_static_libs-only shape) - and
+  both carry system_shared_libs: [] from birth, since libc
+  consumes them directly and they would cycle on their first
+  run without it. Upstream .bp types were NOT re-verified
+  line-by-line at r32 this round (web search did not surface
+  the files); the type follows the use (whole_static_libs
+  only) - if a later run needs a shared variant, change to
+  plain cc_library (the libcrypto / libselinux / libz /
+  libjsoncpp precedent). NOT stubbed: tzdata_prebuilt +
+  tz_version_prebuilt (required: by libc_library_defaults -
+  required: never errored in 150 runs) and
+  libc_musl_headers (musl-target-gated, the using modules
+  are enabled: false outside musl). COMPILE-STAGE CAVEAT:
+  the two new stubs are bare (empty.c, no symbols) and both
+  sit in the libc closure (libc whole-archives them), so if
+  the next run passes Soong and links libc.so, undefined
+  gwp_asan_ / scudo symbols may surface - dummy
+  implementations only then, same class as the #147
+  llvmlibc / -string / -mem / libjemalloc5 caveat. The cache
+  steps are untouched (see the save-always note below).
+
+  CACHE NOTE (run #155): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took 9m10s, and "Post Restore repo cache" was SKIPPED
+  (0s), so no cache was saved - same as runs #118/#121/#124/
+  #127/#130/#134/#137/#140/#143/#146/#149/#152. (Runs #153
+  and #154 agree: Restore 0s / 1s miss, sync 11m23s /
+  9m57s, Post skipped.) The next run will also restore-miss
+  and sync ~9-12 min. The upstream-recommended fix is
+  separate restore + save steps (the save step with
+  `if: always()`), which touches the cache steps and needs
+  his word - not changed in this fix round.
+
   -->
 
 <manifest>
