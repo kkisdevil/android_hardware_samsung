@@ -1224,6 +1224,160 @@ jobs:
           rm -rf system/core/trusty/test
           rm -rf external/rust/android-crates-io/crates/libbpf-rs
           rm -rf external/rust/android-crates-io/crates/libbpf-sys
+          # Runs #165/#166/#167 fix: prune four dirs and stub eleven
+          # modules. Runs #165 (45947910369, 14m15s, auto, manifest
+          # 5bb1797), #166 (45948101732, 13m37s, auto, README 435b5bc)
+          # and #167 (45948263759, 15m39s, manual dispatch ~11:21 IST
+          # 2026-11-27, head 435b5bc — the runs #162/#163/#164 fix,
+          # workflow ddd6322) ALL FAILED at Soong ninja-file
+          # generation, 33-36s into the "Build lights HAL" step, on
+          # the same fix code. The #162/#163/#164 fix HELD
+          # COMPLETELY in all three (prune step passed in 1-2s +
+          # pre-build guard passed; ZERO genuine trusty_driver_test
+          # / py3-stdlib / py3-launcher-autorun / libbpf errors in
+          # any raw log — those names occur only in this file's own
+          # history comment echo). Subset variation again: the fix
+          # covers the UNION (12 distinct undefined modules).
+          # Raw-log verbatim error union (browser job-logs.txt read
+          # of all three raw logs; the first UI-log report's
+          # "ninja: error ... libcharger_sysprop_rust.so ... missing
+          # and no known rule to make it" appears NOWHERE in either
+          # raw log — a CONFIRMED PHANTOM, same class as #152/#161):
+          #   #165 (6 lines): bionic-benchmarks, bionic-benchmarks-
+          #     static + libBionicLoaderTests need "libmeminfo";
+          #     libnativehelper_internal_tests_jni needs
+          #     "libnativetesthelper_jni"; libprefetch_rs needs
+          #     "librustutils"; libfdtrack needs "libdexfile_support".
+          #   #166 (15 lines): libmeminfo x5 (+ malloc-rss-benchmark,
+          #     bionic-stress-tests), libhealthd_draw needs
+          #     "libminui", run-as needs "libminijail", libtimeinstate
+          #     needs "bpf_prog_headers" + "bpf_headers" +
+          #     "libbpf_bcc" + "libbpf_minimal", libprefetch_rs needs
+          #     "librustutils", libfdtrack needs "libdexfile_support",
+          #     libtrusty_coverage + libtrusty_line_coverage need
+          #     "libdmabufheap".
+          #   #167 (3 lines): libcharger_sysprop_rust +
+          #     libcom_android_sysprop_apex_rust need "librustutils";
+          #     libstatspull_rust needs "libstatslog_rust_header".
+          # PRUNES (4 dirs, each verified in the synced tree):
+          #   bionic/benchmarks — every libmeminfo referencer in
+          #     this dir; all 54 top-level + 183 subdir modules are
+          #     benchmark/test-only with ZERO referencers outside
+          #     the dir (every name: checked). The libmeminfo stub
+          #     below covers the bionic/tests referencers, which
+          #     CANNOT be pruned: bionic/libfdtrack's fdtrack_test
+          #     takes whole_static_libs ["libBionicCtsGtestMain"],
+          #     defined in bionic/tests/Android.bp — pruning tests/
+          #     would CREATE that undefined-module error.
+          #   libnativehelper/tests — defines
+          #     libnativehelper_internal_tests_jni (the #165
+          #     referencer); all 7 top-level names + jni_gtest_headers
+          #     / jni_gtest_defaults have ZERO referencers outside
+          #     the dir. libnativetesthelper_jni is defined NOWHERE
+          #     in the synced tree.
+          #   libnativehelper/tests_mts/jni — belt-and-braces
+          #     no-op: its libnativehelper_jni_defaults takes
+          #     whole_static_libs ["libnativetesthelper_jni"], but
+          #     the parent tests_mts is ALREADY pruned whole above
+          #     (runs #48/#49/#50 fix), so the dir is already gone;
+          #     the explicit line documents the second referencer.
+          #   system/core/libstats/pull_rust — defines
+          #     libstatspull_rust (the #167 referencer, rustlibs
+          #     liblog_rust + libstatslog_rust_header +
+          #     libstatspull_bindgen) + libstatspull_bindgen +
+          #     libstatspull_bindgen_test; all three are referenced
+          #     NOWHERE outside this one file, and
+          #     libstatslog_rust_header is referenced nowhere else
+          #     in the tree. Pruning kills the bindgen too (its
+          #     shared/static_libs libstatspull + libstatssocket
+          #     are already stubbed, so the bindgen has not errored
+          #     yet — the prune is for libstatspull_rust itself).
+          # STUBS (11, all in yuzora-stubs/Android.bp below):
+          #   librustutils — rust_library (crate_name "rustutils",
+          #     srcs lib.rs, edition 2021, host_supported, public —
+          #     same form as the #116 rust stubs; lib.rs already
+          #     created by the #96 fix). One stub covers all three
+          #     referencers (libprefetch_rs rustlibs, verified
+          #     in-tree; libcharger_sysprop_rust +
+          #     libcom_android_sysprop_apex_rust per the raw logs —
+          #     those two modules are NOT in the synced local tree
+          #     at all, so their rustlibs use is per the raw logs,
+          #     which are authoritative). librustutils is defined
+          #     NOWHERE in the synced tree.
+          #   libdexfile_support + libdexfile — plain cc_library
+          #     (upstream types in unsynced art/libdexfile; a plain
+          #     cc_library yields both variants, so it satisfies
+          #     libfdtrack's static_libs use and debuggerd's four
+          #     static_libs uses). libdexfile is the provably-next
+          #     layer, not speculation: debuggerd takes it in
+          #     target.android runtime_libs, and Soong reports only
+          #     the FIRST undefined dep per module, so the
+          #     libdexfile error is masked until libdexfile_support
+          #     exists. Both are defined NOWHERE in the synced tree.
+          #   libminui — plain cc_library (upstream type in
+          #     unsynced bootable/recovery/minui; libhealthd_draw
+          #     takes it in static_libs). Do NOT prune healthd:
+          #     the librustutils stub already covers its other
+          #     error. libminui is defined NOWHERE in the tree.
+          #   libminijail — plain cc_library (upstream type in
+          #     unsynced system/core/libminijail — the dir does not
+          #     even exist in the synced tree, and the workflow
+          #     never pruned it). The stub beats pruning run-as:
+          #     debuggerd + sdcard take libminijail too (static_libs
+          #     + shared_libs), so pruning run-as alone would leave
+          #     those two erroring next.
+          #   libdmabufheap — plain cc_library (upstream type in
+          #     unsynced system/memory/libdmabufheap). The stub
+          #     beats pruning trusty/coverage + line-coverage:
+          #     libdmabufheap is ALSO taken in shared_libs by kept
+          #     trusty/apploader, confirmationui, libtrusty/tipc-test
+          #     and utils/acvp + utils/coverage-controller, so
+          #     pruning the two coverage dirs would leave those
+          #     five erroring — and pruning coverage/line-coverage
+          #     would CREATE errors, because kept trusty/fuzz takes
+          #     libtrusty_coverage and kept coverage-controller
+          #     takes libtrusty_line_coverage. One stub fixes all
+          #     seven referencers and leaves the coverage dirs
+          #     parsing (their other deps libext2_uuid + libtrusty
+          #     are already stubbed/defined).
+          #   libmeminfo — plain cc_library (upstream type in
+          #     unsynced system/memory/libmeminfo; see the prune
+          #     note above for why bionic/tests is stubbed, not
+          #     pruned). Defined NOWHERE in the synced tree.
+          #   bpf_prog_headers + bpf_headers — cc_library_headers
+          #     (header_libs use); libbpf_bcc + libbpf_minimal —
+          #     plain cc_library (shared_libs use). One stub per
+          #     module beats pruning cputimeinstate: the same four
+          #     are ALSO taken by kept dirs — gpuservice/gpumem +
+          #     gpuwork + tests/unittests take bpf_headers +
+          #     libbpf_bcc, and kept system/core/libsysutils takes
+          #     bpf_headers — so pruning cputimeinstate alone
+          #     would leave those four erroring. (CORRECTION to the
+          #     first draft of this fix: external/bpf was NOT
+          #     pruned in the #162 fix — the workflow never mentions
+          #     external/bpf; all four bpf modules are defined
+          #     NOWHERE in the synced tree. The
+          #     hardware/interfaces/health/utils/libhealthloop
+          #     referencer IS already pruned by the closure prune.)
+          # PRUNE-GAP CHECK: there is NO prune of system/apex/apexd
+          #   or system/core/libstats anywhere in this file — no
+          #   rm -rf line and no echo line claims either as pruned
+          #   (the only system/apex prune is system/apex/tests;
+          #   libstats is only stubbed-around). apexs is
+          #   DELIBERATELY KEPT (run #58: apexs_testdata is
+          #   referenced by the kept apexs/Android.bp; run #61
+          #   copies API files into it), so
+          #   system/apex/apexd/sysprop/Android.bp parsing and
+          #   erroring on librustutils is expected, not a prune
+          #   gap — the librustutils stub above is the fix. The
+          #   glob prune loops only cover hardware/* +
+          #   kernel/configs vts; nothing about the prune mechanism
+          #   needed fixing. The cache steps are untouched (see the
+          #   save-always note below).
+          rm -rf bionic/benchmarks
+          rm -rf libnativehelper/tests
+          rm -rf libnativehelper/tests_mts/jni
+          rm -rf system/core/libstats/pull_rust
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -1356,6 +1510,22 @@ jobs:
             echo "::error::prune failed — external/rust/android-crates-io/crates/libbpf-sys present"
             exit 1
           fi
+          if [ -d bionic/benchmarks ]; then
+            echo "::error::prune failed — bionic/benchmarks present"
+            exit 1
+          fi
+          if [ -d libnativehelper/tests ]; then
+            echo "::error::prune failed — libnativehelper/tests present"
+            exit 1
+          fi
+          if [ -d libnativehelper/tests_mts/jni ]; then
+            echo "::error::prune failed — libnativehelper/tests_mts/jni present"
+            exit 1
+          fi
+          if [ -d system/core/libstats/pull_rust ]; then
+            echo "::error::prune failed — system/core/libstats/pull_rust present"
+            exit 1
+          fi
           if [ -d system/apex/tests ]; then
             echo "::error::prune failed — system/apex/tests present"
             exit 1
@@ -1372,6 +1542,7 @@ jobs:
           echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
           echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats."
           echo "runs #162/#163/#164 pruned: system/core/trusty/test + external/rust/android-crates-io/crates/libbpf-rs + crates/libbpf-sys."
+          echo "runs #165/#166/#167 pruned: bionic/benchmarks + libnativehelper/tests + libnativehelper/tests_mts/jni + system/core/libstats/pull_rust."
           echo "runs #75/#76/#77 pruned: system/apex/tests + system/core/init/test_upgrade_mte + system/core/debuggerd/test_permissive_mte."
           # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
           # bindings map (run #74, 45715506626, 12m40s, build step 33s;
@@ -5949,6 +6120,117 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #165/#166/#167 fix: eleven new stubs (see the
+          // comment block in the prune step above for the per-module
+          // verification). librustutils is a rust_library (crate_name
+          // "rustutils", srcs lib.rs — reused from the #96 libcxx
+          // stub, same form as the #116 rust stubs). The eight plain
+          // cc_library stubs mirror the libstatspull form (srcs
+          // empty.c, host_supported, windows target, public): a plain
+          // cc_library yields both variants, so one stub satisfies
+          // shared_libs and static_libs consumers alike. The two
+          // bpf headers stubs mirror the libstatspull_headers form
+          // (cc_library_headers, host_supported, public, no srcs).
+          // No sdk_version on any new stub: none of the eleven has
+          // an sdk_version consumer in the closure (verified the
+          // same way as the #159/#160/#161 fix — no consumer sets
+          // sdk_version on a module taking one of these stubs).
+          rust_library {
+              name: "librustutils",
+              crate_name: "rustutils",
+              srcs: ["lib.rs"],
+              edition: "2021",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libdexfile_support",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libdexfile",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libminui",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libminijail",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libdmabufheap",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libmeminfo",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "bpf_prog_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "bpf_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libbpf_bcc",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libbpf_minimal",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -6290,11 +6572,30 @@ jobs:
           sed -n '/name: "libjsoncpp_ndk"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "9"' || { echo "::error::stub libjsoncpp_ndk missing sdk_version 9 after creation"; exit 1; }
           sed -n '/name: "ndk_system"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "minimum"' || { echo "::error::stub ndk_system missing sdk_version minimum after creation"; exit 1; }
           echo "runs #159/#160/#161 fix: sdk_version on vulkan_headers (24) + libjsoncpp_ndk (9) + ndk_system (minimum). No new stubs, no type changes this round."
+          # Runs #165/#166/#167 fix: verify the eleven new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147/#152/#155/#156 loops above).
+          for stub in librustutils libdexfile_support libdexfile libminui libminijail libdmabufheap libmeminfo bpf_prog_headers bpf_headers libbpf_bcc libbpf_minimal; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #165/#166/#167 fix: the eight plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2
+          # checks): a cc_library_shared stub cannot provide the
+          # static variant the static_libs consumers need, and a
+          # cc_library_static stub cannot provide the shared variant
+          # the shared_libs consumers need.
+          for stub in libdexfile_support libdexfile libminui libminijail libdmabufheap libmeminfo libbpf_bcc libbpf_minimal; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          echo "runs #165/#166/#167 stubs created: librustutils rust_library stub (+ lib.rs); libdexfile_support + libdexfile + libminui + libminijail + libdmabufheap + libmeminfo + libbpf_bcc + libbpf_minimal plain cc_library stubs; bpf_prog_headers + bpf_headers cc_library_headers stubs. No type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
           echo "runs #155 fix: gwp_asan + libscudo cc_library_static stubs created (both stl: \"none\", system_shared_libs: []); system_shared_libs: [] added to the 6 libc-closure stubs. No type changes this round."
           echo "runs #156/#157/#158 fix: android.hardware.graphics.allocator@2.0 + libstatspull_headers + libstatssocket_headers + vulkan_headers + libjsoncpp_ndk + ndk_system stubs created. No type changes this round."
+
+          echo "runs #165/#166/#167 fix: librustutils + libdexfile_support + libdexfile + libminui + libminijail + libdmabufheap + libmeminfo + bpf_prog_headers + bpf_headers + libbpf_bcc + libbpf_minimal stubs created. No type changes this round."
 
 
 
@@ -6433,6 +6734,22 @@ jobs:
           fi
           if [ -d external/rust/android-crates-io/crates/libbpf-sys ]; then
             echo "::error::pre-build guard: external/rust/android-crates-io/crates/libbpf-sys present at build time"
+            exit 1
+          fi
+          if [ -d bionic/benchmarks ]; then
+            echo "::error::pre-build guard: bionic/benchmarks present at build time"
+            exit 1
+          fi
+          if [ -d libnativehelper/tests ]; then
+            echo "::error::pre-build guard: libnativehelper/tests present at build time"
+            exit 1
+          fi
+          if [ -d libnativehelper/tests_mts/jni ]; then
+            echo "::error::pre-build guard: libnativehelper/tests_mts/jni present at build time"
+            exit 1
+          fi
+          if [ -d system/core/libstats/pull_rust ]; then
+            echo "::error::pre-build guard: system/core/libstats/pull_rust present at build time"
             exit 1
           fi
           test -f yuzora-stubs/empty.c \
@@ -6635,6 +6952,17 @@ jobs:
           sed -n '/name: "vulkan_headers"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "24"' || { echo "::error::pre-build guard: stub vulkan_headers missing sdk_version 24"; exit 1; }
           sed -n '/name: "libjsoncpp_ndk"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "9"' || { echo "::error::pre-build guard: stub libjsoncpp_ndk missing sdk_version 9"; exit 1; }
           sed -n '/name: "ndk_system"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'sdk_version: "minimum"' || { echo "::error::pre-build guard: stub ndk_system missing sdk_version minimum"; exit 1; }
+          # Runs #165/#166/#167 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in librustutils libdexfile_support libdexfile libminui libminijail libdmabufheap libmeminfo bpf_prog_headers bpf_headers libbpf_bcc libbpf_minimal; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #165/#166/#167 fix: the eight plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in libdexfile_support libdexfile libminui libminijail libdmabufheap libmeminfo libbpf_bcc libbpf_minimal; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
