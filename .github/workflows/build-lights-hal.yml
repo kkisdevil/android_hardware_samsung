@@ -1264,6 +1264,22 @@ jobs:
           # libcriterion (unsynced Rust crate) — pruning the dir
           # kills both future error sources at once.
           rm -rf frameworks/native/libs/nativewindow/tests/benchmark
+          # Runs #211/#212/#213/#214 fix: prune two dirs whole
+          # (same form as the #195/#210 prunes above).
+          # frameworks/native/libs/bufferstreams/examples/app holds
+          # ONLY the BufferStreamsDemoApp android_app (+ its jni lib
+          # libbufferstreamdemoapp, AndroidManifest, java/, res/);
+          # zero refs to either name anywhere else in the synced
+          # tree. The app is the 16 androidx.* modules' ONLY in-tree
+          # consumer — pruning the dir kills all 16 at once.
+          # system/core/trusty/secretkeeper holds ONLY the
+          # secretkeeper.trusty rust_binary + fuzz defaults + 3
+          # cc_fuzz + .rc/.xml + src/hal_main.rs; zero refs to any
+          # of its modules anywhere else in the synced tree. The
+          # binary is the 4 secretkeeper modules' ONLY in-graph
+          # consumer — pruning the dir kills all 4 at once.
+          rm -rf frameworks/native/libs/bufferstreams/examples/app
+          rm -rf system/core/trusty/secretkeeper
           # Runs #165/#166/#167 fix: prune four dirs and stub eleven
           # modules. Runs #165 (45947910369, 14m15s, auto, manifest
           # 5bb1797), #166 (45948101732, 13m37s, auto, README 435b5bc)
@@ -3773,6 +3789,237 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~9-12 min
           # on the next run too.
+          # Runs #211/#212/#213/#214 fix: stub 4 modules, prune 2 dirs.
+          # Runs #211 (46054909305, 13m29s, stubs push 658d83f), #212
+          # (46055181408, 13m22s, manifest push 939b660), #213
+          # (46055299297, 12m41s, README push ad0433a) and #214
+          # (46055406523, 12m22s, manual dispatch ~00:46 IST on commit
+          # ad0433a) ALL FAILED at Soong ninja-file generation on the
+          # SAME fix code (head ad0433a — the runs #207/#208/#209/#210
+          # 3-stub + SIGPIPE fix, workflow 1d8df37). The #210 fix HELD
+          # completely in all four runs (zero genuine errors for
+          # composer@2.4, graphics.common@1.0 or libnativebridge_lazy
+          # in any raw log) and the #208 SIGPIPE race fix HELD (no
+          # Broken-pipe / exit-141 failure in any run; all four
+          # reached Soong ninja-file generation). Pre-build guard
+          # PASSED in all four. Steps (#214): Restore repo cache 1s
+          # (MISS), sync 9m57s, Prune 2s (passed), Build 57s FAILED
+          # (exit 1). #211 ran the PRE-FIX workflow file d98cb70
+          # (staged-commit artifact, same as #195/#199/#207: the
+          # workflow push 1d8df37 landed after #211 started) — its
+          # single libgoogle-benchmark-main line is NOT a fix failure:
+          # the old workflow does not prune
+          # nativewindow/tests/benchmark, and #212/#213/#214 on
+          # 1d8df37 show zero libgoogle-benchmark-main lines, so the
+          # #210 prune works.
+          # UNION across #212/#213/#214 (whole-job raw logs, browser
+          # job-log reads, jobs #211 140694917997 / #212 140695825045 /
+          # #213 140696215276 / #214 140696565651; only "error: ...
+          # depends on undefined module ..." lines counted, "#"
+          # comment echoes and "Or did you mean" excluded; 13 "#"
+          # lines per run): 24 distinct modules, 30 genuine line
+          # instances (21+4+5 — subset variation again):
+          #   SurfaceFlinger_test needs
+          #   android.hardware.graphics.composer@2.1 (static_libs) +
+          #   libandroid (shared_libs)
+          #   (frameworks/native/services/surfaceflinger/tests/
+          #   Android.bp:25:1) — in #212 + #214.
+          #   IPC_test needs libandroid (shared_libs) (same file,
+          #   :100:1) — in #212 + #214.
+          #   android.frameworks.automotive.display@1.0-service needs
+          #   android.frameworks.automotive.display@1.0 (shared_libs)
+          #   (frameworks/native/services/automotive/display/
+          #   Android.bp:31:1) — in #212 + #214.
+          #   libdisplayservicehidl needs
+          #   android.frameworks.displayservice@1.0 (static_libs)
+          #   (frameworks/native/services/displayservice/
+          #   Android.bp:26:1) — in #212 + #214.
+          #   BufferStreamsDemoApp needs 16 androidx.* modules
+          #   (static_libs + the Compose compiler plugin)
+          #   (frameworks/native/libs/bufferstreams/examples/app/
+          #   Android.bp:20:1) — in #212 ONLY.
+          #   secretkeeper.trusty (rust_binary) needs
+          #   android.hardware.security.secretkeeper-V1-rust +
+          #   libauthgraph_hal + libauthgraph_wire +
+          #   libsecretkeeper_hal_v1 (rustlibs)
+          #   (system/core/trusty/secretkeeper/Android.bp:20:1) —
+          #   in #213 ONLY.
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1, in all four.
+          # PATH CORRECTION (recorded): the first #212 browser report
+          # mis-transcribed the BufferStreams consumer as
+          # nativewindow/tests/BufferStreamsDemoApp/Android.bp:14:1.
+          # The raw log (re-read verbatim, 16 occurrences) says
+          # bufferstreams/examples/app/Android.bp:20:1 — matching
+          # the synced tree exactly. Raw-log reads are authoritative
+          # over UI-log reads (standing rule, proven again).
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: no genuine libcharger_sysprop error in any of
+          # #211–#214, same class as #152/#161/#174/#177/#182/#186/
+          # #194/#198/#202/#206/#210.
+          # FIRST-EVER reported: the first graphics.composer@2.1,
+          # the first libandroid (silent for 210 runs, then surfaced
+          # via a new consumer — the #202 lesson: "never reported"
+          # means "not yet surfaced", not "exempt"), the first
+          # android.frameworks.automotive.display@1.0, the first
+          # android.frameworks.displayservice@1.0, the first 16
+          # androidx.* modules, the first android_app consumer, the
+          # first Compose/Kotlin consumer, the first secretkeeper /
+          # authgraph libs, the first rust_binary consumer, the
+          # first -V1-rust module.
+          # STUBS (4, all plain cc_library, all in
+          # build-lights/yuzora-stubs-Android.bp — the static file,
+          # NOT the workflow; the workflow only gains this comment
+          # block + the prune-step + guard checks below):
+          #   android.hardware.graphics.composer@2.1 — hidl_interface
+          #     in hardware/interfaces/graphics/composer/2.1/
+          #     Android.bp (pruned dir; interfaces common@1.0 +
+          #     hidl.base@1.0, gen_java false); same form as the
+          #     #210 composer@2.4 stub and the #194 common@1.2 stub.
+          #   libandroid — definition NOT located anywhere in the
+          #     synced tree (whole-tree grep: zero `name:
+          #     "libandroid"` definitions); plain cc_library per the
+          #     #186 libprotoutil / #202 libtestUtil
+          #     unlocated-definition precedent. (The #195 round
+          #     chose prune over stub for this module — it pruned
+          #     sensorservice/tests — but the module has now
+          #     surfaced via surfaceflinger/tests, whose dir CANNOT
+          #     be pruned: see below.)
+          #   android.frameworks.automotive.display@1.0 — HIDL
+          #     package android.frameworks.automotive.display@1.0
+          #     (IAutomotiveDisplayProxyService, imports
+          #     bufferqueue@2.0) in the UNSYNCED
+          #     frameworks/hardware/interfaces project (that project
+          #     is not synced at all); same form as the #195
+          #     sensorservice@1.0 stub.
+          #   android.frameworks.displayservice@1.0 — HIDL interface
+          #     IDisplayService (VNDK-core lib) in the UNSYNCED
+          #     frameworks/hardware/interfaces project; same form as
+          #     the #174 schedulerservice@1.0 stub. (The _interface
+          #     variant seen in #78 was a different module, from
+          #     pruned hidl test dirs.)
+          #   A plain cc_library yields both variants, so one stub
+          #   satisfies the shared_libs consumers (automotive
+          #   service, SurfaceFlinger_test, IPC_test) and the
+          #   static_libs consumers (libdisplayservicehidl,
+          #   SurfaceFlinger_test) alike.
+          # PRUNES (2 dirs whole, same form as the #195/#210 prunes):
+          #   frameworks/native/libs/bufferstreams/examples/app —
+          #     kills all 16 androidx.* modules at once. The app is
+          #     an android_app (sdk_version "current", Compose
+          #     kotlincflags) whose 15 static_libs + the implicit
+          #     Compose compiler plugin are all undefined AndroidX
+          #     Java/Kotlin libs from unsynced prebuilts/external;
+          #     stubbing 16 sdk_version'd Java libs is not viable.
+          #     Zero refs to BufferStreamsDemoApp or
+          #     libbufferstreamdemoapp anywhere else in the tree;
+          #     examples/ holds ONLY app/. Test/demo-dir prune
+          #     precedent #162/#165/#195.
+          #   system/core/trusty/secretkeeper — kills all 4
+          #     secretkeeper modules at once. The dir holds ONLY
+          #     Android.bp + .rc + .xml + src/hal_main.rs; its
+          #     modules (the rust_binary + fuzz defaults + 3 cc_fuzz)
+          #     have ZERO refs anywhere else; trusty-base.mk:28 sets
+          #     LOCAL_SECRETKEEPER_PRODUCT_PACKAGE but trusty-base.mk
+          #     is included NOWHERE in the synced tree; the 4
+          #     modules' only other refs are in pruned
+          #     hardware/interfaces/security/* dirs. Same form as
+          #     the #186 trusty/keymaster + #195 trusty/keymint
+          #     prunes. STUB ALTERNATIVE REJECTED (recorded): 4
+          #     rust_library stubs with UNVERIFIED upstream types
+          #     (no precedent for stubbing an AIDL-generated
+          #     -V1-rust lib — the #195 libkmr rust case chose
+          #     prune for the same reason).
+          # PRUNE ALTERNATIVES REJECTED (recorded) for the stubs:
+          #   surfaceflinger/tests (libandroid's consumer) — its
+          #     subdir modules libsurfaceflinger_mocks_headers,
+          #     libsurfaceflinger_backend_mock_headers,
+          #     libsurfaceflingerflags_test and
+          #     libsurfaceflinger_mocks_defaults are referenced by
+          #     IN-GRAPH modules outside the dir (Tracing/tools,
+          #     CompositionEngine, fuzzer, surfaceflinger/common),
+          #     so a prune would CREATE new undefined-module errors.
+          #     Same class as the #186 libtestUtil rejection.
+          #   displayservice (displayservice@1.0's consumer) —
+          #     libdisplayservicehidl is referenced by IN-GRAPH
+          #     surfaceflinger/Android.bp:294, so a prune would make
+          #     surfaceflinger error on undefined
+          #     libdisplayservicehidl.
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on all four consumer files —
+          # zero hits; the BufferStreams app sets sdk_version
+          # "current" but it is pruned, not stubbed, so no stub
+          # inherits it; min_sdk_version alone does NOT set
+          # UseSdk() per #159/#161).
+          # NOT STUBBED (never reported in any raw log, runs #6–#214
+          # — do NOT stub unless a raw log reports one):
+          #   android.hardware.graphics.composer@2.2/@2.3 (only ever
+          #   listed as @2.4's hidl interfaces, never as a consumer
+          #   dep); libnativebridge (zero in-tree refs);
+          #   libgoogle-benchmark (ALREADY stubbed as
+          #   cc_library_static — a different module from -main);
+          #   libcharger_sysprop (sysprop-generated phantom);
+          #   Carried forward: android.hardware.boot@1.2,
+          #   allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+          #   libLibGuiProperties, libhealthhalutils,
+          #   libhealthshim, libfastbootshim,
+          #   libcom.android.sysprop.apex (sysprop-generated);
+          #   libkeymaster_messages, libkeymaster3device,
+          #   android.hardware.keymaster@3.0 (reported in #186 but,
+          #   after the trusty/keymaster prune, referenced only in
+          #   pruned hardware/interfaces/* dirs); libactivitymanager_aidl,
+          #   libbatterystats_aidl, libpower (libsensorservice deps,
+          #   undefined, never reported); avf_build_flags_cc
+          #   (ALREADY stubbed as cc_defaults).
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   SurfaceFlinger_test: static libsurfaceflinger_common
+          #     (in-tree) + composer@2.1 (NEW); shared common@1.2
+          #     (stubbed #194) / libandroid (NEW) / libbase /
+          #     libbinder / libcutils / libEGL / libGLESv2 / libgui /
+          #     liblog / libnativewindow / libprotobuf-cpp-full /
+          #     libui / libutils / server_configurable_flags
+          #     (in-tree or stubbed); header libnativewindow_headers
+          #     (in-tree).
+          #   IPC_test: shared libandroid (NEW) / libbinder /
+          #     libcutils / libEGL / libGLESv2 / libgui / liblog /
+          #     libprotobuf-cpp-full / libui / libutils (in-tree or
+          #     stubbed). Closed.
+          #   automotive display service: shared automotive.display@1.0
+          #     (NEW) + bufferqueue@2.0 (stubbed #171) / libgui /
+          #     libhidlbase / liblog / libui / libutils (in-tree or
+          #     stubbed). Closed.
+          #   libdisplayservicehidl: static displayservice@1.0 (NEW);
+          #     shared libbase / liblog / libgui / libhidlbase /
+          #     libutils (defined). Closed.
+          #   BufferStreamsDemoApp: all 16 androidx.* (pruned with
+          #     the dir); jni libbufferstreamdemoapp is defined in
+          #     the same dir and pruned with it.
+          #   secretkeeper.trusty: rustlibs secretkeeper-V1-rust +
+          #     libauthgraph_hal + libauthgraph_wire +
+          #     libsecretkeeper_hal_v1 (all pruned with the dir) +
+          #     libandroid_logger / libbinder_rs / liblibc /
+          #     liblog_rust / libtrusty-rs (defined/stubbed — no
+          #     errors). Closed.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link. The build target is ONLY
+          # android.hardware.light-service.samsung — NONE of the 4
+          # new stubs is in its closure, verified locally — so bare
+          # stubs suffice for THIS target. If a future round fails
+          # past Soong, ship the headers/symbols then; do not
+          # pre-build them now. (Same watch-item form as #182/#186/
+          # #194/#195/#202/#206/#210.)
+          # CACHE NOTE (runs #211/#212/#213/#214): Restore is
+          # expected to miss (0-1s, sync ~9-12 min) and no Save step
+          # is expected — save-always still does not save (run #214:
+          # Restore 1s MISS, "Cache not found for input keys:
+          # lights-repo-d48af...", Post step 0s, no "Cache saved"
+          # line; the log also warns a separate actions/cache/restore
+          # step should be used instead); the separate restore+save
+          # steps need his word (see the manifest). Expect Restore
+          # to miss and sync ~9-12 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -3907,6 +4154,14 @@ jobs:
           fi
           if [ -d frameworks/native/libs/nativewindow/tests/benchmark ]; then
             echo "::error::prune failed — frameworks/native/libs/nativewindow/tests/benchmark present"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/bufferstreams/examples/app ]; then
+            echo "::error::prune failed — frameworks/native/libs/bufferstreams/examples/app present"
+            exit 1
+          fi
+          if [ -d system/core/trusty/secretkeeper ]; then
+            echo "::error::prune failed — system/core/trusty/secretkeeper present"
             exit 1
           fi
           if [ -d hardware/interfaces/light/aidl/vts ]; then
@@ -4808,6 +5063,25 @@ jobs:
             { grep -A1 'cc_library_shared {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_shared"; exit 1; }
           done
           echo "runs #207/#208/#209/#210 stubs created: 2 plain cc_library + libnativebridge_lazy cc_library_shared stubs (3 total); frameworks/native/libs/nativewindow/tests/benchmark pruned whole; all 52 grep -A1 type-check sites wrapped SIGPIPE-safe."
+          # Runs #211/#212/#213/#214 fix: verify the 4 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186/#192/#195/#202/#206/#210
+          # loops above).
+          for stub in android.hardware.graphics.composer@2.1 libandroid android.frameworks.automotive.display@1.0 android.frameworks.displayservice@1.0; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #211/#212/#213/#214 fix: the 4 plain cc_library stubs
+          # must be plain cc_library (same check as the #206/#210 loops
+          # above, in the SIGPIPE-safe wrapped form — see EDIT R in
+          # the #210 round: the bare producer | consumer form fails
+          # spuriously under pipefail when the producer dies of
+          # SIGPIPE, run #208).
+          for stub in android.hardware.graphics.composer@2.1 libandroid android.frameworks.automotive.display@1.0 android.frameworks.displayservice@1.0; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          echo "runs #211/#212/#213/#214 stubs created: 4 plain cc_library stubs (composer@2.1 + libandroid + automotive.display@1.0 + displayservice@1.0); frameworks/native/libs/bufferstreams/examples/app + system/core/trusty/secretkeeper pruned whole."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -4979,6 +5253,14 @@ jobs:
           fi
           if [ -d frameworks/native/libs/nativewindow/tests/benchmark ]; then
             echo "::error::pre-build guard: frameworks/native/libs/nativewindow/tests/benchmark present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/bufferstreams/examples/app ]; then
+            echo "::error::pre-build guard: frameworks/native/libs/bufferstreams/examples/app present at build time"
+            exit 1
+          fi
+          if [ -d system/core/trusty/secretkeeper ]; then
+            echo "::error::pre-build guard: system/core/trusty/secretkeeper present at build time"
             exit 1
           fi
           if [ -d hardware/interfaces/light/aidl/vts ]; then
@@ -5402,6 +5684,17 @@ jobs:
           # the prune step above).
           for stub in libnativebridge_lazy; do
             { grep -A1 'cc_library_shared {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_shared"; exit 1; }
+          done
+          # Runs #211/#212/#213/#214 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.graphics.composer@2.1 libandroid android.frameworks.automotive.display@1.0 android.frameworks.displayservice@1.0; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #211/#212/#213/#214 fix: the 4 plain cc_library stubs
+          # must be plain cc_library at build time (same wrapped check
+          # as the prune step above).
+          for stub in android.hardware.graphics.composer@2.1 libandroid android.frameworks.automotive.display@1.0 android.frameworks.displayservice@1.0; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
