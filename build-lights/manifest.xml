@@ -1963,6 +1963,106 @@ still 32 projects.
   which touches the cache steps and needs his word - not
   changed in this fix round.
 
+  Runs #180 (45979326743, 16m28s, auto, manifest 191f287),
+  #181 (45979571732, 14m20s, auto, README b74ed2a) and #182
+  (45979813017, 10m57s, manual dispatch ~15:40 IST 2026-11-27,
+  head b74ed2a - the runs #177/#178/#179 fix, workflow
+  11948cb): ALL FAILED at Soong ninja-file generation, 51s
+  (#180) / 37s (#181) / 36s (#182) into the "Build lights HAL"
+  step, on the SAME fix code. The #177/#178/#179 fix HELD
+  COMPLETELY in all three (prune step passed in all three -
+  1s/4s/4s - + pre-build guard passed in #182; ZERO genuine
+  errors for any of its 6 modules in any raw job log). Subset
+  variation again: #182 reports the libinit 4 + 6 others, #181
+  the same 6 non-libinit errors, #180 those 6 + the health
+  pair - the fix covers the UNION of 12 undefined modules.
+  Raw-log verbatim error union: #182: "libinit.microdroid" +
+  "libinit" need "libavf_cc_flags" + "libbootloader_message" +
+  "liblmkd_utils" + "libxml2" (system/core/init/Android.bp,
+  init_defaults); "atrace" needs "android.hardware.atrace@1.0";
+  "libfs_mgr_binder" needs "gsi_aidl_interface-cpp";
+  "libgraphicsenv" needs "libnativeloader-headers";
+  "libstatsbootstrap" needs
+  "android.os.statsbootstrap_aidl-cpp"; "liblogd_binder" needs
+  "libincremental_aidl-cpp"; "servicedispatcher" needs
+  "android.debug_aidl-cpp". #181: the same 6 non-libinit
+  errors as #182. #180: those 6 plus "charger" /
+  "libhealthd_charger_test" / "charger_test" need
+  "android.hardware.health@2.0" +
+  "android.hardware.health@1.0" (system/core/healthd/Android.bp).
+  The "ninja: error ... libcharger_sysprop_rust.so ..." line is
+  a CONFIRMED PHANTOM again (0 lines in #182's whole job log
+  contain "libcharger_sysprop_rust"), same class as
+  #152/#161/#174/#177. Fix: 13 new stubs, NO prunes, NO new
+  projects (still 32). Stubs (all in yuzora-stubs/Android.bp,
+  each with a prune-step check + pre-build guard check): 12
+  plain cc_library (libavf_cc_flags, libbootloader_message,
+  liblmkd_utils, libxml2, android.hardware.atrace@1.0,
+  gsi_aidl_interface-cpp, android.os.statsbootstrap_aidl-cpp,
+  libincremental_aidl-cpp, android.debug_aidl-cpp,
+  android.hardware.health@2.0, android.hardware.health@1.0,
+  libnativeloader_lazy) + 1 cc_library_headers
+  (libnativeloader-headers - the one case where the upstream
+  type forces the stub type, header_libs consumer
+  libgraphicsenv). libnativeloader_lazy is the rule-4 sibling
+  (#111 libgsi/libgsid precedent: same defining file as
+  libnativeloader-headers, referenced in shared_libs by
+  libvulkan + libEGL, both unpruned and in the graph). No
+  sdk_version on any new stub (no consumer sets sdk_version -
+  verified on every consumer block). No prunes: the
+  referencers are core platform modules (system/core init +
+  fs_mgr + healthd + libstats + logd, system/apex apexd,
+  frameworks/native atrace + graphicsenv + binder + vulkan +
+  opengl). Verified in the synced tree
+  (~/workspace/lights-local): 3 of the 12 union modules are
+  defined ONLY in pruned hardware/interfaces dirs
+  (android.hardware.atrace@1.0 in atrace/1.0,
+  android.hardware.health@2.0 in health/2.0,
+  android.hardware.health@1.0 in health/1.0); 9 are defined
+  NOWHERE (libavf_cc_flags, libbootloader_message,
+  liblmkd_utils, libxml2, gsi_aidl_interface-cpp,
+  libnativeloader-headers, android.os.statsbootstrap_aidl-cpp,
+  libincremental_aidl-cpp, android.debug_aidl-cpp).
+  Dep-closure verified (audit over the erroring consumers'
+  DIRECT deps, following defaults one level): every other
+  direct dep is defined in-tree (non-pruned) or already
+  stubbed; the only undefined-but-unreported direct dep is
+  libcharger_sysprop (sysprop-generated, never reported in
+  runs #6-#182). Checked, NOT stubbed (never reported in any
+  raw log, runs #6-#182): libcharger_sysprop,
+  avf_build_flags_cc (ALREADY stubbed as cc_defaults - not a
+  missing module; do not confuse with libavf_cc_flags),
+  libbootloader_message_vendor (referenced only by
+  hardware/google/pixel/bootctrl + misc_writer, which the
+  prune deletes wholesale), misctrl / gsid / gsi_tool
+  (referenced only in the build/make/target/product/generic
+  product-packages list, not a Soong dep edge), libstatslogc,
+  libxml2_ndk, libnativeloader (all unreferenced in-tree),
+  android.hardware.boot@1.2, android.hardware.graphics.common
+  @1.1/@1.2, allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+  libLibGuiProperties, libhealthhalutils, libhealthshim,
+  libfastbootshim, libcom.android.sysprop.apex (both
+  sysprop-generated). WATCH ITEM (not implemented):
+  headers/symbols may be needed later IF a future round fails
+  past Soong at compile/link - several consumers #include
+  generated headers or call real functions (per-module notes
+  in research-182-modules.md). The build target is ONLY
+  android.hardware.light-service.samsung (shared_libs libbase,
+  libbinder_ndk, android.hardware.light-V2-ndk) - NONE of the
+  13 is in its closure, verified locally - so bare stubs
+  suffice for THIS target.
+
+  CACHE NOTE (run #182): the save-always flip still does NOT
+  save the cache. "Restore repo cache" was a MISS (0s, sync
+  7m12s) and no Save step ran - same as runs #118/#121/#124/
+  #127/#130/#134/#137/#140/#143/#146/#149/#152/#155/#158/
+  #159/#160/#161/#162/#163/#164/#165/#166/#167/#168/#169/
+  #170/#171/#172/#173/#174/#175/#176/#177/#178/#179. The next
+  run will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
