@@ -3160,6 +3160,206 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~9-12 min
           # on the next run too.
+          # Runs #199/#200/#201/#202 fix: stub 7 modules, no prunes.
+          # Runs #199 (46029753689), #200 (46030211343), #201
+          # (46030387694) and #202 (46030486320, manual dispatch
+          # ~21:34 IST on commit 8d5617e) ALL FAILED at Soong
+          # ninja-file generation on the SAME fix code (head 8d5617e
+          # — the 16-module fix, workflow 1c55715). #199 is a
+          # STAGED-COMMIT artifact (stubs push 782cfa5 — it ran the
+          # OLD workflow, no prunes), so its VTS pair is NOT fixed
+          # here; the prunes work (#201/#202 prove it: zero VTS
+          # errors). #200's whole raw log (job 140611797671)
+          # CONFIRMS the 6 sensorservice lines are genuine Soong
+          # output (16:16:50.098-099Z, no "#" prefix, right after
+          # the ninja FAILED line, each followed by an "Or did you
+          # mean...?" line, then ninja stopped / bootstrap failed);
+          # a whole-log search for "depends on undefined module"
+          # returns exactly 18 lines: the 6 genuine ones plus 12
+          # "#" comment lines (16:16:12, BEFORE the Build step, in
+          # Verify-sync/Prune steps) — none of the 12 is a full
+          # libsensorservice error line, and
+          # sensors@2.X-shared-utils never appears in a "#" line at
+          # all. #200 has ZERO libtestUtil lines. #201 + #202 report
+          # exactly ONE genuine error each (failing-step tails +
+          # #202 whole raw log, job 140612737197):
+          # libpowermanager_benchmarks needs libtestUtil. UNION
+          # across the four runs = 7 modules. The 16-module fix
+          # HELD completely in #201/#202 (zero genuine errors for
+          # any of its 16 in any raw log); zero "expected assignment
+          # or module definition" lines (the #185 stray-# fix HELD).
+          # Pre-build guard PASSED in #201/#202. Subset variation
+          # again: #200's traversal hit libsensorservice first,
+          # #201/#202's hit libtestUtil first (same pattern as
+          # #192/#193/#194: 5 vs 40 vs 2, and #195/#196/#197/#198:
+          # 21 vs 6 vs 4).
+          # Failure (verbatim, raw logs — consumer file paths
+          # verified locally in ~/workspace/lights-local):
+          #   libsensorservice needs
+          #   android.hardware.sensors@2.X-shared-utils
+          #   (header_libs) + libfmq (shared_libs) +
+          #   android.hardware.sensors@2.0 +
+          #   android.hardware.sensors@2.1 +
+          #   android.hardware.common.fmq-V1-ndk (shared_libs) +
+          #   framework-cppstream-protos (generated_headers)
+          #   (frameworks/native/services/sensorservice/
+          #   Android.bp:23:1).
+          #   libpowermanager_benchmarks needs libtestUtil
+          #   (static_libs) (frameworks/native/services/
+          #   powermanager/benchmarks/Android.bp:24:1).
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1, in all four.
+          # The sensorservice lines visible in #202's log are ALL
+          # "#" comment echoes in the echoed workflow script block
+          # at the start of the Build step — same phantom class as
+          # libcharger_sysprop, NOT evidence for the 6 modules.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: script echo/comments only — ZERO in any Build
+          # step output, same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198.
+          # FIRST-EVER reported: the first sensors@2.0/@2.1 HIDL
+          # libs, the first sensors@2.X-shared-utils header lib, the
+          # first libfmq, the first common.fmq -ndk lib, the first
+          # framework-cppstream-protos (first gensrcs-type module),
+          # the first libtestUtil. Note #200 reported 6 lines and
+          # #201/#202 only 1 on the SAME code — subset variation is
+          # real and lossy, proven again.
+          # STUBS (7, all in build-lights/yuzora-stubs-Android.bp
+          # — the static file, NOT the workflow; the workflow only
+          # gains this comment block + the prune-step + guard
+          # checks below):
+          #   5 plain cc_library: 2 HIDL @x.y libs defined ONLY in
+          #     pruned dirs: android.hardware.sensors@2.0 +
+          #     @2.1 (hidl_interface in hardware/interfaces/sensors/
+          #     2.0 + 2.1/Android.bp, pruned by the #42 closure
+          #     prune); 1 AIDL -ndk lib
+          #     (android.hardware.common.fmq-V1-ndk, generated from
+          #     aidl_interface android.hardware.common.fmq v1 in
+          #     hardware/interfaces/common/fmq/aidl/Android.bp —
+          #     stability vintf, frozen true, ndk backend enabled
+          #     with min_sdk_version "29"; dir pruned, common/
+          #     keeps only aidl); 1 plain library (libfmq,
+          #     upstream cc_library in platform/system/libfmq/
+          #     Android.bp — project NOT in the 32-project manifest,
+          #     unsynced); 1 test utility (libtestUtil — upstream
+          #     definition NOT located after bounded search:
+          #     whole-tree grep 0 hits, no testUtil.h in the tree,
+          #     opengl/tests/util/Android.bp 404 on LineageOS
+          #     lineage-22.2 AND AOSP r32, GitHub API rate-limited,
+          #     web search inconclusive — plain per the #182
+          #     libincremental_aidl-cpp and #186 libprotoutil
+          #     precedent; consumed via static_libs by three
+          #     in-graph modules: libpowermanager_benchmarks,
+          #     libglTest, libhwcTest).
+          #   1 cc_library_headers:
+          #     android.hardware.sensors@2.X-shared-utils — upstream
+          #     cc_library_headers in hardware/interfaces/sensors/
+          #     common/utils/Android.bp (pruned dir), consumed via
+          #     header_libs by libsensorservice; same form as
+          #     libimapper_stablec / libimapper_providerutils (#194).
+          #   1 genrule: framework-cppstream-protos — upstream
+          #     gensrcs in frameworks/base/ProtoLibraries.bp
+          #     (unsynced frameworks/base), generating .proto.h via
+          #     aprotoc + protoc-gen-cppstream. Soong REQUIRES a
+          #     SourceFileGenerator for generated_headers deps:
+          #     build/soong/cc/cc.go:3027-3045 type-asserts the dep
+          #     and errors "module %q is not a genrule" when it is
+          #     not one — a plain cc_library stub would FAIL. The
+          #     genrule shape (out + cmd "touch $(out)") mirrors
+          #     the cxx-bridge-header / platform_tools_version
+          #     stubs already in this file.
+          # NO prunes this round. Prune alternative for libtestUtil
+          # REJECTED (recorded): pruning powermanager/benchmarks
+          # alone would leave libglTest + libhwcTest (both in-graph,
+          # unpruned test dirs) to surface libtestUtil in a later
+          # run via subset variation; one stub fixes all three
+          # consumers at once. libsensorservice itself cannot be
+          # pruned: it is in base_system.mk PRODUCT_PACKAGES and
+          # the sensorservice binary is a system service (same
+          # logic as storaged/dumpstate in #195).
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on both consumer files — zero
+          # hits). The fmq / common aidl_interface ndk-backend
+          # min_sdk_version "29" is on the interface definition,
+          # not on any consumer (same as dumpstate-V1-ndk in #195).
+          # NOT STUBBED (never reported in any raw log, runs #6–#202
+          # — do NOT stub unless a raw log reports one):
+          #   libactivitymanager_aidl, libbatterystats_aidl,
+          #   libaconfig_storage_read_api_cc (libsensorservice
+          #   direct deps, undefined, never reported — they may
+          #   surface in a later round via subset variation;
+          #   "never reported" means "not yet surfaced", not
+          #   "exempt" — see the #186 puzzle resolution below);
+          #   libpower (2.X-shared-utils dep, undefined, never
+          #   reported); libcharger_sysprop (sysprop-generated
+          #   phantom); libhidl_gtest_helper + VtsHalHidlTestUtils
+          #   (#199 staged-commit artifact; prunes already applied
+          #   and proven in #201/#202).
+          #   Carried forward: android.hardware.boot@1.2,
+          #   android.hardware.graphics.common@1.1/@1.2,
+          #   allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+          #   libLibGuiProperties, libhealthhalutils,
+          #   libhealthshim, libfastbootshim,
+          #   libcom.android.sysprop.apex (sysprop-generated);
+          #   libkeymaster_messages, libkeymaster3device,
+          #   android.hardware.keymaster@3.0 (reported in #186 but,
+          #   after the trusty/keymaster prune, referenced only in
+          #   pruned hardware/interfaces/* dirs); avf_build_flags_cc
+          #   (ALREADY stubbed as cc_defaults).
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   libsensorservice: libcutils (in-tree) / libhardware
+          #     (stubbed #135) / libhardware_legacy (stubbed #194) /
+          #     libutils / liblog (in-tree) / libbinder (in-tree) /
+          #     libsensor (in-tree) / libsensorprivacy (in-tree) /
+          #     libpermission (in-tree) / libprotoutil (stubbed #186)
+          #     / libcrypto (stubbed) / libbase (in-tree) /
+          #     libhidlbase (stubbed) / libbinder_ndk (in-tree) /
+          #     packagemanager_aidl-cpp (in-tree, #195) /
+          #     sensors@1.0 (stubbed #195) /
+          #     android.hardware.common-V2-ndk (IN-TREE: aidl_interface
+          #     android.hardware.common in the KEPT common/aidl dir,
+          #     versions ["1", "2"]) / server_configurable_flags
+          #     (stubbed #119) / libaidlcommonsupport (stubbed #194)
+          #     / sensors@1.0-convert (stubbed #195) /
+          #     sensors-V1-convert (stubbed #138) / sensors-V3-ndk
+          #     (stubbed #138) / sensorservice_flags_c_lib (defined
+          #     in-tree, same file). UNDEFINED but never reported:
+          #     libactivitymanager_aidl, libbatterystats_aidl,
+          #     libaconfig_storage_read_api_cc (see NOT STUBBED).
+          #   libpowermanager_benchmarks: defaults
+          #     android.hardware.power-ndk_shared (ALREADY STUBBED,
+          #     cc_defaults) / libbase / libbinder / libbinder_ndk /
+          #     libhidlbase (stubbed) / liblog / libpowermanager
+          #     (stubbed #194) / libutils / power@1.0-@1.3 (stubbed
+          #     #194) — all in-tree or stubbed.
+          # THE #186 PUZZLE, RESOLVED: libsensorservice IS in
+          # base_system.mk:195 PRODUCT_PACKAGES (and
+          # generic/Android.bp:990) yet never errored in 186 runs
+          # despite undefined deps, while atrace (same .mk file,
+          # :34) DID surface. Resolution: subset variation / Soong
+          # traversal order — Soong reports a different, lossy
+          # subset every run on identical code (proven #192/#193/
+          # #194: 5 vs 40 vs 2; #195–#198: 21 vs 6 vs 4; #199–#202:
+          # 6 vs 1). libsensorservice stayed silent by traversal
+          # order for 186 runs and surfaced in #200 with 6 deps.
+          # There is no mechanism exempting it.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link. The build target is ONLY
+          # android.hardware.light-service.samsung — NONE of the 7
+          # new stubs is in its closure, verified locally — so bare
+          # stubs suffice for THIS target. If a future round fails
+          # past Soong, ship the headers/symbols then; do not
+          # pre-build them now. (Same watch-item form as #182/#186/
+          # #194/#195.)
+          # CACHE NOTE (runs #199/#200/#201/#202): Restore is expected
+          # to miss (0-1s, sync ~9-12 min) and no Save step is
+          # expected — save-always still does not save; the
+          # separate restore+save steps need his word (see the
+          # manifest). Expect Restore to miss and sync ~9-12 min
+          # on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4099,6 +4299,41 @@ jobs:
             grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
           done
           echo "runs #195/#196/#197/#198 stubs created: 8 plain cc_library + libhealthhalutils + libhealthshim cc_library_static stubs (10 total); 3 dirs pruned (sensorservice/tests + light/aidl/vts + trusty/keymint)."
+          # Runs #199/#200/#201/#202 fix: verify the 7 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186/#192/#195 loops above).
+          for stub in libtestUtil libfmq android.hardware.sensors@2.0 android.hardware.sensors@2.1 android.hardware.common.fmq-V1-ndk android.hardware.sensors@2.X-shared-utils framework-cppstream-protos; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #199/#200/#201/#202 fix: the 5 plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 / #168 / #171 / #174 / #177 / #180 / #186 / #192 /
+          # #195 checks): a cc_library_shared stub cannot provide the
+          # static variant the static_libs consumers need, and a
+          # cc_library_static stub cannot provide the shared variant
+          # the shared_libs consumers need.
+          for stub in libtestUtil libfmq android.hardware.sensors@2.0 android.hardware.sensors@2.1 android.hardware.common.fmq-V1-ndk; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #199/#200/#201/#202 fix: the headers stub must be
+          # cc_library_headers (same grep -A1 form as the #194 /
+          # #156 checks): libsensorservice consumes it via
+          # header_libs, which needs the headers variant.
+          for stub in android.hardware.sensors@2.X-shared-utils; do
+            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
+          done
+          # Runs #199/#200/#201/#202 fix: the protos stub must be a
+          # genrule (same grep -A1 form): Soong requires a
+          # SourceFileGenerator for generated_headers deps — a plain
+          # cc_library stub would fail with "module ... is not a
+          # genrule" at Soong (build/soong/cc/cc.go:3027-3045).
+          for stub in framework-cppstream-protos; do
+            grep -A1 'genrule {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a genrule"; exit 1; }
+          done
+          echo "runs #199/#200/#201/#202 stubs created: 5 plain cc_library + android.hardware.sensors@2.X-shared-utils cc_library_headers + framework-cppstream-protos genrule stubs (7 total). No prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -4122,6 +4357,8 @@ jobs:
           echo "runs #192/#193/#194 fix: 34 plain cc_library + 2 cc_library_headers + 3 cc_library_static stubs created (39 total). No prunes this round."
 
           echo "runs #195/#196/#197/#198 fix: 8 plain cc_library + 2 cc_library_static stubs created (10 total); frameworks/native/services/sensorservice/tests + hardware/interfaces/light/aidl/vts + system/core/trusty/keymint pruned whole."
+
+          echo "runs #199/#200/#201/#202 fix: 5 plain cc_library + 1 cc_library_headers + 1 genrule stubs created (7 total). No prunes this round."
 
 
 
@@ -4628,6 +4865,28 @@ jobs:
           # step above).
           for stub in libhealthhalutils libhealthshim; do
             grep -A1 'cc_library_static {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
+          done
+          # Runs #199/#200/#201/#202 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in libtestUtil libfmq android.hardware.sensors@2.0 android.hardware.sensors@2.1 android.hardware.common.fmq-V1-ndk android.hardware.sensors@2.X-shared-utils framework-cppstream-protos; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #199/#200/#201/#202 fix: the 5 plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in libtestUtil libfmq android.hardware.sensors@2.0 android.hardware.sensors@2.1 android.hardware.common.fmq-V1-ndk; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #199/#200/#201/#202 fix: the headers stub must be
+          # cc_library_headers at build time (same check as the prune
+          # step above).
+          for stub in android.hardware.sensors@2.X-shared-utils; do
+            grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
+          done
+          # Runs #199/#200/#201/#202 fix: the protos stub must be a
+          # genrule at build time (same check as the prune step above).
+          for stub in framework-cppstream-protos; do
+            grep -A1 'genrule {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a genrule"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
