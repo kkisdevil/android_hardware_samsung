@@ -5804,3 +5804,68 @@ cc_library {
         "//visibility:public",
     ],
 }
+
+// Runs #215/#216/#217/#218 fix: 4 new stubs (see the comment block in
+// the prune step of .github/workflows/build-lights-hal.yml for the
+// per-module verification).
+// 3 plain cc_library:
+//   android.hardware.fastboot@1.1 — HIDL @x.y lib defined ONLY in
+//     the pruned hardware/interfaces/fastboot/1.1 dir
+//     (hidl_interface, interfaces fastboot@1.0 + hidl.base@1.0,
+//     gen_java true); same form as the #210 composer@2.4 stub.
+//   android.hardware.fastboot-V1-ndk — AIDL -ndk lib generated from
+//     aidl_interface android.hardware.fastboot v1 in the pruned
+//     hardware/interfaces/fastboot/aidl dir (ndk backend enabled);
+//     plain cc_library per the #174/#177/#194 AIDL -ndk precedent.
+//   android.hardware.confirmationui-V1-ndk — AIDL -ndk lib generated
+//     from aidl_interface android.hardware.confirmationui v1 in the
+//     pruned hardware/interfaces/confirmationui/aidl dir (ndk
+//     backend enabled, apps_enabled false); plain cc_library per
+//     the same precedent.
+// 1 cc_library_static:
+//   libfastbootshim — cc_library_static in the pruned
+//     hardware/interfaces/fastboot/aidl/fastbootshim dir (srcs
+//     fastbootshim.cpp, recovery_available true); stub mirrors the
+//     upstream type exactly. CORRECTION: earlier workflow comments
+//     claimed this lib is defined nowhere in the synced tree —
+//     wrong, it IS defined in-tree, in a pruned dir.
+// A plain cc_library yields both variants, so one stub satisfies
+// shared_libs consumers (fastbootd) alike. No sdk_version on any
+// new stub: no consumer sets sdk_version (verified on both
+// consumer files — zero hits).
+cc_library {
+    name: "android.hardware.fastboot@1.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.fastboot-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.confirmationui-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libfastbootshim",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
