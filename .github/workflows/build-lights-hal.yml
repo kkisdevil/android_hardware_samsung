@@ -2120,9 +2120,59 @@ jobs:
           // Linked statically, so this stub is an (empty) cc_library_static with the dummy source
           // empty.c — same form as the hintmanager/skia stubs. The defining project is unsynced
           // and libmath_headers is never built here, so the empty lib never links into anything.
+          // Runs #144/#145/#146 fix: the #141/#142/#143 fix HELD in
+          // all three (prune step passed + pre-build guard passed,
+          // zero "depends on undefined module" / "missing variant"
+          // lines in any raw log - the 9 new stubs all resolved).
+          // All three fail at Soong ninja-file generation, 36-51s
+          // into the build step, on the SAME fix code (head add4635
+          // - the #141/#142/#143 fix, workflow e5946a7; #144 is the
+          // manifest push 12f612a, #145 the README push add4635 -
+          // same workflow file in all three, #146 a manual dispatch
+          // ~05:45 IST on add4635). NEW failure class, not an
+          // undefined module: a Soong dependency cycle, raw-log
+          // verbatim from #146 (job-logs.txt, Build step lines
+          // 476-478; log-search verified 0 matches for "depends on
+          // undefined module", "missing variant" and "undefined"):
+          //   error: prebuilts/clang/host/linux-x86/Android.bp:444:1:
+          //     encountered dependency cycle:
+          //   error: yuzora-stubs/Android.bp:620:1: module
+          //     "libwinpthread" variant "windows_x86_static" depends
+          //     on module "libc++_static" variant "windows_x86_static"
+          //   error: prebuilts/clang/host/linux-x86/Android.bp:444:1:
+          //     module "libc++_static" variant "windows_x86_static"
+          //     depends on module "libwinpthread" variant
+          //     "windows_x86_static"
+          // FAILED line is out/soong/build.yuzora_lights.ninja.
+          // Root cause, verified in the SYNCED Soong source
+          // (build/soong/cc): (1) this stub has no `stl:` property,
+          // so it takes Soong's default STL - stl.go says a blank
+          // stl selects "libc++_static" (case "libc++",
+          // "libc++_static", "" -> "libc++_static", and stl.deps
+          // adds it as a dep) - so the stub depends on the real
+          // libc++_static (llvm_prebuilt_library_static,
+          // prebuilts/clang/host/linux-x86/Android.bp:444, the
+          // windows variant, since this stub is windows-enabled).
+          // (2) The real libc++_static depends back on this stub:
+          // linker.go:441-442 appends "libwinpthread" to
+          // LateStaticLibs for EVERY windows-variant cc module
+          // except libwinpthread itself. The two edges close a
+          // cycle. It surfaced only now because Soong's cycle
+          // check runs once all modules resolve - every earlier
+          // run died on undefined-module errors first (same
+          // one-layer-deeper pattern as #30/#33/#75/#102). Fix:
+          // `stl: "none"` on this stub (the empty.c stub needs no
+          // STL; the real libc++_static block itself carries
+          // `stl: "none"`). The reverse edge stays, one-way, so
+          // the cycle is broken. The stub stays cc_library_static
+          // with windows enabled - the #78/#79/#80 missing-variant
+          // errors (os:windows,link:static) still need exactly
+          // that. A second cycle behind this one, if any, will
+          // surface on the next run the same way.
           cc_library_static {
             name: "libwinpthread",
             srcs: ["empty.c"],
+            stl: "none",
             host_supported: true,
             target: { windows: { enabled: true } },
             visibility: [
@@ -5284,6 +5334,14 @@ jobs:
           # at creation time (same check as the libz/libcrypto/libselinux
           # checks above) - host-apex-verifier needs the shared variant.
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libpcre2"' || { echo "::error::libpcre2 stub is not a plain cc_library"; exit 1; }
+          # Runs #144/#145/#146 fix: libwinpthread must carry stl: "none"
+          # (same block-range form as the #110 defaults check - the stl:
+          # line sits below the name: line, so a fixed -A<N> window
+          # would false-negative). Without it the stub takes Soong's
+          # default STL libc++_static while the real libc++_static gains
+          # libwinpthread as a LateStaticLib for every windows cc module
+          # (linker.go:441-442) - a dependency cycle that fails Soong.
+          sed -n '/name: "libwinpthread"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'stl: "none"' || { echo "::error::libwinpthread stub must carry stl: \"none\" (runs #144/#145/#146 cycle fix)"; exit 1; }
           # The common-ndk_shared defaults must forward V6-ndk into
           # shared_libs (runs #105/#106/#107 fix) or libgralloctypes'
           # export_shared_lib_headers check fails again.
@@ -5365,6 +5423,7 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #141/#142/#143 stubs created: libstatslog + libflagtest + libpalmrejection + libperfetto_client_experimental + perfetto_winscope_extensions_zero + libchrome-gestures + android.hardware.input.processor-V1-ndk + libkll + libstatspull cc_library stubs. No type changes this round."
+          echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
 
 
 
@@ -5672,6 +5731,9 @@ jobs:
           # Runs #131/#132/#133/#134 fix: libpcre2 must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libpcre2"' || { echo "::error::pre-build guard: libpcre2 stub is not a plain cc_library"; exit 1; }
+          # Runs #144/#145/#146 fix: libwinpthread must carry stl: "none"
+          # at build time (same check as the prune step above).
+          sed -n '/name: "libwinpthread"/,/^ *}/p' yuzora-stubs/Android.bp | grep -Fq 'stl: "none"' || { echo "::error::pre-build guard: libwinpthread stub must carry stl: \"none\" (runs #144/#145/#146 cycle fix)"; exit 1; }
           # Runs #105/#106/#107 fix: the common-ndk_shared defaults must
           # forward V6-ndk at build time (same check as the prune step).
           # Run #110 fix: grep -A5 false-negatived here too (the V6-ndk
