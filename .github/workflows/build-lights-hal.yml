@@ -1490,6 +1490,186 @@ jobs:
           #     crash_dump.policy is a prebuilt_etc defined in the
           #     same debuggerd/Android.bp. libtinyxml2 (the
           #     malloc_debug_unit_tests dep) is already stubbed.
+          # Runs #171/#172/#173 fix: stub nine modules, prune
+          # nothing. Runs #171 (45963013734, 14m39s, auto, manifest
+          # b55e406), #172 (45963169508, 14m15s, auto, README
+          # bbbab53) and #173 (45963299051, 13m26s, manual dispatch
+          # ~13:37 IST 2026-11-27, head bbbab53 — the runs
+          # #168/#169/#170 fix, workflow 09d5008) ALL FAILED at
+          # Soong ninja-file generation, 36s (#171/#173) / 44s
+          # (#172) into the "Build lights HAL" step, on the same
+          # fix code. The #168/#169/#170 fix HELD COMPLETELY in
+          # all three (prune step passed + pre-build guard passed;
+          # ZERO genuine errors for any of its 5 modules in any
+          # raw log). Subset variation again: the fix covers the
+          # UNION (9 distinct undefined modules, 12 error lines).
+          # Raw-log verbatim error union — verified TWICE (browser
+          # job-logs.txt read of all three raw logs + direct grep
+          # of the downloaded log archives; the two reads agree
+          # exactly, genuine "error:" lines only):
+          #   #171 (4 lines, 08:20:07Z): "libsnapshot_headers"
+          #     needs "update_metadata-protos"
+          #     (system/core/fs_mgr/libsnapshot/Android.bp:99:1);
+          #     "crash_dump" needs
+          #     "libnative_bridge_support_accessor_headers" +
+          #     "libnative_bridge_guest_state_accessor"
+          #     (system/core/debuggerd/Android.bp:438:1);
+          #     "libnetutils" needs "libip_checksum"
+          #     (system/core/libnetutils/Android.bp:18:1).
+          #   #172 (5 lines, 08:20:59Z): "libgui_headers" needs
+          #     "android.hidl.token@1.0-utils" +
+          #     "android.hardware.graphics.bufferqueue@1.0" +
+          #     "android.hardware.graphics.bufferqueue@2.0"
+          #     (frameworks/native/libs/gui/Android.bp:49:1);
+          #     "android.hardware.confirmationui.not-so-secure-input"
+          #     needs "libteeui_hal_support"
+          #     (system/core/trusty/confirmationui/Android.bp:105:1);
+          #     "trusty_acvp_modulewrapper" needs
+          #     "libacvp_modulewrapper"
+          #     (system/core/trusty/utils/acvp/Android.bp:18:1).
+          #   #173 (3 lines, 08:21:10Z): the "libgui_headers" trio,
+          #     IDENTICAL to #172's first three.
+          # Soong reports each undefined module ONCE: e.g.
+          # "update_metadata-protos" is referenced by three
+          # modules (libsnapshot_defaults, fastboot, init) but
+          # reported once, at libsnapshot_headers:99.
+          # UI-LOG READ OF #173 WAS ENTIRELY PHANTOM: it invented
+          # "libsamsung_symbols" errors (libprocessgroup/libbase/
+          # liblog/libutils/libcutils "referenced" from
+          # hardware/samsung/libsamsung_symbols/libsamsung_symbols.cc)
+          # that appear NOWHERE in any raw log, and a step named
+          # "Prune + sync hardware/samsung (minimal)" that does
+          # not exist in the workflow file. The raw log is
+          # authoritative — third UI-read failure of this class
+          # (after #84/#96/#107/#161). libsamsung_symbols.cc does
+          # not exist in the synced tree (hardware/samsung/* is
+          # pruned except aidl/light); libprocessgroup/libbase/
+          # liblog/libutils/libcutils are all defined in-tree.
+          # The "ninja: error ... libcharger_sysprop_rust.so ..."
+          # line: 1 match per raw log, 0 genuine — the workflow's
+          # own history comment echo. CONFIRMED PHANTOM, same
+          # class as #152/#161. FAILED line in all three is
+          # out/soong/build.yuzora_lights.ninja, soong bootstrap
+          # failed, exit status 1. Cache: Restore MISS 0s in all
+          # three (sync 9m18s on #173), no cache saved — same as
+          # every run since #118; the separate restore+save steps
+          # still need his word, NOT changed here.
+          # STUBS (9, all in yuzora-stubs/Android.bp below):
+          #   android.hidl.token@1.0-utils — plain cc_library
+          #     (shared_libs consumer libgui_headers + libgui;
+          #     upstream type cc_library in unsynced
+          #     hardware/interfaces/token/1.0/utils — the synced
+          #     tree has no hardware/interfaces/token dir at all).
+          #     Defined NOWHERE in the tree.
+          #   android.hardware.graphics.bufferqueue@1.0 +
+          #     @2.0 — plain cc_library (shared_libs consumers
+          #     libgui_headers + libgui_bufferqueue_static + libgui
+          #     + android.frameworks.automotive.display@1.0-service;
+          #     upstream hidl_interface in
+          #     hardware/interfaces/graphics/bufferqueue/{1.0,2.0}
+          #     — hardware/interfaces IS synced but the closure
+          #     prune deletes graphics/*, same story as
+          #     allocator@2.0 (#156)). Defined only there.
+          #   update_metadata-protos — plain cc_library
+          #     (static_libs consumers libsnapshot_defaults +
+          #     fastboot + init, export_static_lib_headers
+          #     consumer libsnapshot_defaults; a plain cc_library
+          #     yields both variants — #165 libdexfile_support
+          #     precedent). Defined NOWHERE in the tree.
+          #   libnative_bridge_support_accessor_headers —
+          #     cc_library_headers (header_libs consumer crash_dump,
+          #     same form as the #165 bpf_headers / #168
+          #     scudo_headers stubs). Defined NOWHERE.
+          #   libnative_bridge_guest_state_accessor — plain
+          #     cc_library (static_libs consumer crash_dump).
+          #     Defined NOWHERE. CORRECTION of the #168 assessment:
+          #     the #168 fix listed these two as "out-of-graph
+          #     (crash_dump binary only), do NOT stub" — #171 proves
+          #     crash_dump IS evaluated by Soong, so that reasoning
+          #     was wrong; the subset-reporting rule is operative.
+          #   libip_checksum — plain cc_library (static_libs
+          #     consumer libnetutils). Defined NOWHERE.
+          #   libteeui_hal_support — plain cc_library (shared_libs
+          #     consumer android.hardware.confirmationui
+          #     .not-so-secure-input). Defined NOWHERE.
+          #   libacvp_modulewrapper — plain cc_library
+          #     (static_libs consumer trusty_acvp_modulewrapper).
+          #     Defined NOWHERE.
+          # NO PRUNES this round: the referencers are core platform
+          # modules — libgui lives in frameworks/native, the rest in
+          # system/core (fs_mgr, debuggerd, libnetutils, trusty,
+          # fastboot, init); none of those dirs can be pruned. The
+          # trusty confirmationui + utils/acvp dirs could in
+          # principle be pruned whole (trusty-only, like
+          # trusty/test + trusty/stats in #162/#68), but stubbing
+          # the two libs is lower-risk and follows the stub
+          # precedent; the dirs stay.
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on every consumer block:
+          # libgui_headers + libgui carry min_sdk_version "29"
+          # only; libsnapshot_defaults, crash_dump /
+          # debuggerd_defaults, libnetutils, confirmationui,
+          # acvp, fastboot, init — zero sdk_version lines in any
+          # of those files), so no stub needs the sdk variant
+          # (same rule as the #159/#160/#161 fix).
+          # CHECKED, NOT STUBBED (never reported in any raw log,
+          # runs #6–#173 — do NOT stub unless a raw log reports
+          # one; stubbing a module Soong may consider defined
+          # risks a duplicate-definition error):
+          #   android.hardware.graphics.common@1.1/@1.2,
+          #     allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0 —
+          #     referenced by surviving modules in the local tree
+          #     (libgui_bufferqueue-defaults shared_libs, libui,
+          #     libnativewindow, surfaceflinger) and still listed
+          #     in the live upstream lineage-22.2 libs/gui/ +
+          #     libs/ui/Android.bp (verified 2026-11-27:
+          #     common@1.1 still listed twice in gui, allocator@3.0/
+          #     @4.0 + common@1.2 + mapper@2.0/2.1/3.0/4.0 still in
+          #     ui), yet never errored in any run — Soong does not
+          #     validate those references (same class as the
+          #     -ndk/HIDL libs rule). Same for libLibGuiProperties
+          #     (whole_static_libs of libgui_bufferqueue-defaults,
+          #     defined nowhere in the local tree, never reported).
+          #   libbootloader_message, liblmkd_utils, libxml2
+          #     (fastboot/init deps; defined nowhere in the synced
+          #     tree — bootable/external unsynced) +
+          #     libhealthhalutils / libhealthshim / libfastbootshim
+          #     (defined only in pruned hardware/interfaces/health
+          #     + fastboot/aidl dirs): same rule.
+          #   libtombstoned_client_static — defined in-tree
+          #     (system/core/debuggerd/Android.bp:73); needs nothing.
+          # DEP-CLOSURE VERIFIED (every other DIRECT dep of the
+          # erroring consumers is defined in-tree or already
+          # stubbed; the defaults-inherited HIDL deps above are
+          # the only known exception and are in the NOT-STUBBED
+          # bucket, never reported in 173 runs):
+          #   libgui_headers: libguiflags defined in-tree. libgui
+          #     (bufferqueue-static via defaults + shared lib):
+          #     libbase/libcutils/libEGL/liblog/libnativewindow/
+          #     libsync/libui/libutils defined, libhidlbase
+          #     stubbed.
+          #   libsnapshot_headers via libsnapshot_defaults:
+          #     libbase/libcutils/liblog defined, libchrome
+          #     stubbed; libbrotli/libz/libext2_uuid/libext4_utils
+          #     stubbed; libdm/libfstab/libsnapuserd_client/
+          #     libfiemap_headers/libstorage_literals_headers/
+          #     fs_mgr_defaults defined in-tree,
+          #     libupdate_engine_headers stubbed (#119).
+          #   crash_dump: header_libs bionic_libc_platform_headers
+          #     defined; static_libs libtombstoned_client_static +
+          #     libdebuggerd + libcutils + libtombstone_proto
+          #     defined, libprotobuf-cpp-lite stubbed; shared_libs
+          #     libbase + liblog defined, libprocinfo +
+          #     libunwindstack stubbed; target.android shared_libs
+          #     libdl_android defined in-tree; required
+          #     crash_dump.policy is a prebuilt_etc defined in the
+          #     same debuggerd/Android.bp.
+          #   libnetutils: libcutils + liblog defined.
+          #   confirmationui not-so-secure-input: libbase defined,
+          #     libcrypto stubbed.
+          #   trusty_acvp_modulewrapper: libbase/libc/liblog
+          #     defined, libdmabufheap stubbed, libtrusty defined
+          #     in-tree, libssl stubbed.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -6401,6 +6581,99 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #171/#172/#173 fix: nine new stubs (see the comment
+          // block in the prune step above for the per-module
+          // verification). Eight are plain cc_library — a plain
+          // cc_library yields both variants, so one stub satisfies
+          // the shared_libs consumers (libgui_headers, libgui,
+          // confirmationui) and the static_libs consumers
+          // (libsnapshot_defaults, crash_dump, libnetutils,
+          // trusty_acvp_modulewrapper) alike; same form as the
+          // #156 allocator@2.0 stub (also a HIDL lib) and the #165
+          // libdexfile_support stub. libnative_bridge_support_
+          // accessor_headers is cc_library_headers (header_libs
+          // consumer crash_dump), same form as the #165 bpf_headers
+          // / #168 scudo_headers stubs. No sdk_version on any new
+          // stub: no consumer sets sdk_version.
+          cc_library {
+              name: "android.hidl.token@1.0-utils",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.graphics.bufferqueue@1.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.graphics.bufferqueue@2.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "update_metadata-protos",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_headers {
+              name: "libnative_bridge_support_accessor_headers",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libnative_bridge_guest_state_accessor",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libip_checksum",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libteeui_hal_support",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libacvp_modulewrapper",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -6787,6 +7060,27 @@ jobs:
           # type): header_libs consumers need a headers module.
           grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "scudo_headers"' || { echo "::error::stub scudo_headers is not a cc_library_headers"; exit 1; }
           echo "runs #168/#169/#170 stubs created: libmemory_trace + gwp_asan_crash_handler cc_library_static stubs; libmemunreachable + libevent plain cc_library stubs; scudo_headers cc_library_headers stub. No prunes, no type changes this round."
+          # Runs #171/#172/#173 fix: verify the nine new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/#168 loops above).
+          for stub in android.hidl.token@1.0-utils android.hardware.graphics.bufferqueue@1.0 android.hardware.graphics.bufferqueue@2.0 update_metadata-protos libnative_bridge_support_accessor_headers libnative_bridge_guest_state_accessor libip_checksum libteeui_hal_support libacvp_modulewrapper; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #171/#172/#173 fix: the eight plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 / #168 checks): a cc_library_shared stub cannot
+          # provide the static variant the static_libs consumers need,
+          # and a cc_library_static stub cannot provide the shared
+          # variant the shared_libs consumers need.
+          for stub in android.hidl.token@1.0-utils android.hardware.graphics.bufferqueue@1.0 android.hardware.graphics.bufferqueue@2.0 update_metadata-protos libnative_bridge_guest_state_accessor libip_checksum libteeui_hal_support libacvp_modulewrapper; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #171/#172/#173 fix: the headers stub must be
+          # cc_library_headers (same grep -A1 form, with the headers
+          # type): header_libs consumers need a headers module.
+          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnative_bridge_support_accessor_headers"' || { echo "::error::stub libnative_bridge_support_accessor_headers is not a cc_library_headers"; exit 1; }
+          echo "runs #171/#172/#173 stubs created: android.hidl.token@1.0-utils + android.hardware.graphics.bufferqueue@1.0 + @2.0 + update_metadata-protos + libnative_bridge_guest_state_accessor + libip_checksum + libteeui_hal_support + libacvp_modulewrapper plain cc_library stubs; libnative_bridge_support_accessor_headers cc_library_headers stub. No prunes, no type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -6796,6 +7090,8 @@ jobs:
           echo "runs #165/#166/#167 fix: librustutils + libdexfile_support + libdexfile + libminui + libminijail + libdmabufheap + libmeminfo + bpf_prog_headers + bpf_headers + libbpf_bcc + libbpf_minimal stubs created. No type changes this round."
 
           echo "runs #168/#169/#170 fix: libmemory_trace + libmemunreachable + libevent + scudo_headers + gwp_asan_crash_handler stubs created. No prunes, no type changes this round."
+
+          echo "runs #171/#172/#173 fix: android.hidl.token@1.0-utils + android.hardware.graphics.bufferqueue@1.0 + @2.0 + update_metadata-protos + libnative_bridge_support_accessor_headers + libnative_bridge_guest_state_accessor + libip_checksum + libteeui_hal_support + libacvp_modulewrapper stubs created. No prunes, no type changes this round."
 
 
 
@@ -7184,6 +7480,21 @@ jobs:
           # cc_library_headers at build time (same check as the
           # prune step above).
           grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "scudo_headers"' || { echo "::error::pre-build guard: stub scudo_headers is not a cc_library_headers"; exit 1; }
+          # Runs #171/#172/#173 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in android.hidl.token@1.0-utils android.hardware.graphics.bufferqueue@1.0 android.hardware.graphics.bufferqueue@2.0 update_metadata-protos libnative_bridge_support_accessor_headers libnative_bridge_guest_state_accessor libip_checksum libteeui_hal_support libacvp_modulewrapper; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #171/#172/#173 fix: the eight plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in android.hidl.token@1.0-utils android.hardware.graphics.bufferqueue@1.0 android.hardware.graphics.bufferqueue@2.0 update_metadata-protos libnative_bridge_guest_state_accessor libip_checksum libteeui_hal_support libacvp_modulewrapper; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #171/#172/#173 fix: the headers stub must be
+          # cc_library_headers at build time (same check as the
+          # prune step above).
+          grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp | grep -Fq 'name: "libnative_bridge_support_accessor_headers"' || { echo "::error::pre-build guard: stub libnative_bridge_support_accessor_headers is not a cc_library_headers"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
