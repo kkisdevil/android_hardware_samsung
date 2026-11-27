@@ -2693,7 +2693,6 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps and
   needs his word - not changed in this fix round.
 
-  -->
   CACHE NOTE (runs #207/#208/#209/#210): the save-always flip still
   does NOT save the cache - Restore is expected to miss (0-1s,
   sync ~9-12 min) and no Save step is expected to run - same as
@@ -2782,6 +2781,119 @@ still 32 projects.
   min. The upstream-recommended fix is separate restore + save
   steps (the save step with `if: always()`), which touches the
   cache steps and needs his word - not changed in this fix round.
+
+  Runs #215 (46061207402, 13m17s, commit fc8cd64, manual dispatch
+  ~01:35 IST, job 140715634080), #216 (manifest push 7cc3d7c,
+  2m55s), #217 (README push f0c7f8a, 3m23s) and #218 (46061746615,
+  2m40s, manual dispatch ~01:40 IST on commit f0c7f8a, job
+  140717422152). #215 FAILED at Soong ninja-file generation (Build
+  36s) with a new 4-module layer; #216, #217 and #218 ALL FAILED at
+  Init + sync, before any sync, because this manifest file was not
+  well-formed XML (see the manifest-break note below). The #214 fix
+  was NEVER tested by #216-#218 and only PARTLY tested by #215: its
+  4 stubs HELD (zero genuine errors for composer@2.1, libandroid,
+  automotive.display@1.0, displayservice@1.0), but #215 ran the
+  pre-fix workflow 1d8df37, so the bufferstreams + secretkeeper
+  prunes are STILL UNTESTED. They stay in place: the modules were
+  genuinely reported in #212 (16 androidx) and #213 (4
+  secretkeeper) and may surface again on a different traversal.
+  Run #215 union (whole-job raw log, job 140715634080, counting
+  only lines starting "error: ... depends on undefined module
+  ..."): 4 distinct modules, 4 genuine lines, all 20:18:42.969Z.
+  fastbootd needs libfastbootshim (static_libs) +
+  android.hardware.fastboot@1.1 (shared_libs) +
+  android.hardware.fastboot-V1-ndk (shared_libs)
+  (system/core/fastboot/Android.bp:139:1).
+  android.hardware.confirmationui-lib.trusty needs
+  android.hardware.confirmationui-V1-ndk (shared_libs)
+  (system/core/trusty/confirmationui/Android.bp:74:1). Subset
+  variation again: the 16 androidx.* and 4 secretkeeper modules
+  did NOT surface in #215 ("secretkeeper" 0 occurrences in the
+  whole raw log; "androidx" 7x, only test.runner / .core / .rules,
+  in stub-creation lists, never in an error line). The
+  "libcharger_sysprop" lines are a CONFIRMED PHANTOM again (no
+  genuine error in #215; #216-#218 never reached Soong), same
+  class as #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/#210/
+  #214. FIRST-EVER reported: the first fastboot HIDL/AIDL libs,
+  the first libfastbootshim, the first confirmationui -ndk lib, the
+  first fastbootd consumer, the first confirmationui consumer.
+  (libfastbootshim was on the carried-forward "never reported"
+  list since #182 - it has now surfaced, per the #202 lesson:
+  "never reported" means "not yet surfaced", not "exempt".)
+
+  MANIFEST BREAK (runs #216/#217/#218) - root cause: the #214
+  manifest update appended its Runs #211-#214 doc block AFTER the
+  header comment closing marker (local manifest.xml line 2696):
+  lines 2697-2785 were bare text outside any element, ending in a
+  stray closing marker at line 2786, before the manifest element
+  at line 2788. The file failed XML parsing ("syntax error: line
+  2697, column 2"). Mechanism: the #214 apply script anchored its
+  manifest insertion on the #207 cache-note block INCLUDING its
+  trailing closing marker and appended after the anchor, i.e.
+  after the comment close. The pre214 file (939b660) parses fine,
+  which is why #215 (old manifest) synced in 10m12s while
+  #216-#218 (new manifest) all die in about 2s at repo sync. Live
+  confirmation: a raw fetch of build-lights/manifest.xml at HEAD
+  f0c7f8a returns ONLY the appended block as text content (the
+  extractor strips the comment and the manifest element, leaving
+  the bare text) - the live file had the same defect as local.
+  Repo's reported position is MISLEADING (recorded): repo says
+  "default.xml:30:26: unbound prefix" but line 30 is inside the
+  header comment and no prefix is used there. The real defect is
+  the bare-text block at line 2697 (proven by direct parse plus
+  live fetch). Do NOT chase line 30. FIX: delete the premature
+  closing marker so the header comment runs lines 3-2786 and
+  contains the appended block (diff vs the pre218 file is exactly
+  that one-line removal plus this doc block, inserted BEFORE the
+  closing marker, never after it). VALIDATION GAP (new durable
+  rule): NO prior validation ever XML-parsed the manifest - the
+  #214 validation checked line counts and doc strings only. New
+  rule: the manifest must parse as XML before upload, and the
+  workflow now fails loudly in Init + sync (python3 XML parse of
+  the checked-out manifest, before repo init) if it does not.
+  Same class of lesson as #185 (balance checks could not catch a
+  stray comment line): a structural check must cover the file's
+  own syntax, not just its content.
+
+  Fix: 4 new stubs (3 plain cc_library:
+  android.hardware.fastboot@1.1 - hidl_interface in the pruned
+  hardware/interfaces/fastboot/1.1 dir; android.hardware.
+  fastboot-V1-ndk - AIDL -ndk lib from aidl_interface
+  android.hardware.fastboot v1 in the pruned
+  hardware/interfaces/fastboot/aidl dir;
+  android.hardware.confirmationui-V1-ndk - AIDL -ndk lib from
+  aidl_interface android.hardware.confirmationui v1 in the pruned
+  hardware/interfaces/confirmationui/aidl dir; 1
+  cc_library_static: libfastbootshim - cc_library_static in the
+  pruned hardware/interfaces/fastboot/aidl/fastbootshim dir,
+  mirroring the upstream type exactly. CORRECTION: earlier
+  workflow comments claimed libfastbootshim is defined nowhere in
+  the synced tree - wrong, it IS defined in-tree, in a pruned
+  dir; the stub type is now verified directly from the definition
+  file. fastboot@1.0 is NOT stubbed (only ever listed as @1.1's
+  hidl interface, never a consumer dep). The workflow prunes ALL
+  of hardware/interfaces except light, compatibility_matrices,
+  common and input, so these in-tree definitions are deleted
+  before Soong runs. No sdk_version on any new stub (no consumer
+  sets one). No prunes this round. No new projects (still 32).
+  Dep-closure verified (audit over the erroring consumers'
+  DIRECT deps): every other direct dep is defined in-tree
+  (non-pruned) or already stubbed. Prune alternatives for
+  system/core/fastboot and system/core/trusty/confirmationui were
+  considered and REJECTED (recorded in the workflow comment):
+  both dirs hold other modules beside the consumer, and the
+  consumers' closures are already stubbed except the 4 new
+  modules, so 4 stubs is the minimal fix.
+
+  CACHE NOTE (runs #215/#216/#217/#218): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~9-12 min) and no Save step is expected to run - #215:
+  Restore 1s MISS, sync 10m12s, no "Cache saved" line; #216-#218:
+  Restore 0s MISS, sync never ran (the manifest parse failed
+  first). The next run will also restore-miss and sync ~9-12 min.
+  The upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
 
   -->
 
