@@ -98,6 +98,14 @@ jobs:
           # build-lights/manifest.xml on lineage-22.2. If this step fails
           # with "manifest not found", the manifest has not been uploaded
           # to the fork yet.
+          # Runs #215/#216/#217/#218 fix: fail loudly HERE if the
+          # manifest is not well-formed XML (runs #216/#217/#218 died
+          # in repo sync with "error parsing manifest ... unbound
+          # prefix" because the #214 manifest append landed AFTER the
+          # header comment's closing --> — 90 lines of bare text plus
+          # a stray -->. repo's message names the wrong line; this
+          # check names the real defect before repo runs).
+          python3 -c "import xml.etree.ElementTree as ET; ET.parse('$GITHUB_WORKSPACE/build-lights/manifest.xml')" || { echo "::error::manifest build-lights/manifest.xml is not well-formed XML — see the Runs #215/#216/#217/#218 note in the manifest header"; exit 1; }
           repo init -u https://github.com/kkisdevil/android_hardware_samsung \
             -b lineage-22.2 \
             -m build-lights/manifest.xml \
@@ -4020,6 +4028,217 @@ jobs:
           # step should be used instead); the separate restore+save
           # steps need his word (see the manifest). Expect Restore
           # to miss and sync ~9-12 min on the next run too.
+          # Runs #215/#216/#217/#218 fix: manifest XML break + 4 stubs.
+          # Run #215 (46061207402, 13m17s, commit fc8cd64 "add 4 yuzora
+          # stubs", manual dispatch ~01:35 IST, job 140715634080)
+          # FAILED at Soong ninja-file generation, Build step 36s.
+          # Steps: Restore 1s (MISS), sync 10m12s, Prune 1s (passed),
+          # Build 36s FAILED (exit 1). Runs #216 (manifest push
+          # 7cc3d7c, 2m55s), #217 (README push f0c7f8a, 3m23s) and
+          # #218 (46061746615, 2m40s, manual dispatch ~01:40 IST on
+          # commit f0c7f8a, job 140717422152) ALL FAILED at Init +
+          # sync, before any sync: "error parsing manifest
+          # .repo/manifests/default.xml:30:26: unbound prefix", exit
+          # 1. Prune and Build never ran in #216/#217/#218.
+          # THE #214 FIX WAS NEVER TESTED by #216/#217/#218 (they died
+          # before sync) and only PARTLY tested by #215: its 4 stubs
+          # HELD (zero genuine errors for composer@2.1, libandroid,
+          # automotive.display@1.0, displayservice@1.0 — each appears
+          # only as "#" comment echoes), but #215 ran the PRE-FIX
+          # workflow 1d8df37, which lacks the bufferstreams +
+          # secretkeeper prunes, so those two prunes are STILL
+          # UNTESTED. They stay in place: the modules were genuinely
+          # reported in #212 (16 androidx) and #213 (4 secretkeeper)
+          # and may surface again on a different traversal.
+          # MANIFEST BREAK (runs #216/#217/#218) — root cause: the
+          # #214 manifest update appended its Runs #211-#214 doc block
+          # AFTER the header comment's closing "-->" (local
+          # manifest.xml line 2696): lines 2697-2785 are bare text
+          # outside any element, ending in a stray "-->" at line
+          # 2786, before "<manifest>" at 2788. The file fails
+          # xml.etree.ElementTree parse ("syntax error: line 2697,
+          # column 2"). Mechanism: apply_fix214.py anchored its
+          # manifest insertion on the #207 cache-note block INCLUDING
+          # its trailing "-->" and appended after the anchor — i.e.
+          # after the comment close. The pre214 file (939b660) parses
+          # fine, which is why #215 (old manifest) synced in 10m12s
+          # while #216-#218 (new manifest) all die in ~2s at repo
+          # sync. Live confirmation: a raw fetch of
+          # build-lights/manifest.xml at HEAD f0c7f8a returns ONLY
+          # the appended block as text content (the extractor strips
+          # the comment and the <manifest> element, leaving the bare
+          # text) — the live file has the same defect as local.
+          # REPO'S REPORTED POSITION IS MISLEADING (recorded): repo
+          # says "default.xml:30:26: unbound prefix" but line 30 is
+          # inside the header comment and no prefix is used there.
+          # The real defect is the bare-text block at line 2697
+          # (proven by direct parse + live fetch). Do NOT chase line
+          # 30. FIX: delete the premature "-->" so the header comment
+          # runs lines 3-2786 and contains the appended block (diff
+          # vs .pre218 is exactly that one-line removal plus the new
+          # doc block, inserted BEFORE the closing "-->", never after
+          # it). VALIDATION GAP (new durable rule): NO prior
+          # validation ever XML-parsed the manifest — the #214
+          # validation checked line counts and doc strings only. New
+          # rule: the manifest must parse as XML before upload
+          # (validate_fix218.py asserts ET.parse passes AND that the
+          # .pre218 file FAILS to parse, so the test detects the
+          # defect), and the workflow now fails loudly in Init + sync
+          # (python3 ET.parse of the checked-out manifest, before
+          # "repo init") if it does not. Same class of lesson as #185
+          # (balance checks could not catch a "#" line): a structural
+          # check must cover the file's own syntax, not just its
+          # content.
+          # RUN #215 UNION (whole-job raw log, browser job-log read,
+          # job 140715634080; only "error: ... depends on undefined
+          # module ..." lines counted, "#" comment echoes and "Or did
+          # you mean" excluded; 13 "#" lines): 4 distinct modules, 4
+          # genuine line instances, all 20:18:42.969-970Z:
+          #   fastbootd needs libfastbootshim (static_libs) +
+          #   android.hardware.fastboot@1.1 (shared_libs) +
+          #   android.hardware.fastboot-V1-ndk (shared_libs)
+          #   (system/core/fastboot/Android.bp:139:1).
+          #   android.hardware.confirmationui-lib.trusty needs
+          #   android.hardware.confirmationui-V1-ndk (shared_libs)
+          #   (system/core/trusty/confirmationui/Android.bp:74:1).
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1.
+          # SUBSET VARIATION again: the 16 androidx.* and 4
+          # secretkeeper modules did NOT surface in #215 —
+          # "secretkeeper" has 0 occurrences in the whole raw log;
+          # "androidx" occurs 7x, only androidx.test.runner / .core
+          # / .rules, all in stub-creation lists, never in an error
+          # line.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: no genuine error in #215; #216-#218 never reached
+          # Soong. Same class as #152/#161/#174/#177/#182/#186/#194/
+          # #198/#202/#206/#210/#214.
+          # FIRST-EVER reported: the first fastboot HIDL/AIDL libs,
+          # the first libfastbootshim, the first confirmationui -ndk
+          # lib, the first fastbootd consumer, the first
+          # confirmationui consumer. (libfastbootshim was on the
+          # carried-forward "never reported" list since #182 — it has
+          # now surfaced, per the #202 lesson: "never reported" means
+          # "not yet surfaced", not "exempt".)
+          # STUBS (4 — 3 plain cc_library + 1 cc_library_static, all
+          # in build-lights/yuzora-stubs-Android.bp, the static file):
+          #   android.hardware.fastboot@1.1 — hidl_interface in
+          #     hardware/interfaces/fastboot/1.1/Android.bp (pruned
+          #     dir; interfaces fastboot@1.0 + hidl.base@1.0,
+          #     gen_java true); same form as the #210 composer@2.4
+          #     stub.
+          #   android.hardware.fastboot-V1-ndk — AIDL -ndk lib
+          #     generated from aidl_interface
+          #     android.hardware.fastboot v1 in
+          #     hardware/interfaces/fastboot/aidl/Android.bp (pruned
+          #     dir; ndk backend enabled, cpp/java disabled);
+          #     plain cc_library per the #174/#177/#194 AIDL -ndk
+          #     precedent.
+          #   android.hardware.confirmationui-V1-ndk — AIDL -ndk lib
+          #     generated from aidl_interface
+          #     android.hardware.confirmationui v1 in
+          #     hardware/interfaces/confirmationui/aidl/Android.bp
+          #     (pruned dir; ndk backend enabled, apps_enabled
+          #     false, cpp disabled); plain cc_library per the same
+          #     precedent.
+          #   libfastbootshim — cc_library_static in
+          #     hardware/interfaces/fastboot/aidl/fastbootshim/
+          #     Android.bp:52 (pruned dir; srcs fastbootshim.cpp,
+          #     recovery_available true); stub mirrors the upstream
+          #     type exactly. CORRECTION: workflow comments at
+          #     ~1692/~1936 (earlier rounds) claimed this lib is
+          #     "defined nowhere in the synced tree" — WRONG, it IS
+          #     defined in-tree, in a pruned dir; the stub type is
+          #     now verified directly from the definition file.
+          #   The workflow prunes ALL of hardware/interfaces/* except
+          #   light/, compatibility_matrices/, common/, input/
+          #   (prune-step loop), so these in-tree definitions are
+          #   deleted before Soong runs — hence "undefined module".
+          #   fastboot@1.0 (listed as @1.1's hidl interface) is NOT
+          #   stubbed: never reported as a consumer dep; a bare
+          #   cc_library stub needs no interface list.
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          #   system/core/fastboot whole — the dir holds the fastboot
+          #   host tool + tests alongside fastbootd, and fastbootd's
+          #   closure is already stubbed except the 4 new modules, so
+          #   4 stubs is the minimal fix. (No refs to "fastbootd"
+          #   outside the dir — whole-tree grep over Android.bp +
+          #   *.mk — so a prune would also have worked; stubbing is
+          #   the minimal, precedent-consistent fix for HIDL/AIDL
+          #   libs.)
+          #   system/core/trusty/confirmationui whole — the dir holds
+          #   the not-so-secure-input lib + fuzzer alongside the
+          #   consumer lib; 1 stub is the minimal fix. (No refs to
+          #   "android.hardware.confirmationui-lib.trusty" outside
+          #   the dir.)
+          # NO sdk_version on any new stub: zero sdk_version hits on
+          # either consumer file (system/core/fastboot/Android.bp,
+          # system/core/trusty/confirmationui/Android.bp);
+          # min_sdk_version alone does NOT set UseSdk() per #159/#161.
+          # NOT STUBBED (never reported in any raw log, runs #6–#218
+          # — do NOT stub unless a raw log reports one):
+          #   android.hardware.graphics.composer@2.2/@2.3 (only ever
+          #   listed as @2.4's hidl interfaces, never as a consumer
+          #   dep); libnativebridge (zero in-tree refs);
+          #   libgoogle-benchmark (ALREADY stubbed as
+          #   cc_library_static — a different module from -main);
+          #   libcharger_sysprop (sysprop-generated phantom);
+          #   android.hardware.fastboot@1.0 (only ever listed as
+          #   @1.1's hidl interface, never a consumer dep); carried
+          #   forward: android.hardware.boot@1.2, allocator@3.0/@4.0,
+          #   mapper@2.0/2.1/3.0/4.0, libLibGuiProperties,
+          #   libhealthhalutils, libhealthshim,
+          #   libcom.android.sysprop.apex (sysprop-generated);
+          #   libkeymaster_messages, libkeymaster3device,
+          #   android.hardware.keymaster@3.0 (reported in #186 but,
+          #   after the trusty/keymaster prune, referenced only in
+          #   pruned hardware/interfaces/* dirs); libactivitymanager_aidl,
+          #   libbatterystats_aidl, libpower (libsensorservice deps,
+          #   undefined, never reported); avf_build_flags_cc
+          #   (ALREADY stubbed as cc_defaults). REMOVED from this
+          #   list this round: libfastbootshim (reported in #215, now
+          #   stubbed).
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   fastbootd shared: boot@1.0/@1.1, boot-V1-ndk,
+          #     libboot_control_client (stubbed #177); health@2.0
+          #     (stubbed #182), health-V4-ndk (stubbed #174);
+          #     libasyncio, libbase, libbinder_ndk, libcutils,
+          #     libfs_mgr, libhidlbase, liblog, liblp, libsparse,
+          #     libselinux, libutils (in-tree); libbootloader_message
+          #     (stubbed #182), libext2_uuid (stubbed #111),
+          #     libext4_utils (stubbed #122), libgsi (stubbed #111),
+          #     libprotobuf-cpp-lite (already stubbed). static:
+          #     health-translate-ndk (stubbed #174),
+          #     libhealthhalutils + libhealthshim (stubbed #195),
+          #     libsnapshot_cow + libsnapshot_nobinder (in-tree),
+          #     liblz4 + libzstd (stubbed #119),
+          #     update_metadata-protos (stubbed #171), liburing
+          #     (stubbed #122). header: avb_headers (stubbed #125),
+          #     libgtest_prod_headers, libsnapshot_headers,
+          #     libstorage_literals_headers (in-tree). Closed.
+          #   confirmationui-lib.trusty shared: libbase, libcutils,
+          #     libutils, libbinder_ndk (in-tree); libdmabufheap
+          #     (stubbed #165), libteeui_hal_support (stubbed #171),
+          #     libtrusty (in-tree). Closed.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link. The build target is ONLY
+          # android.hardware.light-service.samsung — NONE of the 4
+          # new stubs is in its closure, verified locally — so bare
+          # stubs suffice for THIS target. If a future round fails
+          # past Soong, ship the headers/symbols then; do not
+          # pre-build them now. (Same watch-item form as #182/#186/
+          # #194/#195/#202/#206/#210/#214.)
+          # CACHE NOTE (runs #215/#216/#217/#218): Restore is
+          # expected to miss (0-1s, sync ~9-12 min) and no Save step
+          # is expected — save-always still does not save (#215:
+          # Restore 1s MISS, sync 10m12s, no "Cache saved" line;
+          # #216-#218: Restore 0s MISS, sync never ran — the manifest
+          # parse failed first); the separate restore+save steps need
+          # his word (see the manifest). Expect Restore to miss and
+          # sync ~9-12 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -5082,6 +5301,32 @@ jobs:
             { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #211/#212/#213/#214 stubs created: 4 plain cc_library stubs (composer@2.1 + libandroid + automotive.display@1.0 + displayservice@1.0); frameworks/native/libs/bufferstreams/examples/app + system/core/trusty/secretkeeper pruned whole."
+          # Runs #215/#216/#217/#218 fix: verify the 4 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186/#192/#195/#202/#206/#210/
+          # #214 loops above).
+          for stub in android.hardware.fastboot@1.1 android.hardware.fastboot-V1-ndk android.hardware.confirmationui-V1-ndk libfastbootshim; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #215/#216/#217/#218 fix: the 3 plain cc_library stubs
+          # must be plain cc_library (same check as the #206/#210/#214
+          # loops above, in the SIGPIPE-safe wrapped form — see EDIT R
+          # in the #210 round: the bare producer | consumer form fails
+          # spuriously under pipefail when the producer dies of
+          # SIGPIPE, run #208).
+          for stub in android.hardware.fastboot@1.1 android.hardware.fastboot-V1-ndk android.hardware.confirmationui-V1-ndk; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #215/#216/#217/#218 fix: libfastbootshim must be a
+          # cc_library_static (same wrapped form; upstream type is
+          # cc_library_static in
+          # hardware/interfaces/fastboot/aidl/fastbootshim/Android.bp).
+          for stub in libfastbootshim; do
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
+          done
+          echo "runs #215/#216/#217/#218 stubs created: 3 plain cc_library + libfastbootshim cc_library_static stubs (4 total); manifest XML structural fix (premature --> removed); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5695,6 +5940,23 @@ jobs:
           # as the prune step above).
           for stub in android.hardware.graphics.composer@2.1 libandroid android.frameworks.automotive.display@1.0 android.frameworks.displayservice@1.0; do
             { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #215/#216/#217/#218 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.fastboot@1.1 android.hardware.fastboot-V1-ndk android.hardware.confirmationui-V1-ndk libfastbootshim; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #215/#216/#217/#218 fix: the 3 plain cc_library stubs
+          # must be plain cc_library at build time (same wrapped check
+          # as the prune step above).
+          for stub in android.hardware.fastboot@1.1 android.hardware.fastboot-V1-ndk android.hardware.confirmationui-V1-ndk; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #215/#216/#217/#218 fix: libfastbootshim must be a
+          # cc_library_static at build time (same wrapped check as the
+          # prune step above).
+          for stub in libfastbootshim; do
+            { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
