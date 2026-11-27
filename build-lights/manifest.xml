@@ -2308,6 +2308,109 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #195 (46013432537, 12m41s), #196 (46014181177, 15m27s),
+  #197 (46014519921, 15m39s) and #198 (46015052689, 19m41s) ALL
+  FAILED at Soong ninja-file generation, 35-45s into the "Build
+  lights HAL" step, on the SAME fix code (head 9ddd0ea - the
+  39-stub fix, workflow 401485b). Raw-log verbatim (whole-job raw
+  logs, browser job-log reads): #195 = 21 lines / 16 distinct
+  modules; #196 = 6 lines / 6 modules (same set as #197); #197 =
+  6 lines / 6 modules; #198 = 4 lines / 4 modules. UNION across
+  all four runs is exactly #195's 16 - #196/#197/#198 add nothing
+  new. The 39-stub fix HELD completely in all four runs; zero
+  "expected assignment or module definition" lines (the #185
+  stray-# fix HELD). Pre-build guard PASSED in all four.
+  test-sensorservice needs libandroid; libsensorservicehidl needs
+  android.hardware.sensors@1.0-convert + android.frameworks.
+  sensorservice@1.0 + android.hardware.sensors@1.0;
+  VtsHalLightTargetTest needs libhidl_gtest_helper +
+  VtsHalHidlTestUtils (via defaults VtsHalTargetTestDefaults);
+  keymint-service.rust.trusty.system.nonsecure needs libkmr_wire +
+  libkmr_hal + libkmr_hal_nonsecure; libstoraged needs
+  libhealthhalutils + libhealthshim; dumpstate_test +
+  dumpstate_smoke_test (+ the dumpstate binary) need
+  android.tracing.flags_c_lib + android.hardware.dumpstate@1.0 +
+  @1.1 + android.hardware.dumpstate-V1-ndk +
+  device_policy_aconfig_flags_c_lib. The "libcharger_sysprop"
+  lines are a CONFIRMED PHANTOM again (script echo/comments only
+  - ZERO in any Build step output), same class as
+  #152/#161/#174/#177/#182/#186/#194. FIRST-EVER reported: the
+  first sensors HIDL libs, the first sensorservice HIDL lib, the
+  first VTS test-helper libs, the first keymint Rust libs, the
+  first health-halutils/shim libs, the first dumpstate HIDL/AIDL
+  libs, the first aconfig flags_c_lib libs, the first libandroid.
+  Fix: 10 new stubs + 3 dirs pruned whole, NO new projects (still
+  32). Stubs (all in build-lights/yuzora-stubs-Android.bp, each
+  with a prune-step check + pre-build guard check): 8 plain
+  cc_library (android.hardware.sensors@1.0-convert,
+  android.frameworks.sensorservice@1.0,
+  android.hardware.sensors@1.0, android.hardware.dumpstate@1.0 +
+  @1.1, android.hardware.dumpstate-V1-ndk,
+  android.tracing.flags_c_lib,
+  device_policy_aconfig_flags_c_lib); 2 cc_library_static
+  (libhealthhalutils + libhealthshim - both upstream
+  cc_library_static, consumed via static_libs by libstoraged).
+  Prunes: frameworks/native/services/sensorservice/tests (only
+  test-sensorservice; zero refs elsewhere),
+  hardware/interfaces/light/aidl/vts (only VtsHalLightTargetTest;
+  zero refs elsewhere; the light aidl dir stays),
+  system/core/trusty/keymint (the two rust_binary keymint services
+  + defaults; zero refs to either binary name, the defaults name,
+  or trusty-keymint.mk outside the dir). No sdk_version on any new
+  stub (no consumer sets one). Verified in the synced tree
+  (~/workspace/lights-local) + upstream AOSP android-15.0.0_r32:
+  sensorservice@1.0 is hidl_interface in frameworks/hardware/
+  interfaces/sensorservice/1.0 (unsynced project); sensors@1.0 is
+  hidl_interface in hardware/interfaces/sensors/1.0 (pruned dir);
+  dumpstate@1.0/@1.1 are hidl_interface in hardware/interfaces/
+  dumpstate/1.0 + 1.1 (pruned dirs); dumpstate-V1-ndk is generated
+  from aidl_interface android.hardware.dumpstate in hardware/
+  interfaces/dumpstate/aidl (frozen, ndk backend defaults on);
+  the two flags_c_lib libs are aconfig-generated
+  cc_aconfig_library (defining .aconfig files not located after
+  bounded search - moot, the stub type follows the #125 precedent);
+  libhealthhalutils + libhealthshim are cc_library_static in
+  hardware/interfaces/health/2.0/utils + hardware/interfaces/
+  health/utils (pruned dirs). DIVERGENCE from the timed-out prior
+  worker's "11 stubs + 2 prunes" proposal: this design prunes
+  sensorservice/tests instead of stubbing libandroid (test-dir
+  prune precedent; libandroid's upstream definition was not
+  located - whole-tree grep 0 hits). Dep-closure verified (audit
+  over the erroring consumers' DIRECT deps): every other direct
+  dep is defined in-tree (non-pruned) or already stubbed. NOT
+  stubbed: libandroid, libhidl_gtest_helper, VtsHalHidlTestUtils,
+  libkmr_wire, libkmr_hal, libkmr_hal_nonsecure (consumers
+  pruned); use_libaidlvintf_gtest_helper_static (not defined in
+  the synced tree; consumer pruned); libcharger_sysprop (phantom);
+  libsensorservice's other undefined deps (never reported);
+  android.hardware.boot@1.2, android.hardware.graphics.common@1.1,
+  libLibGuiProperties, libfastbootshim,
+  libcom.android.sysprop.apex (sysprop-generated);
+  libkeymaster_messages, libkeymaster3device,
+  android.hardware.keymaster@3.0 (reported in #186 but, after the
+  prune, referenced only in pruned hardware/interfaces/* dirs);
+  avf_build_flags_cc (ALREADY stubbed as cc_defaults). CORRECTION:
+  packagemanager_aidl-cpp was listed as an undefined
+  libsensorservice dep in #194 but IS defined in-tree
+  (aidl_interface packagemanager_aidl in frameworks/native/libs/
+  binder/Android.bp:868). WATCH ITEM (not implemented):
+  headers/symbols may be needed later IF a future round fails past
+  Soong at compile/link - the build target is only
+  android.hardware.light-service.samsung and none of the 10 new
+  stubs is in its closure, so bare stubs suffice for this target.
+
+  CACHE NOTE (runs #195/#196/#197/#198): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS (0-1s,
+  sync 8m51s #195 / ~10-12m #196/#197/#198) and no Save step ran -
+  same as runs #118/#121/#124/#127/#130/#134/#137/#140/#143/#146/
+  #149/#152/#155/#158/#159/#160/#161/#162/#163/#164/#165/#166/
+  #167/#168/#169/#170/#171/#172/#173/#174/#175/#176/#177/#178/
+  #179/#180/#181/#182/#183/#184/#185/#186/#192/#193/#194. The next
+  run will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
