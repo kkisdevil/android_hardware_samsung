@@ -7579,7 +7579,7 @@ jobs:
           // HIDL lib), the #174 health@2.1 stub and the #165
           // libdexfile_support stub. libnativeloader_lazy is the rule-4
           // sibling (same defining file as libnativeloader-headers,
-          # referenced by libvulkan + libEGL). No sdk_version on any new
+          // referenced by libvulkan + libEGL). No sdk_version on any new
           // stub: no consumer sets sdk_version.
           cc_library {
               name: "libavf_cc_flags",
