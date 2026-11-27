@@ -1382,6 +1382,112 @@ still 32 projects.
   `if: always()`), which touches the cache steps and needs
   his word - not changed in this fix round.
 
+  Runs #159 (45939727734, 15m39s, auto, manifest 05d7ff1),
+  #160 (45939796587, 14m41s, auto, README 22c7771) and #161
+  (45939833196, 13m01s, manual dispatch ~09:55 IST 2026-11-27,
+  head 22c7771 - the runs #156/#157/#158 fix, workflow
+  d83cd90): ALL FAILED at Soong ninja-file generation, 38-54s
+  into the "Build lights HAL" step, on the SAME fix code. The
+  #156/#157/#158 fix HELD COMPLETELY in all three (prune step
+  passed + pre-build guard passed; ZERO genuine "depends on
+  undefined module" lines in any raw log). NEW failure class -
+  "missing variant", exactly ONE genuine error per run,
+  different each time (subset variation - the fix covers the
+  UNION). All fail at Soong bootstrap [100% 114/114]
+  analyzing, FAILED: out/soong/build.yuzora_lights.ninja,
+  soong bootstrap failed exit status 1. Raw-log verbatim error
+  union (browser job-logs.txt read of all three raw logs; the
+  earlier UI report of "android.hardware.lights-service.samsung
+  / product m51 / missing and no known rule" is a CONFIRMED
+  PHANTOM - it appears nowhere genuine in any raw log, same
+  class as #152):
+  prebuilts/clang/host/linux-x86/Android.bp:48:1 dependency
+  "ndk_system" of "libomp" missing variant: (#161) requested
+  variant os:android,arch:arm64_armv8-a,sdk:sdk; available
+  variants os:linux_glibc,arch:x86_64, os:linux_glibc,arch:x86,
+  os:windows,arch:x86, os:windows,arch:x86_64,
+  os:android,arch:arm64_armv8-a -
+  prebuilts/clang/host/linux-x86/Android.bp:337:1 dependency
+  "ndk_system" of "libsimpleperf_readelf" missing variant:
+  (#160) same requested + available variants -
+  frameworks/native/vulkan/vkprofiles/Android.bp:44:1
+  dependency "vulkan_headers" of "libvkprofiles_ndk" missing
+  variant: (#159) same requested + available variants.
+  Root cause, verified in the synced Soong source
+  (manifest-pinned tree ~/workspace/lights-local/build/soong):
+  the bare cc_library_headers stubs resolve as modules but only
+  build the PLATFORM variant. The sdk transition mutator
+  (cc/sdk.go Split) creates the {"sdk", "sdk"} variation ONLY
+  for a module whose UseSdk() is true, and UseSdk()
+  (cc/cc.go:1309) is true exactly when Sdk_version is set
+  (canUseSdk + non-empty sdk_version); without one the module
+  gets only the "" (platform) variation. The NDK consumers all
+  set sdk_version, so they request the sdk:sdk variant of their
+  deps: libomp + libsimpleperf_readelf are
+  llvm_prebuilt_library_static with sdk_version "minimum"
+  (prebuilts/clang/host/linux-x86/Android.bp:48/:337, verified
+  in the manifest-pinned tree); libvkprofiles_ndk +
+  libvkjson_ndk are cc_library_static with sdk_version "24"
+  (frameworks/native/vulkan/vkprofiles/Android.bp +
+  vkjson/Android.bp, same tree). A bare stub with no
+  sdk_version can never satisfy an sdk consumer, however many
+  modules are stubbed. Fix: NO new stubs, NO new projects
+  (still 32). Three sdk_version lines INSERTED into the
+  existing d83cd90 stub blocks (additions-only diff):
+  vulkan_headers sdk_version "24" - mirrors upstream r32
+  (external/vulkan-headers/Android.bp, sdk_version 24); both
+  sdk consumers are 24, so the NDK link check (cc/cc.go: an
+  NDK lib must not link a dep built against a NEWER api)
+  passes exactly. "current" would be WRONG: a non-current
+  consumer may not link a "current" dep. ndk_system
+  sdk_version "minimum" - there is NO upstream module to
+  mirror (zero mentions in any synced .bp; Soong-internal STL
+  pseudo-dep, build/soong/cc/stl.go:168-173); both consumers
+  are "minimum", and "minimum" is the LOWEST value so every
+  consumer's link check passes ("current" would fail it).
+  Precedent: the ndk_prebuilt STL defaults in the synced
+  prebuilts/clang/host/linux-x86/Android.bp carry sdk_version
+  "minimum". No self-dependency: stl.go begin() gives a
+  cc_library_headers module SelectedStl "" (ctx.header() ->
+  stl "none"), so the stub does NOT gain an ndk_system dep on
+  itself. libjsoncpp_ndk sdk_version "9" - mirrors upstream
+  r32 (external/jsoncpp/Android.bp, sdk_version 9); the
+  provably-next layer, not speculation: libvkjson_ndk
+  (sdk_version 24) takes this stub in whole_static_libs, so it
+  WILL demand the sdk variant on the next run. Its sdk
+  variant's STL deps (ndk_libc++_static + ndk_libc++abi +
+  libunwind, stl.go:175-180) are all defined in the synced
+  prebuilts/clang/host/linux-x86/Android.bp (:509/:515/:521/
+  :315) with sdk variants of their own (sdk_version "minimum"
+  via defaults), so no new undefined-module layer opens; the
+  link check passes (dep 9 < consumer 24). NOT changed now,
+  verified with evidence: libstatspull_headers +
+  libstatssocket_headers - no sdk consumer exists in the
+  closure (libstatspull_lazy + libstatssocket_lazy carry no
+  sdk_version, libstatspush_compat carries only min_sdk_version
+  "29", libinput carries no sdk_version);
+  android.hardware.graphics.allocator@2.0 - no sdk consumer
+  either (libgrallocusage only min_sdk_version "29", libs/ui
+  only min_sdk_version, surfaceflinger none - and
+  min_sdk_version alone does NOT set UseSdk(), cc/cc.go:1309).
+  If a future run reports a missing-variant line for any of
+  these three, the fix is the same one-line sdk_version
+  addition. The prune step + the pre-build guard both verify
+  the three sdk_version lines (sed block range, #110-safe).
+  The cache steps are untouched (see the save-always note
+  below).
+
+  CACHE NOTE (runs #159/#160/#161): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS in
+  all three (cache key lights-repo-3008e79b...), sync succeeded
+  on attempt 1 in all three (10m07s / 11m19s / 12m11s), and no
+  cache was saved - same as runs #118/#121/#124/#127/#130/
+  #134/#137/#140/#143/#146/#149/#152/#155/#158. The next run
+  will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
