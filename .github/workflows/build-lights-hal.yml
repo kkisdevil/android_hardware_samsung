@@ -5315,6 +5315,129 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #150/#151/#152 fix: the #147/#148/#149 fix HELD in
+          // all three (prune step passed in 1s + pre-build guard
+          // passed; ZERO llvmlibc / libjemalloc5 /
+          // libarm-optimized-routines lines in any raw log). All
+          // three fail at Soong ninja-file generation, 35-37s into
+          // the build step, on the SAME fix code (head 5a43a82 -
+          // the #147/#148/#149 fix, workflow 05ebd43; #150 is the
+          // manifest push 261cf27, #151 the README push 5a43a82 -
+          // same workflow file in all three, #152 a manual
+          // dispatch ~07:15 IST on 5a43a82). NO subset variation
+          // this round: all three report the identical 2 lines.
+          // Runs #150 (45923995039, 12m51s, auto) + #151
+          // (45924127939, 13m45s, auto) + #152 (45924377917,
+          // 13m21s, manual ~07:15 IST).
+          // Raw-log verbatim error union (live browser read of
+          // the job-logs.txt raw logs; genuine build-output
+          // lines only - the other "error:" matches in each
+          // log are the runner echoing the Build step script
+          // itself, the pre-build-guard echo commands that did
+          // NOT fire, NOT build errors; no genuine "missing
+          // variant" line in any run):
+          //   error: system/core/fastboot/Android.bp:374:1:
+          //     "fastboot_test" depends on undefined module
+          //     "AdbWinApi".
+          //   error: system/core/fastboot/Android.bp:335:1:
+          //     "fastboot" depends on undefined module
+          //     "AdbWinApi".
+          //   FAILED: out/soong/build.yuzora_lights.ninja.
+          // PHANTOM CORRECTION: the first UI-log read of #152
+          // invented 'hardware/samsung/lights/Android.bp:26:1:
+          // module "android.hardware.lights-service.samsung"
+          // ... missing dependencies: AdbWinApi' - WRONG. The
+          // raw log has NO such line; no lights/ dir exists in
+          // the fork (live lineage-22.2 tree verified: no
+          // lights/, the HAL is aidl/light/Android.bp defining
+          // the singular android.hardware.light-service.samsung);
+          // the only genuine Soong errors are the two fastboot
+          // lines above. Same phantom class as #30/#33/#84/#96/
+          // #107/#131 - raw-log lines are authoritative. Line
+          // numbers verified against the manifest-pinned tree:
+          // the fastboot block starts at :336 (Soong :335:1)
+          // and fastboot_test at :375 (Soong :374:1) - Soong
+          // attributes through the defaults expansion by one
+          // line, same caveat as the #122 liblp/libapex paths
+          // and the #125 fastboot/init lines. Key the fix off
+          // module names, not :line numbers.
+          // Usage (synced system/core/fastboot/Android.bp):
+          // fastboot (cc_binary_host) target.windows.required
+          // ["AdbWinUsbApi"] + target.windows.shared_libs
+          // ["AdbWinApi"]; fastboot_test (cc_test_host)
+          // target.windows.shared_libs ["AdbWinApi"] + a
+          // windows_x86_64 enabled:false block ("Avoid trying
+          // to build for win64"). The dep is windows-x86-only
+          // (32-bit), matching upstream compile_multilib "32".
+          // Root causes, verified live at AOSP
+          // android-15.0.0_r32 (which IS the LineageOS
+          // lineage-22.2 source for these paths - the
+          // LineageOS manifest pins the AOSP remote to r32;
+          // the defining project development is UNSYNCED):
+          // AdbWinApi + AdbWinUsbApi are BOTH
+          // cc_prebuilt_library_shared in development/host/
+          // windows/Android.bp (r32, 32 lines; AdbWinApi
+          // lines 19-26, AdbWinUsbApi lines 28-32), sharing
+          // the cc_defaults AdbWinApi_defaults (lines 5-17:
+          // host_supported true, enabled false,
+          // device_supported false, compile_multilib "32",
+          // target.windows.enabled true). AdbWinApi: srcs
+          // prebuilt/usb/AdbWinApi.dll, windows_import_lib
+          // prebuilt/usb/AdbWinApi.lib, export_include_dirs
+          // ["usb/api"]. AdbWinUsbApi: srcs prebuilt/usb/
+          // AdbWinUsbApi.dll. Both are prebuilt DLLs - no DLL
+          // is available here, so the stubs are plain
+          // cc_library with srcs empty.c (plain builds both
+          // static and shared variants, satisfying the
+          // shared_libs use - same reasoning as libssl #105 /
+          // libcrypto #122 / libz #119). CORRECTIONS to the
+          // first guesses: system/libadbwinapi/Android.bp
+          // does NOT exist at r32 (no such repo; the phantom
+          // UI read's citation was invented), and
+          // development/host/windows/usb/api/Android.bp does
+          // NOT exist at r32 either (that dir holds legacy
+          // VS/MAKEFILE sources, no .bp). Both stubs carry
+          // stl: "none" (upstream carries none - the real
+          // modules are prebuilts; the empty.c stub needs no
+          // STL, and it avoids a libwinpthread-class
+          // default-STL dep). Both carry host_supported: true
+          // + target windows enabled (the #78 shape - the dep
+          // is windows-only).
+          // AdbWinUsbApi is stubbed too although no run
+          // errored on it: it sits in the same target.windows
+          // block of the same consumer (fastboot :364,
+          // required) - one subset-reporting layer away
+          // (#111 sibling precedent); required-only deps never
+          // errored in any run, but the stub costs one block
+          // and a re-run costs 13 min.
+          // COMPILE-STAGE CAVEAT: both stubs are bare (srcs
+          // empty.c, no real symbols, no DLL). fastboot /
+          // fastboot_test are host tools NOT in the HAL
+          // closure - the lights target never links them - so
+          // the empty stubs can never surface at link time
+          // here; they exist only so Soong's dependency
+          // resolution passes. Same class as the #111 libgsi
+          // caveat, but weaker: not even a theoretical link.
+          cc_library {
+              name: "AdbWinApi",
+              srcs: ["empty.c"],
+              stl: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "AdbWinUsbApi",
+              srcs: ["empty.c"],
+              stl: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -5613,8 +5736,16 @@ jobs:
           grep -Fq 'name: "llvmlibc"' external/llvm-libc/Android.bp || { echo "::error::stub missing after creation: llvmlibc (external/llvm-libc)"; exit 1; }
           test -f external/llvm-libc/empty.c || { echo "::error::stub source missing after creation: external/llvm-libc/empty.c"; exit 1; }
           echo "runs #147/#148/#149 stubs created: libarm-optimized-routines-mem + libarm-optimized-routines-string + libarm-optimized-routines-math cc_library_static stubs + libjemalloc5 cc_library stub (all stl: \"none\"); llvmlibc cc_library_static stub in external/llvm-libc/Android.bp (+ empty.c). No type changes this round."
+          # Runs #150/#151/#152 fix: verify both new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147 loops above).
+          for stub in AdbWinApi AdbWinUsbApi; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #150/#151/#152 stubs created: AdbWinApi + AdbWinUsbApi plain cc_library stubs (both stl: \"none\", windows-enabled). No type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
+          echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
 
 
 
@@ -5916,6 +6047,11 @@ jobs:
           done
           grep -Fq 'name: "llvmlibc"' external/llvm-libc/Android.bp || { echo "::error::pre-build guard: stub missing at build time: llvmlibc (external/llvm-libc)"; exit 1; }
           test -f external/llvm-libc/empty.c || { echo "::error::pre-build guard: stub source missing at build time: external/llvm-libc/empty.c"; exit 1; }
+          # Runs #150/#151/#152 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in AdbWinApi AdbWinUsbApi; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
