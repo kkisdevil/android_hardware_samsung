@@ -5158,6 +5158,163 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #147/#148/#149 fix: the #144/#145/#146 fix HELD in
+          // all three (prune step passed in 4s + pre-build guard
+          // passed; ZERO Soong dependency-cycle lines in any raw
+          // log - the libwinpthread stl: "none" fix resolved).
+          // All three fail at Soong ninja-file generation, 36-46s
+          // into the build step, on the SAME fix code (head
+          // d227a64 - the #144/#145/#146 fix, workflow 996034f;
+          // #147 is the manifest push 9e61ecc, #148 the README
+          // push d227a64 - same workflow file in all three, #149
+          // a manual dispatch ~06:22 IST on d227a64). Subset
+          // variation again: #149 reports 3 lines, #147/#148
+          // report 4 - the fix covers the UNION (4 lines, 3
+          // distinct modules). Runs #147 (45918788481, 15m37s,
+          // auto) + #148 (45918894728, 13m21s, auto) + #149
+          // (45919249035, 14m43s, manual ~06:22 IST).
+          // Raw-log verbatim error union (live browser read of
+          // the job-logs.txt raw logs; genuine build-output
+          // lines only - the other "error:" matches in each
+          // log are the runner echoing the Build step script
+          // itself, the pre-build-guard echo commands that did
+          // NOT fire, NOT build errors; no genuine "missing
+          // variant" line in any run):
+          //   error: bionic/libc/Android.bp:2180:1:
+          //     "librust_baremetal" depends on undefined module
+          //     "//external/llvm-libc:llvmlibc".
+          //   error: bionic/libc/Android.bp:2180:1:
+          //     "librust_baremetal" depends on undefined module
+          //     "libarm-optimized-routines-mem".
+          //   error: bionic/libc/Android.bp:234:1:
+          //     "libc_jemalloc_wrapper" depends on undefined
+          //     module "libjemalloc5".
+          //   error: bionic/libc/Android.bp:841:1: "libc_bionic"
+          //     depends on undefined module
+          //     "//external/llvm-libc:llvmlibc". (#147/#148 only)
+          //   FAILED: out/soong/build.yuzora_lights.ninja.
+          // CORRECTION: the first UI-log read of #149 reported
+          // the module as "//external/llvm-libc:llvm-libc" -
+          // WRONG; the raw log says "//external/llvm-libc:
+          // llvmlibc", matching the consumer's reference
+          // (bionic/libc/Android.bp:2209). Same phantom class
+          // as the #96 "librusb_platform" misread - raw-log
+          // lines are authoritative. Line numbers verified
+          // against the manifest-pinned tree: the
+          // librust_baremetal block starts at :2181 (Soong
+          // :2180:1), libc_jemalloc_wrapper at :235 (Soong
+          // :234:1), and libc_bionic's whole_static_libs at
+          // :1258 (Soong :841:1 - attributes through the
+          // defaults expansion again, same caveat as the #122
+          // liblp/libapex paths and the #125 fastboot/init
+          // lines). Key the fix off module names, not :line
+          // numbers.
+          // Root causes, verified live at AOSP
+          // android-15.0.0_r32 (which IS the LineageOS
+          // lineage-22.2 source for these three paths - the
+          // LineageOS manifest pins the AOSP remote to r32
+          // and no LineageOS mirrors exist for these repos;
+          // all three defining projects UNSYNCED):
+          // - llvmlibc is cc_library_static in
+          //   external/llvm-libc/Android.bp (r32, lines 24-25),
+          //   stl: "none", visibility //bionic/libc. Used in
+          //   whole_static_libs by librust_baremetal (:2209)
+          //   and libc_bionic (:1258).
+          // - libarm-optimized-routines-mem/-string/-math are
+          //   all cc_library_static in external/arm-optimized-
+          //   routines/Android.bp (r32, lines 187-188, 137-138,
+          //   84-85); -mem carries stl: "none", nocrt,
+          //   visibility //bionic/libc (comment: "Memory
+          //   intrinsics for bare-metal Rust binaries."); the
+          //   shared defaults carry stl: "none" +
+          //   host_supported. -mem used in whole_static_libs
+          //   by librust_baremetal (:2210).
+          // - libjemalloc5 is plain cc_library in
+          //   external/jemalloc_new/Android.bp (r32, lines
+          //   185-186) - NOT external/jemalloc (no Android.bp
+          //   there at r32); target.android.shared disabled,
+          //   defaults carry stl: "none" + host_supported.
+          //   Used in static_libs by libc_jemalloc_wrapper
+          //   (:242) and in whole_static_libs via the
+          //   cc_defaults libc_native_allocator_defaults
+          //   (:206/:220, product_variables malloc_low_memory
+          //   - gated, which is why no "libc" module error
+          //   surfaces). Sibling libjemalloc5_je_prefixed is
+          //   cc_library_host_static (same file, lines
+          //   235-236) - a different module, already stubbed
+          //   in #96.
+          // - Siblings (same-file, next subset-reporting
+          //   layer, #111 libgsi/libgsid precedent):
+          //   libarm-optimized-routines-string in
+          //   whole_static_libs by libc_common (bionic/libc/
+          //   Android.bp:1369) and libarm-optimized-routines-
+          //   math in whole_static_libs by libm (bionic/libm/
+          //   Android.bp:33). Neither errored in any run, but
+          //   both are one subset-reporting layer away, so
+          //   both are stubbed now.
+          // Why llvmlibc cannot live in yuzora-stubs: the dep
+          // is path-qualified (//external/llvm-libc:llvmlibc),
+          // so Soong resolves it only in package
+          // external/llvm-libc. The prune step creates
+          // external/llvm-libc/Android.bp (+ empty.c) each
+          // run - same mechanism as the #131 .aidl creation.
+          // No new projects in the manifest (still 32); the
+          // dir is created by the workflow, not synced. All 5
+          // stubs carry stl: "none" (upstream carries it on
+          // all five via the module or its defaults; the
+          // empty.c stub needs no STL; it also avoids a
+          // libwinpthread-class default-STL dep).
+          // COMPILE-STAGE CAVEAT: all 5 stubs are bare (srcs
+          // empty.c, no real symbols). libc_common /
+          // libc_bionic / libc_jemalloc_wrapper are in the
+          // libc closure, so if the next run passes Soong and
+          // links libc.so, undefined symbols from the empty
+          // stubs may surface (memcpy/memset/memmove et al.
+          // from the -string/-mem stubs, strlcpy/strlcat/
+          // memrchr/bsearch from llvmlibc, malloc/calloc/
+          // realloc/free from libjemalloc5 if jemalloc is
+          // selected) - dummy implementations will be needed
+          // only then, same class as the #111 libgsi / #135
+          // flatbuffer caveats. librust_baremetal is NOT in
+          // the HAL closure (baremetal Rust for AVF guests),
+          // so its two deps may never link.
+          cc_library_static {
+              name: "libarm-optimized-routines-mem",
+              srcs: ["empty.c"],
+              stl: "none",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libarm-optimized-routines-string",
+              srcs: ["empty.c"],
+              stl: "none",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library_static {
+              name: "libarm-optimized-routines-math",
+              srcs: ["empty.c"],
+              stl: "none",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libjemalloc5",
+              srcs: ["empty.c"],
+              stl: "none",
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -5189,6 +5346,29 @@ jobs:
           printf '// Stub AIDL - see the runs #131/#132/#133/#134 comment above.\npackage android.os.logcat;\ninterface ILogcatManagerService {\n}\n' > yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl
           test -f yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl \
             || { echo "::error::stub source missing after creation: yuzora-stubs/android/os/logcat/ILogcatManagerService.aidl"; exit 1; }
+          # Runs #147/#148/#149 fix: the llvmlibc dep is path-qualified
+          # (//external/llvm-libc:llvmlibc), so Soong resolves it only in
+          # package external/llvm-libc - it cannot live in yuzora-stubs.
+          # Create the package + stub each run (same mechanism as the
+          # #131 .aidl creation above); external/llvm-libc is NOT in the
+          # manifest (still 32 projects), so nothing is synced here.
+          mkdir -p external/llvm-libc
+          cat > external/llvm-libc/Android.bp <<'EOF'
+          cc_library_static {
+              name: "llvmlibc",
+              srcs: ["empty.c"],
+              stl: "none",
+              host_supported: true,
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          EOF
+          printf '/* Stub source - see the runs #147/#148/#149 comment above. */\nint yuzora_stub_empty;\n' > external/llvm-libc/empty.c
+          test -f external/llvm-libc/Android.bp \
+            || { echo "::error::stub missing after creation: external/llvm-libc/Android.bp"; exit 1; }
+          test -f external/llvm-libc/empty.c \
+            || { echo "::error::stub source missing after creation: external/llvm-libc/empty.c"; exit 1; }
           # Runs #78/#79/#80 fix: minimal valid XSD skeleton for the
           # compatibility_matrix_schema filegroup above. The .xml matrix
           # modules are never built here, so this file is never read by
@@ -5423,7 +5603,18 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #141/#142/#143 stubs created: libstatslog + libflagtest + libpalmrejection + libperfetto_client_experimental + perfetto_winscope_extensions_zero + libchrome-gestures + android.hardware.input.processor-V1-ndk + libkll + libstatspull cc_library stubs. No type changes this round."
+          # Runs #147/#148/#149 fix: verify all 4 new yuzora-stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141 loops above)
+          # plus the path-qualified llvmlibc stub in external/llvm-libc/Android.bp.
+          for stub in libarm-optimized-routines-mem libarm-optimized-routines-string libarm-optimized-routines-math libjemalloc5; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          grep -Fq 'name: "llvmlibc"' external/llvm-libc/Android.bp || { echo "::error::stub missing after creation: llvmlibc (external/llvm-libc)"; exit 1; }
+          test -f external/llvm-libc/empty.c || { echo "::error::stub source missing after creation: external/llvm-libc/empty.c"; exit 1; }
+          echo "runs #147/#148/#149 stubs created: libarm-optimized-routines-mem + libarm-optimized-routines-string + libarm-optimized-routines-math cc_library_static stubs + libjemalloc5 cc_library stub (all stl: \"none\"); llvmlibc cc_library_static stub in external/llvm-libc/Android.bp (+ empty.c). No type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
+          echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
 
 
 
@@ -5718,6 +5909,13 @@ jobs:
           for stub in libstatslog libflagtest libpalmrejection libperfetto_client_experimental perfetto_winscope_extensions_zero libchrome-gestures android.hardware.input.processor-V1-ndk libkll libstatspull; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
+          # Runs #147/#148/#149 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libarm-optimized-routines-mem libarm-optimized-routines-string libarm-optimized-routines-math libjemalloc5; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          grep -Fq 'name: "llvmlibc"' external/llvm-libc/Android.bp || { echo "::error::pre-build guard: stub missing at build time: llvmlibc (external/llvm-libc)"; exit 1; }
+          test -f external/llvm-libc/empty.c || { echo "::error::pre-build guard: stub source missing at build time: external/llvm-libc/empty.c"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
