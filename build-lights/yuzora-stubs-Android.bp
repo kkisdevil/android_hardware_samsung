@@ -5732,3 +5732,75 @@ cc_library_shared {
         "//visibility:public",
     ],
 }
+
+// Runs #211/#212/#213/#214 fix: 4 new stubs (see the comment block in
+// the prune step of .github/workflows/build-lights-hal.yml for the
+// per-module verification).
+// 4 plain cc_library:
+//   android.hardware.graphics.composer@2.1 — HIDL @x.y lib defined
+//     ONLY in the pruned hardware/interfaces/graphics/composer/2.1
+//     dir (hidl_interface, interfaces common@1.0 + hidl.base@1.0,
+//     gen_java false); same form as the #210 composer@2.4 stub.
+//   libandroid — definition NOT located anywhere in the synced tree
+//     (whole-tree grep: zero definitions of that name); plain
+//     cc_library per the #186 libprotoutil / #202 libtestUtil
+//     unlocated-definition precedent. Pruning its consumer dir
+//     (surfaceflinger/tests) was REJECTED: the subdir modules
+//     libsurfaceflinger_mocks_headers,
+//     libsurfaceflinger_backend_mock_headers,
+//     libsurfaceflingerflags_test and libsurfaceflinger_mocks_defaults
+//     are referenced by in-graph modules outside the dir, so a prune
+//     would CREATE new undefined-module errors.
+//   android.frameworks.automotive.display@1.0 — HIDL package
+//     android.frameworks.automotive.display@1.0
+//     (IAutomotiveDisplayProxyService, imports bufferqueue@2.0) in
+//     the UNSYNCED frameworks/hardware/interfaces project; same form
+//     as the #195 sensorservice@1.0 stub.
+//   android.frameworks.displayservice@1.0 — HIDL interface
+//     IDisplayService (VNDK-core lib) in the UNSYNCED
+//     frameworks/hardware/interfaces project; same form as the #174
+//     schedulerservice@1.0 stub. Pruning its consumer dir
+//     (displayservice) was REJECTED: libdisplayservicehidl is
+//     referenced by in-graph surfaceflinger/Android.bp:294.
+// A plain cc_library yields both variants, so one stub satisfies
+// shared_libs consumers (automotive service, SurfaceFlinger_test,
+// IPC_test) and static_libs consumers (libdisplayservicehidl,
+// SurfaceFlinger_test) alike.
+// No sdk_version on any new stub: no consumer sets sdk_version
+// (verified on all four consumer files).
+cc_library {
+    name: "android.hardware.graphics.composer@2.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libandroid",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.frameworks.automotive.display@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.frameworks.displayservice@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
