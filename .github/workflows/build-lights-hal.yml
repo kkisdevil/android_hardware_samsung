@@ -3360,6 +3360,174 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~9-12 min
           # on the next run too.
+          # Runs #203/#204/#205/#206 fix: stub 6 modules, no prunes.
+          # Runs #203 (46038454616, 14m45s, stubs push c30bc11), #204
+          # (46038764188, 16m40s, manifest push b89170f), #205
+          # (46038915208, 14m37s, README push 0e24a9e) and #206
+          # (46039071103, 13m22s, manual dispatch ~22:35 IST on commit 0e24a9e)
+          # ALL FAILED at Soong ninja-file generation on the SAME fix
+          # code (head 0e24a9e — the 7-stub fix, workflow 3c7da5e).
+          # The 7-stub fix HELD completely in all four runs (zero
+          # genuine errors for any of its 7 in any raw log); zero
+          # "expected assignment or module definition" lines (the #185
+          # stray-# fix HELD). Pre-build guard PASSED in all four.
+          # Subset variation again: #203 reports 6 lines, #204 7,
+          # #205 only 1, #206 7 — on the SAME code (same pattern as
+          # #192/#193/#194: 5 vs 40 vs 2; #195–#198: 21 vs 6 vs 4;
+          # #199–#202: 6 vs 1). #205's single line is the most lossy
+          # subset yet.
+          # Failure (verbatim, whole raw job logs — parent read, jobs
+          # 140639746035 / 140640801007 / 140641317079 / 140641845808,
+          # counting only lines starting "error: ... depends on
+          # undefined module ...", excluding "#" comment echoes and
+          # "Or did you mean...?" lines; 21 genuine line instances,
+          # 6 distinct modules; consumer file paths verified locally
+          # in ~/workspace/lights-local):
+          #   libnativewindow needs
+          #   android.hardware.graphics.common@1.1 (shared_libs)
+          #   (frameworks/native/libs/nativewindow/Android.bp:72:1;
+          #   Soong suggested @1.2 as "did you mean").
+          #   libsurfaceflinger_common needs
+          #   aconfig_hardware_flags_c_lib + android.os.flags-aconfig-cc
+          #   + android.server.display.flags-aconfig-cc (static_libs)
+          #   (frameworks/native/services/surfaceflinger/common/
+          #   Android.bp:34:1).
+          #   libsurfaceflinger_common_test needs
+          #   aconfig_hardware_flags_c_lib +
+          #   android.os.flags-aconfig-cc-test +
+          #   android.server.display.flags-aconfig-cc (static_libs)
+          #   (same file, :48:1).
+          #   rustBinderTest needs libselinux_bindgen (rustlibs)
+          #   (frameworks/native/libs/binder/rust/tests/
+          #   Android.bp:10:1) — ONLY in #205.
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1, in all four.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: script echo/comments only — ZERO in any Build
+          # step output, same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198/#202.
+          # FIRST-EVER reported: the first graphics.common@1.1, the
+          # first aconfig_hardware_flags_c_lib, the first
+          # android.os.flags-aconfig-cc + -cc-test, the first
+          # android.server.display.flags-aconfig-cc, the first
+          # libselinux_bindgen (first rust_bindgen-type module), the
+          # first rust_library stub for a reported module since #165
+          # (librustutils).
+          # STUBS (6, all in build-lights/yuzora-stubs-Android.bp
+          # — the static file, NOT the workflow; the workflow only
+          # gains this comment block + the prune-step + guard
+          # checks below):
+          #   5 plain cc_library: 1 HIDL @x.y lib defined ONLY in a
+          #     pruned dir: android.hardware.graphics.common@1.1
+          #     (hidl_interface in hardware/interfaces/graphics/
+          #     common/1.1/Android.bp — interfaces @1.0, gen_java
+          #     true; dir pruned by the #42 closure prune; @1.2
+          #     ALREADY stubbed as plain cc_library in #194, same
+          #     shape, same consumer pattern); 4 aconfig libs
+          #     (aconfig_hardware_flags_c_lib,
+          #     android.os.flags-aconfig-cc,
+          #     android.os.flags-aconfig-cc-test,
+          #     android.server.display.flags-aconfig-cc — all
+          #     cc_aconfig_library in frameworks/base/AconfigFlags.bp
+          #     at r32: hardware flags :640-642, os flags :474-476,
+          #     os flags test :479-482 with mode: "test", display
+          #     flags :921-923; plain per the #128/#135 aconfig
+          #     precedent — the vibrator / permission / companion
+          #     flags-aconfig-cc stubs are plain cc_library and HELD).
+          #     A plain cc_library yields both variants, so one stub
+          #     satisfies the shared_libs consumer (libnativewindow)
+          #     and the static_libs consumers (surfaceflinger)
+          #     alike.
+          #   1 rust_library: libselinux_bindgen — upstream
+          #     rust_bindgen in platform/external/selinux/libselinux/
+          #     Android.bp (project NOT in the 32-project manifest,
+          #     unsynced; wrapper_src "rust/selinux.h", crate_name
+          #     "selinux_bindgen"). NOT plain cc_library: the
+          #     consumer references it via rustlibs, which requires
+          #     a Rust library module type. Shape mirrors the
+          #     established rust_library stubs (libcxx #96,
+          #     libbssl_sys #116, librustutils #165): crate_name
+          #     "selinux_bindgen" (upstream), srcs ["lib.rs"],
+          #     edition "2021", host_supported, public. lib.rs is
+          #     ALREADY created by the workflow + guarded by the
+          #     pre-build guard — no workflow change needed for the
+          #     source file.
+          # NO prunes this round. Prune alternative for
+          # libselinux_bindgen CONSIDERED AND REJECTED (recorded):
+          # pruning frameworks/native/libs/binder/rust/tests whole
+          # would kill the only in-tree consumer, but the upstream
+          # type is verified and the rust_library stub shape is
+          # established — the stub is the smaller, more conservative
+          # change, and pruning would also remove rustBinderTestService
+          # + binderRustNdkInteropTest (whose deps are all defined)
+          # from the graph for no benefit. libsurfaceflinger_common /
+          # _test cannot be pruned (in-graph surfaceflinger code);
+          # libnativewindow is llndk, cannot be pruned.
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on all three consumer files —
+          # zero hits; libnativewindow has only min_sdk_version
+          # "29" on its headers module, and min_sdk_version alone
+          # does NOT set UseSdk() per #159/#161).
+          # NOT STUBBED (never reported in any raw log, runs #6–#206
+          # — do NOT stub unless a raw log reports one):
+          #   android.hardware.graphics.common@1.0 (never reported;
+          #   @1.2's hidl interfaces list it but @1.2 is a bare stub
+          #   so no chain); android.os.flags-aconfig-cc-host (ALREADY
+          #   stubbed — a different module from -cc);
+          #   libcharger_sysprop (sysprop-generated phantom);
+          #   Carried forward: android.hardware.boot@1.2,
+          #   allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+          #   libLibGuiProperties, libhealthhalutils,
+          #   libhealthshim, libfastbootshim,
+          #   libcom.android.sysprop.apex (sysprop-generated);
+          #   libkeymaster_messages, libkeymaster3device,
+          #   android.hardware.keymaster@3.0 (reported in #186 but,
+          #   after the trusty/keymaster prune, referenced only in
+          #   pruned hardware/interfaces/* dirs); libactivitymanager_aidl,
+          #   libbatterystats_aidl, libpower (libsensorservice deps,
+          #   undefined, never reported); avf_build_flags_cc
+          #   (ALREADY stubbed as cc_defaults).
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   libnativewindow: libcutils / liblog / libutils / libui /
+          #     libbinder / libbinder_ndk (in-tree) / static libarect
+          #     (in-tree) / libgrallocusage (in-tree,
+          #     system/core/libgrallocusage/Android.bp:33) /
+          #     libgui_aidl_static (in-tree) / header libgui_headers /
+          #     libarect_headers / libnativebase_headers /
+          #     libnativewindow_headers (in-tree; the last in the same
+          #     file).
+          #   libsurfaceflinger_common: defaults (same file) /
+          #     libsurfaceflingerflags (cc_aconfig_library in-tree) /
+          #     libguiflags_no_apex (in-tree) / defaults shared
+          #     libSurfaceFlingerProp (in-tree) /
+          #     server_configurable_flags (stubbed #119) /
+          #     libaconfig_storage_read_api_cc (IN-TREE,
+          #     build/make/tools/aconfig/aconfig_storage_read_api/
+          #     Android.bp:81) / libtracing_perfetto (in-tree) /
+          #     static librenderengine_includes (in-tree).
+          #   libsurfaceflinger_common_test:
+          #     libsurfaceflingerflags_test (cc_aconfig_library mode
+          #     test in-tree) / libguiflags_no_apex (in-tree).
+          #   rustBinderTest: libbinder_rs / libbinder_tokio_rs /
+          #     libtokio (all in-tree) / shared libselinux (stubbed
+          #     #122, plain cc_library).
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link. The build target is ONLY
+          # android.hardware.light-service.samsung — NONE of the 6
+          # new stubs is in its closure, verified locally — so bare
+          # stubs suffice for THIS target. If a future round fails
+          # past Soong, ship the headers/symbols then; do not
+          # pre-build them now. (Same watch-item form as #182/#186/
+          # #194/#195/#202.)
+          # CACHE NOTE (runs #203/#204/#205/#206): Restore is expected
+          # to miss (0-1s, sync ~9-12 min) and no Save step is
+          # expected — save-always still does not save; the
+          # separate restore+save steps need his word (see the
+          # manifest). Expect Restore to miss and sync ~9-12 min
+          # on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4334,6 +4502,34 @@ jobs:
             grep -A1 'genrule {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a genrule"; exit 1; }
           done
           echo "runs #199/#200/#201/#202 stubs created: 5 plain cc_library + android.hardware.sensors@2.X-shared-utils cc_library_headers + framework-cppstream-protos genrule stubs (7 total). No prunes this round."
+          # Runs #203/#204/#205/#206 fix: verify the 6 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186/#192/#195/#202 loops above).
+          for stub in android.hardware.graphics.common@1.1 aconfig_hardware_flags_c_lib android.os.flags-aconfig-cc android.os.flags-aconfig-cc-test android.server.display.flags-aconfig-cc libselinux_bindgen; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #203/#204/#205/#206 fix: the 5 plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 / #168 / #171 / #174 / #177 / #180 / #186 / #192 /
+          # #195 / #202 checks): a cc_library_shared stub cannot provide the
+          # static variant the static_libs consumers need, and a
+          # cc_library_static stub cannot provide the shared variant
+          # the shared_libs consumers need.
+          for stub in android.hardware.graphics.common@1.1 aconfig_hardware_flags_c_lib android.os.flags-aconfig-cc android.os.flags-aconfig-cc-test android.server.display.flags-aconfig-cc; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #203/#204/#205/#206 fix: the bindgen stub must be a
+          # rust_library (same grep -A1 form as the libcxx / libbssl_sys /
+          # librustutils checks): rustBinderTest references it via
+          # rustlibs, which requires a Rust library module type — a plain
+          # cc_library stub would fail Soong's rustlibs type check.
+          for stub in libselinux_bindgen; do
+            grep -A1 'rust_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a rust_library"; exit 1; }
+          done
+          echo "runs #203/#204/#205/#206 stubs created: 5 plain cc_library + libselinux_bindgen rust_library stubs (6 total). No prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -4359,6 +4555,8 @@ jobs:
           echo "runs #195/#196/#197/#198 fix: 8 plain cc_library + 2 cc_library_static stubs created (10 total); frameworks/native/services/sensorservice/tests + hardware/interfaces/light/aidl/vts + system/core/trusty/keymint pruned whole."
 
           echo "runs #199/#200/#201/#202 fix: 5 plain cc_library + 1 cc_library_headers + 1 genrule stubs created (7 total). No prunes this round."
+
+          echo "runs #203/#204/#205/#206 fix: 5 plain cc_library + 1 rust_library stubs created (6 total). No prunes this round."
 
 
 
@@ -4887,6 +5085,22 @@ jobs:
           # genrule at build time (same check as the prune step above).
           for stub in framework-cppstream-protos; do
             grep -A1 'genrule {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a genrule"; exit 1; }
+          done
+          # Runs #203/#204/#205/#206 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.graphics.common@1.1 aconfig_hardware_flags_c_lib android.os.flags-aconfig-cc android.os.flags-aconfig-cc-test android.server.display.flags-aconfig-cc libselinux_bindgen; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #203/#204/#205/#206 fix: the 5 plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in android.hardware.graphics.common@1.1 aconfig_hardware_flags_c_lib android.os.flags-aconfig-cc android.os.flags-aconfig-cc-test android.server.display.flags-aconfig-cc; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #203/#204/#205/#206 fix: the bindgen stub must be a
+          # rust_library at build time (same check as the prune step above).
+          for stub in libselinux_bindgen; do
+            grep -A1 'rust_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a rust_library"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
