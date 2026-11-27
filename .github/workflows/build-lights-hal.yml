@@ -1288,6 +1288,17 @@ jobs:
           # consumer — pruning the dir kills all 4 at once.
           rm -rf frameworks/native/libs/bufferstreams/examples/app
           rm -rf system/core/trusty/secretkeeper
+          # Runs #219/#220/#221/#222 fix: prune one dir whole
+          # (same form as the #195/#210/#214 prunes above).
+          # frameworks/native/libs/renderengine/benchmark holds ONLY
+          # the cc_benchmark librenderengine_bench (+ sources +
+          # resources/ + AndroidTest.xml); zero refs to the benchmark
+          # name anywhere else in the synced tree. The benchmark is
+          # libjnigraphics' ONLY in-tree Soong consumer — pruning
+          # the dir kills the dep at once (see the comment block at
+          # the top of this step for the verified upstream type and
+          # the stub-alternative reasoning).
+          rm -rf frameworks/native/libs/renderengine/benchmark
           # Runs #165/#166/#167 fix: prune four dirs and stub eleven
           # modules. Runs #165 (45947910369, 14m15s, auto, manifest
           # 5bb1797), #166 (45948101732, 13m37s, auto, README 435b5bc)
@@ -4239,6 +4250,263 @@ jobs:
           # parse failed first); the separate restore+save steps need
           # his word (see the manifest). Expect Restore to miss and
           # sync ~9-12 min on the next run too.
+          # Runs #219/#220/#221/#222 fix: 7 stubs + 1 dir prune.
+          # Runs #219 (46067407201, 12m36s, stubs push 5382ea0, job
+          # 140735970993), #220 (46067696202, 15m04s, manifest push
+          # f3f6f14, job 140736907151), #221 (46067834619, 15m34s,
+          # README push 9165fee, job 140737353101) and #222
+          # (46068188980, 14m53s, manual dispatch ~02:37 IST on
+          # commit 9165fee, job 140738496315) ALL FAILED at Soong
+          # ninja-file generation, on the SAME fix code (head
+          # 9165fee — the runs #215/#216/#217/#218 manifest-XML +
+          # 4-stub fix, workflow 1f43351). Steps (#222): Restore 1s
+          # (MISS), sync 11m00s, Prune 1s (passed), Build 37s FAILED
+          # (exit 1). #219: Restore 0s, sync 9m00s, Prune 3s, Build
+          # 53s. #220: Restore 0s, sync 11m11s, Prune 4s, Build 44s.
+          # #221: Restore 1s, sync 11m56s, Prune 1s, Build 38s.
+          # THE #214 FIX HELD COMPLETELY in all four runs (zero
+          # genuine errors for composer@2.1, libandroid,
+          # automotive.display@1.0, displayservice@1.0) and THE #218
+          # FIX HELD COMPLETELY (zero genuine errors for
+          # fastboot@1.1, fastboot-V1-ndk, confirmationui-V1-ndk,
+          # libfastbootshim). THE #218 MANIFEST FIX HELD too: all
+          # four runs synced fine (9m00s-11m56s), no manifest parse
+          # error. THE #214 PRUNES ARE NOW TESTED — and they WORK:
+          # zero genuine androidx.* / secretkeeper errors in any of
+          # the four runs. All four ran a workflow WITH the prunes
+          # (#219 ran the #214 workflow a7475c9 from its trigger
+          # commit 5382ea0; #220/#221/#222 ran 1f43351). The #215
+          # "STILL UNTESTED" caveat is now closed.
+          # RUNS #219/#220/#221/#222 UNION (whole-job raw logs,
+          # browser job-log reads of all four job-logs.txt; only
+          # "error: ... depends on undefined module ..." lines
+          # counted, "#" comment echoes and "Or did you mean"
+          # excluded; 14 "#" lines per run): the genuine error set
+          # is IDENTICAL in all four runs — NO subset variation
+          # this time. 8 genuine lines each, 8 distinct (consumer,
+          # module) pairs, 1x each:
+          #   libcompositionengine needs
+          #   android.hardware.graphics.composer@2.1-command-buffer
+          #   + @2.2-command-buffer + @2.3-command-buffer +
+          #   @2.4-command-buffer +
+          #   android.hardware.graphics.composer3-command-buffer +
+          #   android.hardware.graphics.composer@2.2 +
+          #   android.hardware.graphics.composer@2.3
+          #   (frameworks/native/services/surfaceflinger/
+          #   CompositionEngine/Android.bp:92:1 — the
+          #   libcompositionengine module; its deps come from the
+          #   libcompositionengine_defaults cc_defaults).
+          #   librenderengine_bench needs libjnigraphics
+          #   (frameworks/native/libs/renderengine/benchmark/
+          #   Android.bp:25:1, shared_libs :51).
+          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
+          #   bootstrap failed, exit status 1.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in any run (33-35 "#"
+          # comment lines per run only). Same class as #152/#161/
+          # #174/#177/#182/#186/#194/#198/#202/#206/#210/#214/#218.
+          # FIRST-EVER reported: the first -command-buffer libs
+          # (5), the first composer@2.2/@2.3 as consumer deps
+          # (previously only ever listed as @2.4's hidl
+          # interfaces), the first libcompositionengine consumer,
+          # the first librenderengine_bench consumer, the first
+          # libjnigraphics (via a prune, not a stub), the first
+          # run quartet with an IDENTICAL genuine error set in all
+          # four runs (no subset variation).
+          # STUBS (7 — 2 plain cc_library + 5 cc_library_headers,
+          # all in build-lights/yuzora-stubs-Android.bp, the static
+          # file):
+          #   android.hardware.graphics.composer@2.2 —
+          #     hidl_interface in
+          #     hardware/interfaces/graphics/composer/2.2/Android.bp
+          #     (pruned dir; interfaces common@1.0 + common@1.1 +
+          #     composer@2.1 + hidl.base@1.0, gen_java false); same
+          #     form as the #214 composer@2.1 and #210 composer@2.4
+          #     stubs.
+          #   android.hardware.graphics.composer@2.3 —
+          #     hidl_interface in
+          #     hardware/interfaces/graphics/composer/2.3/Android.bp
+          #     (pruned dir; interfaces common@1.0 + common@1.1 +
+          #     common@1.2 + composer@2.1 + composer@2.2 +
+          #     hidl.base@1.0, gen_java false); same form.
+          #   android.hardware.graphics.composer@2.1-command-buffer
+          #     — cc_library_headers in the pruned
+          #     hardware/interfaces/graphics/composer/2.1/utils/
+          #     command-buffer/Android.bp:12 (defaults hidl_defaults,
+          #     vendor_available true, shared_libs composer@2.1 +
+          #     libfmq + libsync, export_include_dirs include).
+          #     Consumer references it via header_libs.
+          #   android.hardware.graphics.composer@2.2-command-buffer
+          #     — cc_library_headers in the pruned 2.2/utils/
+          #     command-buffer/Android.bp:12 (shared_libs
+          #     composer@2.2, header_libs @2.1-command-buffer).
+          #   android.hardware.graphics.composer@2.3-command-buffer
+          #     — cc_library_headers in the pruned 2.3/utils/
+          #     command-buffer/Android.bp:12 (shared_libs
+          #     composer@2.3, header_libs @2.2-command-buffer).
+          #   android.hardware.graphics.composer@2.4-command-buffer
+          #     — cc_library_headers in the pruned 2.4/utils/
+          #     command-buffer/Android.bp:12 (shared_libs
+          #     composer@2.4 — stubbed #210 — header_libs
+          #     @2.3-command-buffer).
+          #   android.hardware.graphics.composer3-command-buffer —
+          #     cc_library_headers in the pruned
+          #     hardware/interfaces/graphics/composer/aidl/
+          #     Android.bp:85 (defaults composer3-ndk_shared,
+          #     vendor_available true, shared_libs common-V2-ndk +
+          #     libbase + libfmq + libsync, static_libs
+          #     libaidlcommonsupport, export_include_dirs include).
+          #   The headers precedent: libnativeloader-headers #182,
+          #   libimapper_stablec + libimapper_providerutils #194
+          #   (both cc_library_headers, both consumed via
+          #   header_libs). A bare headers stub declares no deps,
+          #   so the upstream shared/header dep chains never need
+          #   satisfying. The workflow prunes ALL of
+          #   hardware/interfaces/* except light/,
+          #   compatibility_matrices/, common/, input/ (prune-step
+          #   loop), so these in-tree definitions are deleted
+          #   before Soong runs — hence "undefined module".
+          # PRUNE (1 dir whole — same form as the #195/#210/#214
+          # prunes above):
+          #   frameworks/native/libs/renderengine/benchmark holds
+          #   ONLY the cc_benchmark librenderengine_bench (single
+          #   `name:` in its Android.bp, line 26) + sources +
+          #   resources/ (homescreen.png, via `data:
+          #   ["resources/*"]`) + AndroidTest.xml. Zero refs to
+          #   librenderengine_bench anywhere else in the synced
+          #   tree (whole-tree Android.bp + *.mk grep, excluding
+          #   its own file: none). The benchmark is
+          #   libjnigraphics' ONLY in-tree Soong consumer — pruning
+          #   the dir kills the dep at once. The only other
+          #   libjnigraphics refs in-tree are
+          #   build/make/target/product/base_system.mk:175 and
+          #   generic/Android.bp:966 — PRODUCT_PACKAGES lists, which
+          #   create no Soong dep; the lights build target is only
+          #   android.hardware.light-service.samsung.
+          #   libjnigraphics is NOT stubbed. Upstream type VERIFIED
+          #   for the record (browser code search, cs.android.com):
+          #   cc_library_shared in the UNSYNCED
+          #   frameworks/base/native/graphics/jni/Android.bp:24-83
+          #   (r32 + lineage-22.2 identical; srcs imagedecoder.cpp
+          #   + target.android aassetstreamadaptor.cpp + bitmap.cpp;
+          #   shared_libs libhwui + liblog + target.android
+          #   libandroid; no sdk_version, no vendor_available).
+          #   NOTE the same file also defines a SECOND module with
+          #   the same name, ndk_library libjnigraphics (:86-91,
+          #   first_version 9) — a future stub of the
+          #   cc_library_shared form would coexist with nothing
+          #   (the ndk_library lives in the unsynced file), but the
+          #   prune makes this moot. The old path
+          #   frameworks/base/libs/jnigraphics does NOT exist (404
+          #   on both LineageOS lineage-22.2 and AOSP r32) — do not
+          #   look there. Benchmark-dir prune precedent: #210
+          #   pruned nativewindow/tests/benchmark whole for the
+          #   same reason; test-dir prunes #162/#165/#195. Contrast
+          #   #186 libtestUtil, where prune was REJECTED because
+          #   libglTest + libhwcTest would surface it later — here
+          #   there is NO other Soong consumer, so the prune kills
+          #   the dep with no later-surface risk. If a future round
+          #   ever reports libjnigraphics via a NON-benchmark
+          #   consumer, stub it as cc_library_shared (upstream type
+          #   verified above).
+          # PRUNE ALTERNATIVE FOR libcompositionengine CONSIDERED
+          # AND REJECTED (recorded): the CompositionEngine dir holds
+          # libcompositionengine (in-graph:
+          # frameworks/native/services/surfaceflinger/Android.bp:98
+          # and :121 reference it), libcompositionengine_mocks,
+          # surfaceflinger_udfps_lib + the
+          # libcompositionengine_sources filegroup. Pruning would
+          # kill the in-graph lib itself. The consumer's closure is
+          # already stubbed except the 7 new modules, so 7 stubs is
+          # the minimal fix.
+          # NO sdk_version on any new stub: zero sdk_version hits
+          # AND zero min_sdk_version hits on both consumer files
+          # (CompositionEngine/Android.bp,
+          # renderengine/benchmark/Android.bp); min_sdk_version
+          # alone does NOT set UseSdk() per #159/#161. The 5
+          # headers stubs are consumed via header_libs, which needs
+          # no sdk variant.
+          # NOT STUBBED (never reported in any raw log, runs #6-#222
+          # — do NOT stub unless a raw log reports one):
+          #   android.hardware.common-V2-ndk (upstream shared dep of
+          #   composer3-command-buffer; the bare headers stub
+          #   declares no deps, so it is never required);
+          #   libnativebridge (zero in-tree refs);
+          #   libgoogle-benchmark (ALREADY stubbed as
+          #   cc_library_static — a different module from -main);
+          #   libcharger_sysprop (sysprop-generated phantom);
+          #   android.hardware.fastboot@1.0 (only ever listed as
+          #   @1.1's hidl interface, never a consumer dep);
+          #   android.hardware.boot@1.2, libLibGuiProperties,
+          #   libcom.android.sysprop.apex (sysprop-generated);
+          #   libkeymaster_messages, libkeymaster3device,
+          #   android.hardware.keymaster@3.0 (reported in #186 but,
+          #   after the trusty/keymaster prune, referenced only in
+          #   pruned hardware/interfaces/* dirs); libactivitymanager_aidl,
+          #   libbatterystats_aidl, libpower (libsensorservice deps,
+          #   undefined, never reported); avf_build_flags_cc
+          #   (ALREADY stubbed as cc_defaults).
+          #   CORRECTION to the #218 carried-forward list: it
+          #   wrongly retained libhealthhalutils + libhealthshim
+          #   (stubbed #195 as cc_library_static), allocator@3.0/
+          #   @4.0 + mapper@2.0/2.1/3.0 (stubbed #194 as plain
+          #   cc_library) and mapper@4.0 (stubbed #111 as
+          #   cc_library_shared) as "never reported" — all five
+          #   were reported and stubbed in their rounds. REMOVED
+          #   from the never-reported list this round:
+          #   android.hardware.graphics.composer@2.2/@2.3 (reported
+          #   in #219-#222, now stubbed).
+          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
+          # DIRECT deps — every other direct dep is defined in-tree
+          # (non-pruned) or already stubbed):
+          #   libcompositionengine_defaults shared: allocator@2.0
+          #     (stubbed #156), composer@2.1 (#214), @2.2/@2.3
+          #     (new), @2.4 (#210), power@1.0/@1.3 (#194), libbase,
+          #     libcutils, libgui, liblog, libnativewindow,
+          #     libprotobuf-cpp-lite (stubbed), libSurfaceFlingerProp
+          #     (in-tree), libui, libutils. static: libguiflags,
+          #     libmath, librenderengine, libtimestats, libtonemap,
+          #     libaidlcommonsupport (in-tree + stubbed),
+          #     libprocessgroup, libprocessgroup_util, libjsoncpp
+          #     (stubbed). header: the 5 new -command-buffer stubs
+          #     + libsurfaceflinger_backend_headers (in-tree).
+          #     defaults chain: aconfig_lib_cc_static_link.defaults,
+          #     composer3-ndk_shared (in-tree def pruned + stubbed),
+          #     power-ndk_shared, librenderengine_deps,
+          #     libtimestats_deps, surfaceflinger_defaults,
+          #     libsurfaceflinger_proto_deps. libsurfaceflinger_common_deps:
+          #     server_configurable_flags,
+          #     libaconfig_storage_read_api_cc, libtracing_perfetto,
+          #     libsurfaceflinger_common, libsurfaceflingerflags,
+          #     aconfig_hardware_flags_c_lib (#206),
+          #     android.os.flags-aconfig-cc (#206),
+          #     android.server.display.flags-aconfig-cc (#206),
+          #     libguiflags_no_apex. Closed.
+          #   librenderengine_bench other deps (moot after prune):
+          #     librenderengine, libshaders,
+          #     libsurfaceflinger_common, libtonemap (static);
+          #     libbase, libcutils, libgui, liblog, libnativewindow,
+          #     libprocessgroup, libsync, libui, libutils,
+          #     server_configurable_flags, libtracing_perfetto
+          #     (shared). Closed.
+          # WATCH ITEM (not implemented): headers/symbols may be
+          # needed later IF a future round fails past Soong at
+          # compile/link. The build target is ONLY
+          # android.hardware.light-service.samsung — NONE of the 7
+          # new stubs is in its closure, verified locally — so bare
+          # stubs suffice for THIS target. If a future round fails
+          # past Soong, ship the headers/symbols then; do not
+          # pre-build them now. (Same watch-item form as #182/#186/
+          # #194/#195/#202/#206/#210/#214/#218.)
+          # CACHE NOTE (runs #219/#220/#221/#222): Restore is
+          # expected to miss (0-1s, sync ~9-12 min) and no Save step
+          # is expected — save-always still does not save (#219:
+          # Restore 0s MISS, sync 9m00s; #220: Restore 0s MISS,
+          # sync 11m11s; #221: Restore 1s MISS, sync 11m56s; #222:
+          # Restore 1s MISS, sync 11m00s; no "Cache saved" line in
+          # any run); the separate restore+save steps need his word
+          # (see the manifest). Expect Restore to miss and sync
+          # ~9-12 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4383,6 +4651,10 @@ jobs:
             echo "::error::prune failed — system/core/trusty/secretkeeper present"
             exit 1
           fi
+          if [ -d frameworks/native/libs/renderengine/benchmark ]; then
+            echo "::error::prune failed — frameworks/native/libs/renderengine/benchmark present"
+            exit 1
+          fi
           if [ -d hardware/interfaces/light/aidl/vts ]; then
             echo "::error::prune failed — hardware/interfaces/light/aidl/vts present"
             exit 1
@@ -4436,6 +4708,7 @@ jobs:
 
           echo "runs #195/#196/#197/#198 pruned: frameworks/native/services/sensorservice/tests + hardware/interfaces/light/aidl/vts + system/core/trusty/keymint."
           echo "runs #207/#208/#209/#210 pruned: frameworks/native/libs/nativewindow/tests/benchmark."
+          echo "runs #219/#220/#221/#222 pruned: frameworks/native/libs/renderengine/benchmark."
           echo "runs #165/#166/#167 pruned: bionic/benchmarks + libnativehelper/tests + libnativehelper/tests_mts/jni + system/core/libstats/pull_rust."
           echo "runs #75/#76/#77 pruned: system/apex/tests + system/core/init/test_upgrade_mte + system/core/debuggerd/test_permissive_mte."
           # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
@@ -5327,6 +5600,34 @@ jobs:
             { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_static"; exit 1; }
           done
           echo "runs #215/#216/#217/#218 stubs created: 3 plain cc_library + libfastbootshim cc_library_static stubs (4 total); manifest XML structural fix (premature --> removed); no prunes this round."
+          # Runs #219/#220/#221/#222 fix: verify the 7 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #96/#99/#102/#105/#111/#116/#119/#122/
+          # #125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/
+          # #168/#171/#174/#177/#180/#186/#192/#195/#202/#206/#210/
+          # #214/#218 loops above).
+          for stub in android.hardware.graphics.composer@2.2 android.hardware.graphics.composer@2.3 android.hardware.graphics.composer@2.1-command-buffer android.hardware.graphics.composer@2.2-command-buffer android.hardware.graphics.composer@2.3-command-buffer android.hardware.graphics.composer@2.4-command-buffer android.hardware.graphics.composer3-command-buffer; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #219/#220/#221/#222 fix: the 2 plain cc_library stubs
+          # must be plain cc_library (same check as the #206/#210/#214/
+          # #218 loops above, in the SIGPIPE-safe wrapped form — see
+          # EDIT R in the #210 round: the bare producer | consumer
+          # form fails spuriously under pipefail when the producer
+          # dies of SIGPIPE, run #208).
+          for stub in android.hardware.graphics.composer@2.2 android.hardware.graphics.composer@2.3; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #219/#220/#221/#222 fix: the 5 -command-buffer stubs
+          # must be cc_library_headers (same wrapped form; upstream
+          # type is cc_library_headers in the pruned
+          # hardware/interfaces/graphics/composer/*/utils/command-buffer
+          # dirs and the aidl dir — see the comment block at the top
+          # of this step).
+          for stub in android.hardware.graphics.composer@2.1-command-buffer android.hardware.graphics.composer@2.2-command-buffer android.hardware.graphics.composer@2.3-command-buffer android.hardware.graphics.composer@2.4-command-buffer android.hardware.graphics.composer3-command-buffer; do
+            { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
+          done
+          echo "runs #219/#220/#221/#222 stubs created: 2 plain cc_library + 5 cc_library_headers stubs (7 total); frameworks/native/libs/renderengine/benchmark pruned whole."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5506,6 +5807,10 @@ jobs:
           fi
           if [ -d system/core/trusty/secretkeeper ]; then
             echo "::error::pre-build guard: system/core/trusty/secretkeeper present at build time"
+            exit 1
+          fi
+          if [ -d frameworks/native/libs/renderengine/benchmark ]; then
+            echo "::error::pre-build guard: frameworks/native/libs/renderengine/benchmark present at build time"
             exit 1
           fi
           if [ -d hardware/interfaces/light/aidl/vts ]; then
@@ -5957,6 +6262,23 @@ jobs:
           # prune step above).
           for stub in libfastbootshim; do
             { grep -A1 'cc_library_static {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_static"; exit 1; }
+          done
+          # Runs #219/#220/#221/#222 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.graphics.composer@2.2 android.hardware.graphics.composer@2.3 android.hardware.graphics.composer@2.1-command-buffer android.hardware.graphics.composer@2.2-command-buffer android.hardware.graphics.composer@2.3-command-buffer android.hardware.graphics.composer@2.4-command-buffer android.hardware.graphics.composer3-command-buffer; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #219/#220/#221/#222 fix: the 2 plain cc_library stubs
+          # must be plain cc_library at build time (same wrapped check
+          # as the prune step above).
+          for stub in android.hardware.graphics.composer@2.2 android.hardware.graphics.composer@2.3; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #219/#220/#221/#222 fix: the 5 -command-buffer stubs
+          # must be cc_library_headers at build time (same wrapped
+          # check as the prune step above).
+          for stub in android.hardware.graphics.composer@2.1-command-buffer android.hardware.graphics.composer@2.2-command-buffer android.hardware.graphics.composer@2.3-command-buffer android.hardware.graphics.composer@2.4-command-buffer android.hardware.graphics.composer3-command-buffer; do
+            { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
