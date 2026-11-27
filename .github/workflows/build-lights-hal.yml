@@ -1181,6 +1181,49 @@ jobs:
           # HAL closure; both go whole.
           rm -rf frameworks/native/libs/bufferstreams/aidl
           rm -rf system/core/trusty/stats
+          # Runs #162/#163/#164 fix: prune three dirs that Soong parses
+          # but nothing in the HAL closure needs. Runs #162 (45944137206,
+          # 13m47s), #163 (45944292731, 14m06s) and #164 (45944373712,
+          # 15m36s) ALL FAILED at Soong ninja-file generation, 36-38s into
+          # the "Build lights HAL" step, on the same fix code (head
+          # 95cd316 — the runs #159/#160/#161 sdk_version fix, workflow
+          # e31bb15). The #159/#160/#161 fix HELD COMPLETELY in all three
+          # (prune step passed + pre-build guard passed; ZERO genuine
+          # ndk_system / vulkan_headers / libjsoncpp_ndk errors in any raw
+          # log — those names occur only in this file's own history
+          # comment echo). Each run reports a different subset on one
+          # commit (subset variation — the fix covers the UNION):
+          #   #162: system/core/trusty/test/driver/Android.bp:20:1 —
+          #     "trusty_driver_test" depends on undefined module
+          #     "py3-stdlib", and dependency "py3-launcher-autorun" of
+          #     "trusty_driver_test" missing variant (requested
+          #     os:android,arch:arm64_armv8-a; available linux_glibc
+          #     x86_64, windows x86_64). trusty_driver_test is a
+          #     python_test with embedded_launcher: true (hence both
+          #     deps); test/ holds driver/ + binder/aidl test sources
+          #     only, nothing in the synced tree references
+          #     trusty_driver_test or py3-stdlib, so the whole dir goes.
+          #   #163 + #164: external/rust/android-crates-io/crates/
+          #     libbpf-rs/Android.bp:16:1 — "liblibbpf_rs" depends on
+          #     undefined module "libbpf". libbpf is defined NOWHERE in
+          #     the synced tree (zero name: "libbpf" in any .bp); nothing
+          #     references liblibbpf_rs, so the crate dir goes.
+          #   Provably-next layer, not speculation: crates/libbpf-sys
+          #     (referenced only by libbpf-rs, in rustlibs) carries
+          #     shared_libs: ["libbpf"] AND header_libs:
+          #     ["libbpf_build_headers"] in its rust_bindgen module
+          #     liblibbpf_bindgen — BOTH undefined in the synced tree —
+          #     so Soong WILL error on it in some run's subset (same
+          #     class as the libjsoncpp_ndk prediction in the
+          #     #159/#160/#161 fix). The third live "libbpf" referencer,
+          #     hardware/interfaces/health/utils/libhealthloop, is already
+          #     pruned by the closure prune above. Pruning both crates
+          #     (not stubbing libbpf) also kills the libbpf_build_headers
+          #     dep, which no stub would fix. Test/host modules are never
+          #     built for this HAL-only target.
+          rm -rf system/core/trusty/test
+          rm -rf external/rust/android-crates-io/crates/libbpf-rs
+          rm -rf external/rust/android-crates-io/crates/libbpf-sys
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -1301,6 +1344,18 @@ jobs:
             echo "::error::prune failed — system/core/trusty/stats present"
             exit 1
           fi
+          if [ -d system/core/trusty/test ]; then
+            echo "::error::prune failed — system/core/trusty/test present"
+            exit 1
+          fi
+          if [ -d external/rust/android-crates-io/crates/libbpf-rs ]; then
+            echo "::error::prune failed — external/rust/android-crates-io/crates/libbpf-rs present"
+            exit 1
+          fi
+          if [ -d external/rust/android-crates-io/crates/libbpf-sys ]; then
+            echo "::error::prune failed — external/rust/android-crates-io/crates/libbpf-sys present"
+            exit 1
+          fi
           if [ -d system/apex/tests ]; then
             echo "::error::prune failed — system/apex/tests present"
             exit 1
@@ -1316,6 +1371,7 @@ jobs:
           echo "Unneeded subtrees pruned."
           echo "runs #65/#66/#67 AIDL imports kept: hardware/interfaces/common/aidl + input/common/aidl."
           echo "runs #68/#69/#70/#71 pruned: frameworks/native/libs/bufferstreams/aidl + system/core/trusty/stats."
+          echo "runs #162/#163/#164 pruned: system/core/trusty/test + external/rust/android-crates-io/crates/libbpf-rs + crates/libbpf-sys."
           echo "runs #75/#76/#77 pruned: system/apex/tests + system/core/init/test_upgrade_mte + system/core/debuggerd/test_permissive_mte."
           # Runs #72/#73/#74 fix — empty the sepolicy service-fuzzer
           # bindings map (run #74, 45715506626, 12m40s, build step 33s;
@@ -6365,6 +6421,18 @@ jobs:
           fi
           if [ -d system/core/trusty/stats ]; then
             echo "::error::pre-build guard: system/core/trusty/stats present at build time"
+            exit 1
+          fi
+          if [ -d system/core/trusty/test ]; then
+            echo "::error::pre-build guard: system/core/trusty/test present at build time"
+            exit 1
+          fi
+          if [ -d external/rust/android-crates-io/crates/libbpf-rs ]; then
+            echo "::error::pre-build guard: external/rust/android-crates-io/crates/libbpf-rs present at build time"
+            exit 1
+          fi
+          if [ -d external/rust/android-crates-io/crates/libbpf-sys ]; then
+            echo "::error::pre-build guard: external/rust/android-crates-io/crates/libbpf-sys present at build time"
             exit 1
           fi
           test -f yuzora-stubs/empty.c \
