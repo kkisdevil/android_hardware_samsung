@@ -5054,3 +5054,370 @@ cc_library {
         "//visibility:public",
     ],
 }
+// Runs #192/#193/#194 fix: 39 new stubs (see the comment block in
+// the prune step of .github/workflows/build-lights-hal.yml for the
+// per-module verification).
+// 34 plain cc_library — a plain cc_library yields both variants,
+// so one stub satisfies the shared_libs consumers alike; same form
+// as the #156 allocator@2.0 stub (also a HIDL lib) and the #174
+// health@2.1 stub. 22 are HIDL @x.y libs defined ONLY in pruned
+// dirs, 6 are AIDL -ndk libs, 6 are upstream cc_library /
+// cc_library_shared libs from unsynced projects (libfec_rs,
+// libsquashfs_utils, lib_android_keymaster_keymint_utils,
+// configstore-utils, libhardware_legacy, libgatekeeper).
+// libfec_rs is C (Reed-Solomon), NOT Rust — plain cc_library.
+// 2 cc_library_headers (libimapper_stablec +
+// libimapper_providerutils — upstream cc_library_headers,
+// referenced by libui via header_libs; a plain cc_library stub
+// would be the wrong shape for a header_libs consumer).
+// 3 cc_library_static (libavb_user, libscrypt_static,
+// libaidlcommonsupport — all upstream cc_library_static).
+// No sdk_version on any new stub: no consumer sets sdk_version
+// (only min_sdk_version hits, which never demand the sdk variant).
+cc_library {
+    name: "android.hardware.tests.inheritance@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "binderthreadstateutilstest@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libfec_rs",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libsquashfs_utils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.frameworks.stats@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.frameworks.stats-V2-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.configstore-utils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.configstore@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.configstore@1.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.usb.gadget@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.usb.gadget-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.allocator@3.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.allocator@4.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.common@1.2",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.mapper@2.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.mapper@2.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.mapper@3.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.power@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.power@1.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.power@1.2",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.power@1.3",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.vibrator-V3-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.vibrator@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.vibrator@1.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.vibrator@1.2",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.vibrator@1.3",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.memtrack@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.memtrack-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libhardware_legacy",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libgatekeeper",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "lib_android_keymaster_keymint_utils",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.gatekeeper-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.gatekeeper@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.security.authorization-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libimapper_stablec",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "libimapper_providerutils",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libavb_user",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libscrypt_static",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_static {
+    name: "libaidlcommonsupport",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
