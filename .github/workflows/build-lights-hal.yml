@@ -1924,6 +1924,165 @@ jobs:
           #   libapexd_checkpoint_vold: libbase/libutils defined.
           #   libschedulerservicehidl: liblog/libutils defined;
           #     libhidlbase stubbed; libcutils_headers defined.
+          # Runs #177/#178/#179 fix: stub six modules, prune
+          # nothing. Runs #177 (45974079475, 13m6s, auto, manifest
+          # 5bd5386), #178 (45974242578, 16m0s, auto, README
+          # cedf713) and #179 (45974397532, 12m9s, manual dispatch
+          # ~15:01 IST 2026-11-27, head cedf713 — the runs
+          # #174/#175/#176 fix, workflow fd32fc3) ALL FAILED at
+          # Soong ninja-file generation, 50s (#177) / 53s (#178) /
+          # 37s (#179) into the "Build lights HAL" step, on the
+          # SAME fix code. The #174/#175/#176 fix HELD COMPLETELY
+          # in all three (prune step passed + pre-build guard
+          # passed; ZERO genuine errors for any of its 17 modules
+          # in any raw log). Subset variation again: #177 reports
+          # 6 lines, #178 reports 2, #179 reports 1 — the fix
+          # covers the UNION (6 distinct undefined modules, 9
+          # error lines). Raw-log verbatim error union — verified
+          # TWICE (browser job-logs.txt read of all three raw logs
+          # + direct grep of the downloaded log archives; the two
+          # reads agree exactly, genuine "error:" lines only):
+          #   #177 (6 lines, 09:42:05Z): "libsnapshot_test_helpers"
+          #     needs "android.hardware.boot@1.1"
+          #     (system/core/fs_mgr/libsnapshot/Android.bp:229:1);
+          #     "apexd.microdroid" needs "libprotobuf-cpp-full-ndk"
+          #     (system/apex/apexd/Android.bp:155:1);
+          #     "libsnapshot_nobinder" needs
+          #     "android.hardware.boot@1.0" +
+          #     "android.hardware.boot@1.1" +
+          #     "android.hardware.boot-V1-ndk" +
+          #     "libboot_control_client"
+          #     (libsnapshot/Android.bp:157:1).
+          #   #178 (2 lines, 09:46:10Z): "libhealthd_charger"
+          #     needs "android.hardware.health@1.0-convert"
+          #     (system/core/healthd/Android.bp:195:1);
+          #     "apexd.microdroid" needs "libprotobuf-cpp-full-ndk"
+          #     (same line as #177).
+          #   #179 (1 line, 09:43:22Z): "libhealthd_charger"
+          #     needs "android.hardware.health@1.0-convert"
+          #     (same line as #178).
+          # UI-LOG READ OF #179 WAS ACCURATE this time (1 of 1
+          # genuine errors, matching the raw log exactly) —
+          # contrast the #176 UI read, which was entirely phantom
+          # (after #84/#96/#107/#161/#173). The raw log remains
+          # authoritative: #177/#178 were verified from the raw
+          # logs directly, never from a UI read. The "ninja: error
+          # ... libcharger_sysprop_rust.so ... missing and no known
+          # rule to make it" line is a CONFIRMED PHANTOM again (6
+          # lines per raw log contain "libcharger_sysprop_rust",
+          # 0 genuine — all `#` comment echoes of the workflow's
+          # own history comment in the prune step; the Build step
+          # log has 0 occurrences and 0 "no known rule" lines),
+          # same class as #152/#161/#174.
+          # STUBS (6, all plain cc_library, all in
+          # yuzora-stubs/Android.bp below):
+          #   android.hardware.health@1.0-convert — plain
+          #     cc_library (static_libs consumer libhealthd_charger;
+          #     upstream cc_library_static). Defined ONLY in pruned
+          #     hardware/interfaces/health/1.0/default. FIRST-EVER
+          #     reported HIDL -convert lib (the #138 sensors
+          #     -V1-convert was AIDL, not HIDL).
+          #   android.hardware.boot@1.0 — plain cc_library
+          #     (shared_libs consumer libsnapshot_nobinder via
+          #     libsnapshot_hal_deps; upstream hidl_interface).
+          #     Defined ONLY in pruned hardware/interfaces/boot/1.0.
+          #     Second HIDL @x.y lib ever reported (after health@2.1
+          #     in #175) — the old "never surfaced" rule now has
+          #     three exceptions.
+          #   android.hardware.boot@1.1 — plain cc_library
+          #     (shared_libs consumers libsnapshot_nobinder via
+          #     libsnapshot_hal_deps + libsnapshot_test_helpers;
+          #     upstream hidl_interface). Defined ONLY in pruned
+          #     hardware/interfaces/boot/1.1. Third HIDL @x.y lib.
+          #   android.hardware.boot-V1-ndk — plain cc_library
+          #     (shared_libs consumer libsnapshot_nobinder via
+          #     libsnapshot_hal_deps; generated NDK lib of the
+          #     aidl_interface android.hardware.boot in pruned
+          #     hardware/interfaces/boot/aidl, frozen v1). Defined
+          #     NOWHERE in the tree.
+          #   libboot_control_client — plain cc_library
+          #     (shared_libs consumer libsnapshot_nobinder via
+          #     libsnapshot_hal_deps; upstream plain cc_library).
+          #     Defined ONLY in pruned
+          #     hardware/interfaces/boot/aidl/client.
+          #   libprotobuf-cpp-full-ndk — plain cc_library
+          #     (static_libs consumer apexd.microdroid — the .bp
+          #     comment says the -ndk variant is used deliberately
+          #     because libprotobuf-cpp-full is a shared lib in
+          #     general). Defined NOWHERE (external/protobuf
+          #     unsynced). Same form as the #99 libprotobuf-cpp-full
+          #     stub (plain cc_library).
+          #   A plain cc_library yields both variants, so one stub
+          #   satisfies the shared_libs consumers
+          #   (libsnapshot_nobinder, libsnapshot_test_helpers) and
+          #   the static_libs consumers (libhealthd_charger,
+          #   apexd.microdroid) alike; same form as the #156
+          #   allocator@2.0 stub (also a HIDL lib), the #174
+          #   health@2.1 stub and the #165 libdexfile_support stub.
+          #   Stubbing a module removes its dep subtree from the
+          #   graph, so the real libboot_control_client's own
+          #   shared_libs (incl. android.hardware.boot@1.2) never
+          #   enter it — @1.2 is NOT stubbed (see below).
+          # NO PRUNES this round: the referencers are core platform
+          # modules — system/core (healthd, fs_mgr/libsnapshot),
+          # system/apex (apexd); none of those dirs can be pruned.
+          # The libsnapshot dir in particular cannot be pruned:
+          # synced, kept system/core/fastboot references
+          # libsnapshot_nobinder (fastboot/Android.bp:200), and
+          # libsnapshot_test_helpers shares the same .bp file, so
+          # pruning the dir would break fastboot's dep. Stubbing
+          # the 4 boot modules follows the #171 bufferqueue
+          # precedent (defined only in a pruned dir, stubbed plain
+          # cc_library).
+          # NO sdk_version on any new stub: no consumer sets
+          # sdk_version (verified on every consumer block:
+          # libhealthd_charger, apexd.microdroid,
+          # libsnapshot_nobinder + libsnapshot_test_helpers via
+          # libsnapshot_defaults + libsnapshot_hal_deps — zero
+          # sdk_version lines in any of those blocks), so no stub
+          # needs the sdk variant (same rule as the #159/#160/#161
+          # fix).
+          # CHECKED, NOT STUBBED (never reported in any raw log,
+          # runs #6–#179 — do NOT stub unless a raw log reports
+          # one; stubbing a module Soong may consider defined
+          # risks a duplicate-definition error):
+          #   android.hardware.boot@1.2 — referenced only by the
+          #     REAL libboot_control_client's shared_libs; the stub
+          #     has no deps, so @1.2 never enters the graph.
+          #   android.hardware.graphics.common@1.1/@1.2,
+          #     allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+          #     libLibGuiProperties, libbootloader_message,
+          #     liblmkd_utils, libxml2, libhealthhalutils,
+          #     libhealthshim, libfastbootshim, libcharger_sysprop,
+          #     libcom.android.sysprop.apex (both sysprop-generated):
+          #     same rule as the #174 round (carried forward).
+          # DEP-CLOSURE VERIFIED (every other DIRECT dep of the
+          # erroring consumers is defined in-tree or already
+          # stubbed):
+          #   libhealthd_charger: libcharger_sysprop
+          #     sysprop-generated, NOT stubbed (never reported);
+          #     libhealth2impl stubbed (#174); libhealthd_charger_ui
+          #     defined in-tree; android.hardware.health@2.1 stubbed
+          #     (#174); libbase/libcutils/liblog/libutils defined.
+          #   apexd.microdroid via apex_flags_defaults +
+          #     libapex-deps + libapexd-deps: libapex/libapexd
+          #     defined in-tree; libprotobuf-cpp-full + libvintf
+          #     (exclude_shared_libs) stubbed/defined; verified in
+          #     the #174 round.
+          #   libsnapshot_nobinder via libsnapshot_defaults +
+          #     libsnapshot_hal_deps: libfs_mgr defined in-tree;
+          #     libselinux stubbed; libsnapshot_defaults shared
+          #     libbase/libchrome/libcutils/liblog defined;
+          #     static libbrotli/libdm/libfstab defined/stubbed +
+          #     update_metadata-protos stubbed (#171); whole_static
+          #     libbrotli/libcutils/libext2_uuid/libext4_utils/
+          #     libfstab/libz defined/stubbed + libsnapuserd_client
+          #     defined in-tree (libsnapshot/snapuserd/Android.bp);
+          #     header_libs libfiemap_headers/
+          #     libstorage_literals_headers defined +
+          #     libupdate_engine_headers stubbed (#119).
+          #   libsnapshot_test_helpers via libsnapshot_defaults
+          #     (same as above): libcrypto stubbed.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -7091,6 +7250,71 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #177/#178/#179 fix: six new stubs (see the comment
+          // block in the prune step above for the per-module
+          // verification). All plain cc_library — a plain cc_library
+          // yields both variants, so one stub satisfies the
+          // shared_libs consumers (libsnapshot_nobinder,
+          // libsnapshot_test_helpers) and the static_libs consumers
+          // (libhealthd_charger, apexd.microdroid) alike; same form
+          // as the #156 allocator@2.0 stub (also a HIDL lib), the
+          // #174 health@2.1 stub and the #165 libdexfile_support
+          // stub. No sdk_version on any new stub: no consumer sets
+          // sdk_version.
+          cc_library {
+              name: "android.hardware.health@1.0-convert",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.boot@1.0",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.boot@1.1",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.boot-V1-ndk",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libboot_control_client",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libprotobuf-cpp-full-ndk",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -7515,6 +7739,23 @@ jobs:
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #174/#175/#176 stubs created: libfscrypt + libfec + perfetto_trace_protos + libhealthloop + android.hardware.health-V4-ndk + android.hardware.health-translate-ndk + libpng + android.hardware.health-V1-ndk + android.hardware.health-translate-V1-ndk + libhealth2impl + android.hardware.health@2.1 + libvold_binder + libmediautils + android.frameworks.schedulerservice@1.0 + lib_microdroid_metadata_proto + libsigningutils + libverity_tree plain cc_library stubs. No prunes, no type changes this round."
+          # Runs #177/#178/#179 fix: verify the six new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138/#141/#147/#152/#155/#156/#165/#168/#171/#174 loops above).
+          for stub in android.hardware.health@1.0-convert android.hardware.boot@1.0 android.hardware.boot@1.1 android.hardware.boot-V1-ndk libboot_control_client libprotobuf-cpp-full-ndk; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #177/#178/#179 fix: the six plain cc_library stubs
+          # must be plain cc_library (same grep -A1 form as the
+          # libjsoncpp / libz / libcrypto / libselinux / libpcre2 /
+          # #165 / #168 / #171 / #174 checks): a cc_library_shared stub cannot
+          # provide the static variant the static_libs consumers need,
+          # and a cc_library_static stub cannot provide the shared
+          # variant the shared_libs consumers need.
+          for stub in android.hardware.health@1.0-convert android.hardware.boot@1.0 android.hardware.boot@1.1 android.hardware.boot-V1-ndk libboot_control_client libprotobuf-cpp-full-ndk; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          echo "runs #177/#178/#179 stubs created: android.hardware.health@1.0-convert + android.hardware.boot@1.0 + android.hardware.boot@1.1 + android.hardware.boot-V1-ndk + libboot_control_client + libprotobuf-cpp-full-ndk plain cc_library stubs. No prunes, no type changes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -7528,6 +7769,8 @@ jobs:
           echo "runs #171/#172/#173 fix: android.hidl.token@1.0-utils + android.hardware.graphics.bufferqueue@1.0 + @2.0 + update_metadata-protos + libnative_bridge_support_accessor_headers + libnative_bridge_guest_state_accessor + libip_checksum + libteeui_hal_support + libacvp_modulewrapper stubs created. No prunes, no type changes this round."
 
           echo "runs #174/#175/#176 fix: libfscrypt + libfec + perfetto_trace_protos + libhealthloop + android.hardware.health-V4-ndk + android.hardware.health-translate-ndk + libpng + android.hardware.health-V1-ndk + android.hardware.health-translate-V1-ndk + libhealth2impl + android.hardware.health@2.1 + libvold_binder + libmediautils + android.frameworks.schedulerservice@1.0 + lib_microdroid_metadata_proto + libsigningutils + libverity_tree stubs created. No prunes, no type changes this round."
+
+          echo "runs #177/#178/#179 fix: android.hardware.health@1.0-convert + android.hardware.boot@1.0 + android.hardware.boot@1.1 + android.hardware.boot-V1-ndk + libboot_control_client + libprotobuf-cpp-full-ndk stubs created. No prunes, no type changes this round."
 
 
 
@@ -7940,6 +8183,17 @@ jobs:
           # must be plain cc_library at build time (same check as the
           # prune step above).
           for stub in libfscrypt libfec perfetto_trace_protos libhealthloop android.hardware.health-V4-ndk android.hardware.health-translate-ndk libpng android.hardware.health-V1-ndk android.hardware.health-translate-V1-ndk libhealth2impl android.hardware.health@2.1 libvold_binder libmediautils android.frameworks.schedulerservice@1.0 lib_microdroid_metadata_proto libsigningutils libverity_tree; do
+            grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
+          done
+          # Runs #177/#178/#179 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in android.hardware.health@1.0-convert android.hardware.boot@1.0 android.hardware.boot@1.1 android.hardware.boot-V1-ndk libboot_control_client libprotobuf-cpp-full-ndk; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #177/#178/#179 fix: the six plain cc_library stubs
+          # must be plain cc_library at build time (same check as the
+          # prune step above).
+          for stub in android.hardware.health@1.0-convert android.hardware.boot@1.0 android.hardware.boot@1.1 android.hardware.boot-V1-ndk libboot_control_client libprotobuf-cpp-full-ndk; do
             grep -A1 'cc_library {' yuzora-stubs/Android.bp | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
