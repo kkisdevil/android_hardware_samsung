@@ -934,6 +934,106 @@ still 32 projects.
   `if: always()`), which touches the cache steps and needs his
   word - not changed in this fix round.
 
+  Runs #147 (45918788481, 15m37s, auto, manifest 9e61ecc),
+  #148 (45918894728, 13m21s, auto, README d227a64) and #149
+  (45919249035, 14m43s, manual dispatch ~06:22 IST 2026-11-27,
+  head d227a64 - the runs #144/#145/#146 fix, workflow
+  996034f): ALL FAILED at Soong ninja-file generation, 36-46s
+  into the "Build lights HAL" step. The #144/#145/#146 fix
+  HELD in all three (prune step passed in 4s + pre-build guard
+  passed, ZERO Soong dependency-cycle lines in any raw log -
+  the libwinpthread stl: "none" fix resolved). Subset
+  variation again: #149 reports 3 lines, #147/#148 report 4.
+  The fix covers the UNION (4 lines, 3 distinct modules).
+  Raw-log verbatim error union (browser job-logs.txt read;
+  the other "error:" matches in each log are the runner
+  echoing the Build step script itself - the pre-build-guard
+  echo commands that did not fire - NOT build errors; no
+  genuine "missing variant" line in any run): bionic/libc/
+  Android.bp:2180:1 "librust_baremetal" depends on undefined
+  module "//external/llvm-libc:llvmlibc"; same line
+  "librust_baremetal" depends on undefined module
+  "libarm-optimized-routines-mem"; bionic/libc/Android.bp:
+  234:1 "libc_jemalloc_wrapper" depends on undefined module
+  "libjemalloc5"; bionic/libc/Android.bp:841:1 "libc_bionic"
+  depends on undefined module "//external/llvm-libc:llvmlibc"
+  (#147/#148 only). FAILED line is
+  out/soong/build.yuzora_lights.ninja. CORRECTION: the first
+  UI-log read of #149 reported the module as
+  "//external/llvm-libc:llvm-libc" - WRONG; the raw log says
+  "//external/llvm-libc:llvmlibc", matching the consumer's
+  reference (bionic/libc/Android.bp:2209) - same phantom class
+  as the #96 "librusb_platform" misread. Line numbers verified
+  against the manifest-pinned tree: librust_baremetal block
+  starts at :2181 (Soong :2180:1), libc_jemalloc_wrapper at
+  :235 (Soong :234:1), libc_bionic's whole_static_libs at
+  :1258 (Soong :841:1 - attributes through the defaults
+  expansion again, same caveat as #122/#125). Root causes,
+  verified live at AOSP android-15.0.0_r32 (which IS the
+  LineageOS lineage-22.2 source for these three paths - the
+  LineageOS manifest pins the AOSP remote to r32 and no
+  LineageOS mirrors exist for these repos; all three defining
+  projects UNSYNCED): llvmlibc is cc_library_static in
+  external/llvm-libc/Android.bp (r32, lines 24-25), stl:
+  "none", visibility //bionic/libc, used in whole_static_libs
+  by librust_baremetal (:2209) and libc_bionic (:1258);
+  libarm-optimized-routines-mem/-string/-math are all
+  cc_library_static in external/arm-optimized-routines/
+  Android.bp (r32, lines 187-188, 137-138, 84-85); -mem
+  carries stl: "none", nocrt, visibility //bionic/libc
+  ("Memory intrinsics for bare-metal Rust binaries."), the
+  shared defaults carry stl: "none" + host_supported; -mem
+  used in whole_static_libs by librust_baremetal (:2210);
+  libjemalloc5 is plain cc_library in external/jemalloc_new/
+  Android.bp (r32, lines 185-186) - NOT external/jemalloc (no
+  Android.bp there at r32); target.android.shared disabled,
+  defaults carry stl: "none" + host_supported; used in
+  static_libs by libc_jemalloc_wrapper (:242) and in
+  whole_static_libs via the cc_defaults
+  libc_native_allocator_defaults (:206/:220, product_variables
+  malloc_low_memory - gated, which is why no "libc" module
+  error surfaces). Sibling libjemalloc5_je_prefixed is
+  cc_library_host_static (same file, lines 235-236) - a
+  different module, already stubbed in #96. Siblings
+  (same-file, next subset-reporting layer, #111 libgsi/libgsid
+  precedent): libarm-optimized-routines-string in
+  whole_static_libs by libc_common (bionic/libc/Android.bp:
+  1369) and libarm-optimized-routines-math in
+  whole_static_libs by libm (bionic/libm/Android.bp:33);
+  neither errored in any run, but both are one
+  subset-reporting layer away, so both are stubbed now. The
+  llvmlibc dep is path-qualified (//external/llvm-libc:
+  llvmlibc), so Soong resolves it only in package
+  external/llvm-libc - it cannot live in yuzora-stubs; the
+  prune step creates external/llvm-libc/Android.bp (+ empty.c)
+  each run, same mechanism as the #131 .aidl creation. No new
+  projects in the manifest (still 32). All 5 stubs carry stl:
+  "none" (upstream carries it on all five via the module or
+  its defaults; the empty.c stub needs no STL; it also avoids
+  a libwinpthread-class default-STL dep). COMPILE-STAGE
+  CAVEAT: all 5 stubs are bare (srcs empty.c, no real symbols).
+  libc_common / libc_bionic / libc_jemalloc_wrapper are in the
+  libc closure, so if the next run passes Soong and links
+  libc.so, undefined symbols from the empty stubs may surface
+  (memcpy/memset/memmove et al. from the -string/-mem stubs,
+  strlcpy/strlcat/memrchr/bsearch from llvmlibc,
+  malloc/calloc/realloc/free from libjemalloc5 if jemalloc is
+  selected) - dummy implementations will be needed only then,
+  same class as the #111 libgsi / #135 flatbuffer caveats.
+  librust_baremetal is NOT in the HAL closure (baremetal Rust
+  for AVF guests), so its two deps may never link. The cache
+  steps are untouched (see the save-always note below).
+
+  CACHE NOTE (run #149): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 1s - a cache MISS,
+  sync took 10m37s, and "Post Restore repo cache" RAN (0s) but
+  recorded no "Cache saved" line, so no cache was saved - same
+  as runs #118/#121/#124/#127/#130/#134/#137/#140/#143/#146.
+  The next run will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
