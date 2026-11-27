@@ -2694,6 +2694,96 @@ still 32 projects.
   needs his word - not changed in this fix round.
 
   -->
+  CACHE NOTE (runs #207/#208/#209/#210): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~9-12 min) and no Save step is expected to run - same as
+  runs #118/#121/#124/#127/#130/#134/#137/#140/#143/#146/#149/
+  #152/#155/#158/#159/#160/#161/#162/#163/#164/#165/#166/#167/
+  #168/#169/#170/#171/#172/#173/#174/#175/#176/#177/#178/#179/
+  #180/#181/#182/#183/#184/#185/#186/#192/#193/#194/#195/#196/
+  #197/#198/#199/#200/#201/#202/#203/#204/#205/#206. The next run
+  will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps and
+  needs his word - not changed in this fix round.
+
+  Runs #211 (46054909305, 13m29s, stubs push 658d83f), #212
+  (46055181408, 13m22s, manifest push 939b660), #213 (46055299297,
+  12m41s, README push ad0433a) and #214 (46055406523, 12m22s, manual
+  dispatch ~00:46 IST on commit ad0433a) ALL FAILED on the SAME fix
+  code (head ad0433a - the runs #207/#208/#209/#210 3-stub + SIGPIPE
+  fix, workflow 1d8df37). The #210 fix HELD completely in all four
+  (zero genuine errors for composer@2.4, graphics.common@1.0 or
+  libnativebridge_lazy) and the #208 SIGPIPE race fix HELD (no
+  Broken-pipe failure in any run). UNION across #212/#213/#214 =
+  24 distinct modules (30 genuine line instances: #212 21, #213 4,
+  #214 5 - subset variation again). Whole raw job logs read by the
+  parent (jobs 140694917997 / 140695825045 / 140696215276 /
+  140696565651), counting only lines starting "error: ... depends
+  on undefined module ...". #211's single libgoogle-benchmark-main
+  line is a STAGED-COMMIT artifact (it ran the pre-fix workflow
+  d98cb70; the benchmark-dir prune landed after it started) and is
+  excluded from the union. SurfaceFlinger_test needs
+  android.hardware.graphics.composer@2.1 (static_libs) + libandroid
+  (shared_libs) (frameworks/native/services/surfaceflinger/tests/
+  Android.bp:25:1) - in #212 + #214. IPC_test needs libandroid
+  (shared_libs) (same file, :100:1) - in #212 + #214.
+  android.frameworks.automotive.display@1.0-service needs
+  android.frameworks.automotive.display@1.0 (shared_libs)
+  (frameworks/native/services/automotive/display/Android.bp:31:1) -
+  in #212 + #214. libdisplayservicehidl needs
+  android.frameworks.displayservice@1.0 (static_libs)
+  (frameworks/native/services/displayservice/Android.bp:26:1) - in
+  #212 + #214. BufferStreamsDemoApp needs 16 androidx.* modules
+  (frameworks/native/libs/bufferstreams/examples/app/Android.bp:20:1)
+  - in #212 ONLY. secretkeeper.trusty needs
+  android.hardware.security.secretkeeper-V1-rust + libauthgraph_hal
+  + libauthgraph_wire + libsecretkeeper_hal_v1 (rustlibs)
+  (system/core/trusty/secretkeeper/Android.bp:20:1) - in #213 ONLY.
+  The "libcharger_sysprop" lines are a CONFIRMED PHANTOM again
+  (no genuine error in any of #211-#214), same class as
+  #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/#210. FIRST-EVER
+  reported: the first graphics.composer@2.1, the first libandroid
+  (silent for 210 runs, then surfaced via a new consumer), the first
+  android.frameworks.automotive.display@1.0, the first
+  android.frameworks.displayservice@1.0, the first 16 androidx.*
+  modules, the first android_app consumer, the first secretkeeper /
+  authgraph libs, the first rust_binary consumer, the first
+  -V1-rust module. PATH CORRECTION: the first #212 browser report
+  mis-transcribed the BufferStreams consumer path; the raw log says
+  bufferstreams/examples/app/Android.bp:20:1 (matching the synced
+  tree). Fix: 4 new plain cc_library stubs
+  (android.hardware.graphics.composer@2.1 - hidl_interface in the
+  pruned hardware/interfaces/graphics/composer/2.1 dir; libandroid -
+  definition not located in the synced tree, per the #186/#202
+  unlocated-definition precedent; android.frameworks.automotive.
+  display@1.0 - HIDL package in unsynced frameworks/hardware/
+  interfaces; android.frameworks.displayservice@1.0 - HIDL
+  interface IDisplayService in unsynced frameworks/hardware/
+  interfaces) + 2 dirs pruned whole (frameworks/native/libs/
+  bufferstreams/examples/app - kills all 16 androidx.*; system/
+  core/trusty/secretkeeper - kills all 4 secretkeeper modules),
+  no new projects (still 32). No sdk_version on any new stub (no
+  consumer sets one). Verified in the synced tree
+  (~/workspace/lights-local) + upstream AOSP android-15.0.0_r32.
+  Dep-closure verified (audit over the erroring consumers' DIRECT
+  deps): every other direct dep is defined in-tree (non-pruned) or
+  already stubbed. Prune alternatives for surfaceflinger/tests and
+  displayservice were considered and REJECTED (recorded in the
+  workflow comment): both dirs hold modules referenced by in-graph
+  modules outside the dir, so a prune would create new errors.
+
+  CACHE NOTE (runs #211/#212/#213/#214): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~9-12 min) and no Save step is expected to run - run #214:
+  Restore 1s MISS ("Cache not found for input keys:
+  lights-repo-d48af..."), sync 9m57s, Post step 0s, no "Cache
+  saved" line. The next run will also restore-miss and sync ~9-12
+  min. The upstream-recommended fix is separate restore + save
+  steps (the save step with `if: always()`), which touches the
+  cache steps and needs his word - not changed in this fix round.
+
+  -->
 
 <manifest>
 
