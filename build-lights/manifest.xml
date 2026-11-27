@@ -2063,6 +2063,95 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Run #186 (45990278315, 12m59s, manual dispatch ~16:54 IST
+  2026-11-27, head 6423961 - the run #185 stray-# fix, workflow
+  6423961): FAILED at Soong ninja-file generation, 38s into the
+  "Build lights HAL" step. The #185 stray-# fix HELD (zero
+  "expected assignment or module definition" lines anywhere in
+  the whole raw job log) and the #180/#181/#182 fix HELD (prune
+  step passed 1s + pre-build guard passed; ZERO genuine errors
+  for any of its 13 modules in the raw log). Raw-log verbatim
+  (11 lines at 11:37:50 UTC, 6 distinct undefined modules):
+  trusty_keymaster_set_attestation_key / libtrusty_ipc /
+  trusty_rkp_set_uds_cert / trusty_keymaster_set_attestation_ids
+  / android.hardware.keymaster@4.0-service.trusty /
+  android.hardware.keymaster@3.0-service.trusty (all in
+  system/core/trusty/keymaster/Android.bp) need
+  libkeymaster_messages (6x) + libkeymaster4 +
+  android.hardware.keymaster@4.0 + libkeymaster3device +
+  android.hardware.keymaster@3.0; libgfxstats
+  (frameworks/native/services/gpuservice/gpustats/Android.bp:24)
+  needs libprotoutil. The "libcharger_sysprop" lines are a
+  CONFIRMED PHANTOM again (17 lines in the raw log, ALL in the
+  11:37:12 script echo - ZERO in the actual build output), same
+  class as #152/#161/#174/#177/#182. FIRST-EVER reported: the
+  first Trusty keymaster errors, the first keymaster HIDL libs,
+  the first libprotoutil. Fix: 1 dir pruned whole
+  (system/core/trusty/keymaster - all 6 erroring consumers live
+  in that one file; nothing else in the synced tree references
+  anything defined there, verified by whole-tree grep) + 3 new
+  stubs, NO new projects (still 32). Stubs (all in
+  yuzora-stubs/Android.bp, each with a prune-step check +
+  pre-build guard check): 3 plain cc_library (libprotoutil,
+  libkeymaster4, android.hardware.keymaster@4.0).
+  libkeymaster4 + android.hardware.keymaster@4.0 are Rule-4
+  siblings (#182 libnativeloader_lazy precedent): REPORTED in
+  #186 via the trusty consumers AND referenced by the unpruned
+  in-graph samsung keymaster service
+  (hardware/samsung/hidl/keymaster, shared_libs). libprotoutil
+  is the reported module (libgfxstats; also libsensorservice +
+  gpuservice unittests); its definition was NOT located
+  (bounded search: frameworks/native/libs/ + StatsD/lib/ r32
+  listings + web search). No sdk_version on any new stub (no
+  consumer sets one). Verified in the synced tree
+  (~/workspace/lights-local): libkeymaster_messages /
+  libkeymaster4 / libkeymaster3device are cc_library_shared /
+  cc_library / cc_library_shared in system/keymaster/Android.bp
+  (r32, NOT system/security/keymaster - that path 404s);
+  android.hardware.keymaster@4.0/@3.0 are hidl_interface in
+  hardware/interfaces/keymaster/4.0 + 3.0/Android.bp (defined
+  ONLY in pruned dirs). Dep-closure verified (audit over the
+  erroring consumers' DIRECT deps): every other direct dep is
+  defined in-tree (non-pruned) or already stubbed. NOT stubbed:
+  libkeymaster_messages, libkeymaster3device,
+  android.hardware.keymaster@3.0 (reported in #186 but, after
+  the prune, referenced only in pruned hardware/interfaces/*
+  dirs); libcharger_sysprop (sysprop-generated phantom);
+  libsensorservice's other undefined deps (sensors@1.0/@2.0/
+  @2.1, libactivitymanager_aidl, libbatterystats_aidl,
+  libsensorprivacy, libpermission, libfmq,
+  packagemanager_aidl-cpp, android.hardware.common-V2-ndk,
+  android.hardware.common.fmq-V1-ndk,
+  libaconfig_storage_read_api_cc, libaidlcommonsupport,
+  android.hardware.sensors@1.0-convert,
+  framework-cppstream-protos - never reported in any raw log);
+  android.hardware.boot@1.2, android.hardware.graphics.common
+  @1.1/@1.2, allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+  libLibGuiProperties, libhealthhalutils, libhealthshim,
+  libfastbootshim, libcom.android.sysprop.apex (both
+  sysprop-generated); avf_build_flags_cc (ALREADY stubbed as
+  cc_defaults). WATCH ITEM (not implemented): headers/symbols
+  may be needed later IF a future round fails past Soong at
+  compile/link - the samsung keymaster service.cpp includes
+  the generated HIDL header
+  <android/hardware/keymaster/4.0/IKeymasterDevice.h> +
+  <AndroidKeymaster4Device.h>; the build target is only
+  android.hardware.light-service.samsung and none of the 3
+  new stubs is in its closure, so bare stubs suffice for this
+  target.
+
+  CACHE NOTE (run #186): the save-always flip still does NOT
+  save the cache. "Restore repo cache" was a MISS (0s, sync
+  8m41s) and no Save step ran - same as runs #118/#121/#124/
+  #127/#130/#134/#137/#140/#143/#146/#149/#152/#155/#158/
+  #159/#160/#161/#162/#163/#164/#165/#166/#167/#168/#169/
+  #170/#171/#172/#173/#174/#175/#176/#177/#178/#179/#180/
+  #181/#182/#183/#184/#185. The next run will also
+  restore-miss and sync ~9-12 min. The upstream-recommended
+  fix is separate restore + save steps (the save step with
+  `if: always()`), which touches the cache steps and needs his
+  word - not changed in this fix round.
+
   -->
 
 <manifest>
