@@ -1488,6 +1488,64 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #162 (45944137206, 13m47s, auto, manifest 8be9e1a),
+  #163 (45944292731, 14m06s, auto, README 95cd316) and #164
+  (45944373712, 15m36s, manual dispatch ~10:42 IST 2026-11-27,
+  head 95cd316 - the runs #159/#160/#161 sdk_version fix,
+  workflow e31bb15): ALL FAILED at Soong ninja-file generation,
+  36-38s into the "Build lights HAL" step, on the SAME fix code.
+  The #159/#160/#161 fix HELD COMPLETELY in all three (prune
+  step passed + pre-build guard passed; ZERO genuine
+  ndk_system / vulkan_headers / libjsoncpp_ndk errors in any raw
+  log). Each run reports a different subset on one commit
+  (subset variation - the fix covers the UNION). Raw-log
+  verbatim error union (browser job-logs.txt read of all three
+  raw logs; the "lights-service.samsung / product m51 / missing
+  and no known rule" line is a CONFIRMED PHANTOM - it appears
+  nowhere genuine in any raw log, same class as #152):
+  system/core/trusty/test/driver/Android.bp:20:1
+  "trusty_driver_test" depends on undefined module "py3-stdlib"
+  + dependency "py3-launcher-autorun" of "trusty_driver_test"
+  missing variant: (#162) requested os:android,
+  arch:arm64_armv8-a; available os:linux_glibc,arch:x86_64,
+  os:windows,arch:x86_64 -
+  external/rust/android-crates-io/crates/libbpf-rs/Android.bp:16:1
+  "liblibbpf_rs" depends on undefined module "libbpf" (#163 +
+  #164; "trusty_driver_test" occurs ZERO times in #163's and
+  #164's entire raw logs). Fix: NO new stubs, NO new projects
+  (still 32). Three dirs PRUNED whole in the prune step
+  (rm -rf + prune-step check + pre-build guard check each):
+  system/core/trusty/test (python_test trusty_driver_test with
+  embedded_launcher: true needs py3-stdlib + py3-launcher-autorun;
+  test/ holds driver/ + binder/aidl test sources only; nothing in
+  the synced tree references trusty_driver_test or py3-stdlib);
+  external/rust/android-crates-io/crates/libbpf-rs (rust_library
+  liblibbpf_rs takes shared_libs ["libbpf"]; libbpf is defined
+  NOWHERE in the synced tree; nothing references liblibbpf_rs);
+  external/rust/android-crates-io/crates/libbpf-sys (the
+  provably-next layer, not speculation: referenced only by
+  libbpf-rs in rustlibs, its rust_bindgen module
+  liblibbpf_bindgen carries shared_libs ["libbpf"] AND
+  header_libs ["libbpf_build_headers"], BOTH undefined in the
+  synced tree, so Soong WILL error on it in some run's subset;
+  pruning (not stubbing libbpf) also kills the
+  libbpf_build_headers dep, which no stub would fix). The third
+  live "libbpf" referencer, hardware/interfaces/health/utils/
+  libhealthloop, is already pruned by the closure prune. The
+  cache steps are untouched (see the save-always note below).
+
+  CACHE NOTE (runs #162/#163/#164): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS in
+  all three (1s; cache key
+  lights-repo-8910b1d4be64d0c3ca45ae2e859ac24135d226b20a816933cc9779f865f1a073),
+  sync succeeded on attempt 1 in all three, and no cache was
+  saved - same as runs #118/#121/#124/#127/#130/#134/#137/#140/
+  #143/#146/#149/#152/#155/#158/#159/#160/#161. The next run
+  will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
