@@ -4872,6 +4872,242 @@ jobs:
                   "//visibility:public",
               ],
           }
+          // Runs #141/#142/#143 fix: the #138/#139/#140 fix HELD in
+          // all three (prune step passed + pre-build guard passed).
+          // All three fail at Soong ninja generation, tens of seconds
+          // into the build step, on the SAME fix code (head 24b86f6 -
+          // the #138/#139/#140 fix, workflow eed9b31; #141 is the
+          // manifest push 026e1af, #142 the README push 24b86f6 -
+          // same workflow file in all three, #143 a manual dispatch
+          // ~05:08 IST on 24b86f6). NO subset variation this round:
+          // all three report the IDENTICAL 12 lines - the fix covers
+          // that set (12 lines, 9 distinct modules). Runs #141
+          // (45911630805, 13m27s, auto, manifest 026e1af) + #142
+          // (45911747029, 15m56s, auto, README 24b86f6) + #143
+          // (45912149579, 13m43s, manual ~05:08 IST, 24b86f6).
+          // CORRECTION to the run #141 id: the first browser read
+          // was given 45911955969, which 404s - the runs list shows
+          // #141 is 45911630805. Always take run ids from the runs
+          // list, never from a dispatch handoff alone.
+          // Raw-log verbatim (live browser read of the job-logs.txt
+          // raw logs; genuine build-output lines only - the other
+          // "error:" matches in each log are the runner echoing the
+          // Build step script itself, the pre-build-guard echo
+          // commands that did NOT fire, NOT build errors). The
+          // FAILED line is out/soong/build.yuzora_lights.ninja (not
+          // build.ninja). No genuine "missing variant" line in any
+          // of the three runs.
+          //   libinputflinger_base (frameworks/native/services/
+          //   inputflinger/Android.bp:229) needs libstatslog.
+          //   libinput_tests (frameworks/native/libs/input/tests/
+          //   Android.bp:11) needs libflagtest + libstatslog.
+          //   inputflinger_tests (frameworks/native/services/
+          //   inputflinger/tests/Android.bp:34) needs
+          //   libpalmrejection + libperfetto_client_experimental +
+          //   perfetto_winscope_extensions_zero + libchrome-gestures
+          //   + libflagtest + android.hardware.input.processor-
+          //   V1-ndk + libkll + libstatspull + libstatslog.
+          // NOTE on :line numbers: Soong's :229 / :11 / :34 ARE the
+          // module block starts in the live files this round
+          // (verified against the manifest-pinned tree:
+          // libinputflinger_base cc_library_shared block at :229,
+          // libinput_tests cc_test block at :11, inputflinger_tests
+          // cc_test block at :34) - the deps themselves arrive through
+          // the defaults the three targets inherit
+          // (libinputflinger_base_defaults,
+          // libinputflinger_defaults, libinputdispatcher_defaults,
+          // libinputreader_defaults), so key the fix off module
+          // names, not :line numbers (same caveat as the #122
+          // liblp/libapex paths and the #125 fastboot/init lines).
+          // CORRECTION to the browser reports: both browser reads
+          // claimed the prune step "removed frameworks/native/
+          // services/inputflinger, frameworks/native/libs/input and
+          // frameworks/native/libs/sensor" - WRONG. The prune step
+          // contains no rm for any of those trees (verified in this
+          // file); the three consumers are test targets in the
+          // SYNCED frameworks/native tree, and their missing deps
+          // are stubbed, not pruned. Same phantom class as the
+          // #30/#33/#84/#96/#107/#121/#131 misreads - the raw log
+          // error lines are authoritative, the browser's prune
+          // summary is not.
+          // Root causes, verified live at LineageOS lineage-22.2 /
+          // AOSP android-15.0.0_r32 (all defining projects UNSYNCED
+          // unless noted):
+          // - libstatslog: the StatsD client log lib. In Android 12
+          //   the StatsD module code moved from system/core/libstats
+          //   to packages/modules/StatsD (source.android.com statsd
+          //   doc: system/core/libstats -> packages/modules/StatsD/
+          //   lib/libstats) - packages/modules/StatsD is NOT synced;
+          //   the defining .bp file was NOT traced to a file this
+          //   round (same class as the #105 libgtest_isolated /
+          //   libprocinfo stubs - home not traced). Used in
+          //   shared_libs by libinputflinger_base_defaults,
+          //   libinputflinger_defaults, libinputdispatcher_defaults
+          //   and libinputreader_defaults, and directly by
+          //   libinput_tests, so a plain cc_library stub satisfies
+          //   it.
+          // - libstatspull: the StatsD pull-atom client lib -
+          //   cc_library in packages/modules/StatsD/lib/
+          //   libstatspull (same Android 12 move: system/core/
+          //   libstats/pull -> packages/modules/StatsD/lib/
+          //   libstatspull; the prebuilt module SDK confirms the
+          //   shared lib) - packages/modules/StatsD is NOT synced.
+          //   Used in shared_libs by libinputflinger_defaults,
+          //   libinputdispatcher_defaults and libinputreader_
+          //   defaults, so a plain cc_library stub satisfies it.
+          // - libkll: provides kll.h, included by the inputflinger
+          //   dispatcher (LatencyAggregator.h) - the defining .bp
+          //   file was NOT traced to a file this round (same class
+          //   as the #105 stubs - home not traced). Used in
+          //   shared_libs by libinputflinger_defaults and
+          //   libinputdispatcher_defaults, so a plain cc_library
+          //   stub satisfies it.
+          // - libflagtest: the aconfig flag-test helper lib - also
+          //   used in static_libs by cts/flags/cc_tests
+          //   FlagMacrosTest; the defining .bp file was NOT traced
+          //   to a file this round (same class as the #105 stubs -
+          //   home not traced). Used in static_libs by
+          //   libinput_tests + inputflinger_tests, so a plain
+          //   cc_library stub satisfies it (plain builds the static
+          //   variant).
+          // - libpalmrejection: the Chromium neural palm-detection
+          //   model lib used by the input code (frameworks/native
+          //   commits, bug 198472780 - "The libpalmrejection
+          //   library is going to be used in the input code"); the
+          //   defining .bp file was NOT traced to a file this round
+          //   (same class as the #105 stubs - home not traced).
+          //   Used in static_libs by libinputflinger_defaults, so a
+          //   plain cc_library stub satisfies it.
+          // - libperfetto_client_experimental: the Perfetto client
+          //   API lib - GN target //:libperfetto_client_
+          //   experimental, translated to Android.bp cc_library by
+          //   external/perfetto/tools/gen_android_bp (a default
+          //   target; host_supported, vendor_available) -
+          //   external/perfetto is NOT synced. Used in static_libs
+          //   by libinputflinger_defaults and libinputdispatcher_
+          //   defaults, so a plain cc_library stub satisfies it.
+          // - perfetto_winscope_extensions_zero: a Perfetto proto
+          //   lib (the *_zero proto variant) in external/perfetto;
+          //   the defining .bp file was NOT traced to a file this
+          //   round (same class as the #105 stubs - home not
+          //   traced). Used in static_libs by libinputdispatcher_
+          //   defaults, so a plain cc_library stub satisfies it.
+          // - libchrome-gestures: cc_library in external/
+          //   libchrome-gestures (an AOSP submodule - .gitmodules;
+          //   the sibling libchrome-gestures_headers was already
+          //   stubbed in #84) - external/libchrome-gestures is NOT
+          //   synced. Used in static_libs by libinputreader_
+          //   defaults (+ libinputreader) and in whole_static_libs
+          //   by libinputreader_static, so only a plain cc_library
+          //   stub satisfies both (plain builds the static
+          //   variant).
+          // - android.hardware.input.processor-V1-ndk: the generated
+          //   NDK lib of the aidl_interface android.hardware.input.
+          //   processor in hardware/interfaces/input/processor/aidl/
+          //   Android.bp (verified in the synced tree: frozen
+          //   version 1, cpp/java backends disabled, ndk default-
+          //   on, stability vintf, imports android.hardware.input.
+          //   common-V1) - hardware/interfaces is synced but the
+          //   closure prune keeps ONLY light/aidl +
+          //   compatibility_matrices + common/aidl + input/common/
+          //   aidl, so input/processor is pruned. The imported
+          //   android.hardware.input.common-V1 needs NO stub: its
+          //   aidl dir is kept (the #65/#66/#67 fix). Used in
+          //   shared_libs by libinputflinger_defaults, so a plain
+          //   cc_library stub satisfies it.
+          // COMPILE-STAGE CAVEAT: all 9 stubs are bare plain
+          // cc_library stubs (srcs empty.c, no headers), as all
+          // earlier plain stubs were. A bare stub passes Soong;
+          // dummy headers + stub symbols will be needed only if a
+          // later run gets past Soong and fails at compile/link
+          // because the test sources actually include these libs'
+          // headers (LatencyAggregator.h includes <kll.h>; the
+          // inputflinger/input test sources include palm, perfetto
+          // and gestures headers) - same class as the #111 libgsi
+          // and #135 flatbuffer caveats. Note the lights HAL
+          // closure itself does not link these test targets, so
+          // this caveat may never materialize.
+          cc_library {
+              name: "libstatslog",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libflagtest",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libpalmrejection",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libperfetto_client_experimental",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "perfetto_winscope_extensions_zero",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libchrome-gestures",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "android.hardware.input.processor-V1-ndk",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libkll",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
+          cc_library {
+              name: "libstatspull",
+              srcs: ["empty.c"],
+              host_supported: true,
+              target: { windows: { enabled: true } },
+              visibility: [
+                  "//visibility:public",
+              ],
+          }
           EOF
 
           # Dummy source for the android.os.hintmanager_aidl-ndk stub above and the
@@ -5122,6 +5358,14 @@ jobs:
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
           done
           echo "runs #138/#139/#140 stubs created: android.hardware.sensors-V1-convert + android.frameworks.sensorservice-V1-ndk + android.hardware.sensors-V3-ndk cc_library stubs; libeigen + tensorflow_headers cc_library_headers stubs; libtflite_static + libkernelconfigs cc_library_static stubs; android.companion.virtualdevice.flags-aconfig-cc + libPlatformProperties cc_library stubs. No type changes this round."
+          # Runs #141/#142/#143 fix: verify all 9 new stubs are present
+          # in yuzora-stubs/Android.bp (same `name: "..."` grep form as
+          # the #96/#99/#102/#105/#111/#116/#119/#122/#125/#128/#131/#135/#138 loops above).
+          for stub in libstatslog libflagtest libpalmrejection libperfetto_client_experimental perfetto_winscope_extensions_zero libchrome-gestures android.hardware.input.processor-V1-ndk libkll libstatspull; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          echo "runs #141/#142/#143 stubs created: libstatslog + libflagtest + libpalmrejection + libperfetto_client_experimental + perfetto_winscope_extensions_zero + libchrome-gestures + android.hardware.input.processor-V1-ndk + libkll + libstatspull cc_library stubs. No type changes this round."
+
 
 
 
@@ -5408,6 +5652,11 @@ jobs:
           # Runs #138/#139/#140 fix: the new stubs must be present at
           # build time (same `name: "..."` grep form as above).
           for stub in android.hardware.sensors-V1-convert android.frameworks.sensorservice-V1-ndk android.hardware.sensors-V3-ndk libeigen tensorflow_headers libtflite_static libkernelconfigs android.companion.virtualdevice.flags-aconfig-cc libPlatformProperties; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #141/#142/#143 fix: the new stubs must be present at
+          # build time (same `name: "..."` grep form as above).
+          for stub in libstatslog libflagtest libpalmrejection libperfetto_client_experimental perfetto_winscope_extensions_zero libchrome-gestures android.hardware.input.processor-V1-ndk libkll libstatspull; do
             grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
