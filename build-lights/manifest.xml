@@ -807,6 +807,79 @@ still 32 projects.
   (the save step with `if: always()`), which touches the cache
   steps and needs his word - not changed in this fix round.
 
+  Runs #141 (45911630805, 13m27s, auto, manifest 026e1af),
+  #142 (45911747029, 15m56s, auto, README 24b86f6) and #143
+  (45912149579, 13m43s, manual dispatch ~05:08 IST 2026-11-27,
+  head 24b86f6 - the runs #138/#139/#140 fix, workflow
+  eed9b31): ALL FAILED at Soong ninja-file generation, tens of
+  seconds into the "Build lights HAL" step. The
+  #138/#139/#140 fix HELD in all three (prune step passed
+  + pre-build guard passed). NO subset variation this round:
+  all three report the IDENTICAL 12 lines (12 lines, 9
+  distinct modules). Raw-log verbatim (live browser read of
+  the job-logs.txt raw logs, genuine build-output lines
+  only): libinputflinger_base (frameworks/native/services/
+  inputflinger/Android.bp:229) needs libstatslog;
+  libinput_tests (frameworks/native/libs/input/tests/
+  Android.bp:11) needs libflagtest + libstatslog;
+  inputflinger_tests (frameworks/native/services/
+  inputflinger/tests/Android.bp:34) needs libpalmrejection +
+  libperfetto_client_experimental +
+  perfetto_winscope_extensions_zero + libchrome-gestures +
+  libflagtest + android.hardware.input.processor-V1-ndk +
+  libkll + libstatspull + libstatslog. No genuine "missing
+  variant" line in any of the three runs. CORRECTION: the
+  first browser read was given run id 45911955969 for #141,
+  which 404s - the runs list shows #141 is 45911630805;
+  always take run ids from the runs list. CORRECTION to the
+  browser reports: both claimed the prune step "removed
+  frameworks/native/services/inputflinger, frameworks/native/
+  libs/input and frameworks/native/libs/sensor" - WRONG, the
+  prune step contains no rm for any of those trees; the three
+  consumers are test targets in the SYNCED frameworks/native
+  tree, and their missing deps are stubbed, not pruned.
+  Root causes, verified live at LineageOS lineage-22.2 / AOSP
+  android-15.0.0_r32: libstatslog is the StatsD client log lib
+  (Android 12 move: system/core/libstats ->
+  packages/modules/StatsD/lib/libstats) - packages/modules/
+  StatsD NOT synced, defining .bp not traced this round;
+  libstatspull is cc_library in packages/modules/StatsD/lib/
+  libstatspull (same move; prebuilt module SDK confirms the
+  shared lib) - same project, NOT synced; libkll provides
+  kll.h (included by the inputflinger dispatcher) - home not
+  traced; libflagtest is the aconfig flag-test helper lib
+  (also used by cts/flags/cc_tests) - home not traced;
+  libpalmrejection is the Chromium neural palm-detection
+  model lib (frameworks/native, bug 198472780) - home not
+  traced; libperfetto_client_experimental is the Perfetto
+  client API lib (GN target translated to Android.bp
+  cc_library by tools/gen_android_bp) - external/perfetto NOT
+  synced; perfetto_winscope_extensions_zero is a Perfetto
+  proto lib (the *_zero proto variant) - external/perfetto
+  NOT synced, defining .bp not traced; libchrome-gestures
+  is cc_library in external/libchrome-gestures (AOSP
+  submodule; sibling libchrome-gestures_headers stubbed in
+  #84) - NOT synced; android.hardware.input.processor-V1-ndk
+  is the generated NDK lib of the aidl_interface
+  android.hardware.input.processor in hardware/interfaces/
+  input/processor/aidl (frozen v1, cpp/java backends
+  disabled, ndk default-on) - that dir is pruned by the
+  closure prune (its import android.hardware.input.common-V1
+  needs no stub: its aidl dir is kept). The fix is
+  workflow-only: 9 new plain cc_library stubs in
+  yuzora-stubs/Android.bp. No new projects (still 32). No
+  type changes this round. The cache steps are untouched
+  (see the save-always note below).
+
+  CACHE NOTE (run #143): the save-always flip still does NOT
+  save the cache. "Restore repo cache" took 0s - a cache MISS,
+  sync took 10m21s, and no "Save repo cache" step ran - same
+  as runs #118/#121/#124/#127/#130/#134/#137/#140. The next
+  run will also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps
+  (the save step with `if: always()`), which touches the cache
+  steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
