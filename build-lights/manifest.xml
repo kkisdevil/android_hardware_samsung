@@ -1767,6 +1767,117 @@ still 32 projects.
   which touches the cache steps and needs his word - not changed
   in this fix round.
 
+  Runs #174 (45968461820, 11m50s, auto, manifest b181a17),
+  #175 (45968650640, 12m15s, auto, README af180ee) and #176
+  (45968827104, 14m53s, manual dispatch ~14:20 IST 2026-11-27,
+  head af180ee - the runs #171/#172/#173 fix, workflow
+  d98eedb): ALL FAILED at Soong ninja-file generation, 26s
+  (#174) / 37s (#175) / 38s (#176) into the "Build lights HAL"
+  step, on the SAME fix code. The #171/#172/#173 fix HELD
+  COMPLETELY in all three (prune step passed + pre-build
+  guard passed; ZERO genuine errors for any of its 9 modules
+  in any raw log). Subset variation, worse than ever: #174 and
+  #176 report 3 lines each, #175 reports 25 - the fix covers
+  the UNION of 17 undefined modules, 31 error lines. Raw-log
+  verbatim error union, verified TWICE (browser job-logs.txt
+  read + direct grep of the downloaded log archives; the two
+  reads agree exactly): #174 (3 lines): "libfs_mgr" needs
+  "libfscrypt" + "libfec" (fs_mgr/Android.bp:149:1);
+  "libtracing_perfetto_tests" needs "perfetto_trace_protos"
+  (tracing_perfetto/tests/Android.bp:24:1). #175 (25 lines):
+  "libhealthd_charger_ui" needs "libhealthloop" +
+  "android.hardware.health-V4-ndk" +
+  "android.hardware.health-translate-ndk" + "libpng"
+  (healthd/Android.bp:166:1); "libhealthd_charger_ui-V1"
+  needs "libhealthloop" + "android.hardware.health-V1-ndk" +
+  "android.hardware.health-translate-V1-ndk" + "libpng"
+  (healthd/Android.bp:181:1); "libtracing_perfetto_tests"
+  needs "perfetto_trace_protos" (same line as #174);
+  "libhealthd_charger_nops" needs "libhealthloop" +
+  "libhealth2impl" + "android.hardware.health@2.1"
+  (healthd/Android.bp:106:1); "libapexd_checkpoint_vold"
+  needs "libvold_binder" (apexd/Android.bp:214:1);
+  "libbatterymonitor" needs
+  "android.hardware.health-translate-ndk" +
+  "android.hardware.health-V4-ndk" +
+  "android.hardware.health@2.1" (healthd/Android.bp:77:1);
+  "libbatterymonitor-V1" needs
+  "android.hardware.health-translate-V1-ndk" +
+  "android.hardware.health-V1-ndk" +
+  "android.hardware.health@2.1" (healthd/Android.bp:92:1);
+  "libschedulerservicehidl" needs "libmediautils" +
+  "android.frameworks.schedulerservice@1.0"
+  (schedulerservice/Android.bp:10:1); "libapexd" needs
+  "lib_microdroid_metadata_proto" + "libsigningutils" +
+  "libverity_tree" + "libvold_binder" (apexd/Android.bp:187:1).
+  #176 (3 lines): IDENTICAL to #174.
+  UI-LOG WARNING: the first UI-log read of #176 was ENTIRELY
+  PHANTOM - it invented a "FAILED: ninja: '...android.hardware
+  .lights-service.samsung', missing and no known rule to make
+  it" failure (plural name + product m51 match nothing in the
+  tree, workflow or fork); the raw log has ZERO genuine "no
+  known rule" lines. The UI-log read of #175 UNDERCOUNTED (5
+  of 25 genuine errors - only the tail of the error block was
+  visible); UI reads can truncate as well as invent. The "ninja:
+  error ... libcharger_sysprop_rust.so ... missing and no known
+  rule to make it" line is a CONFIRMED PHANTOM again (2 matches
+  per raw log, 0 genuine - the workflow's own history comment
+  echo), same class as #152/#161. Fix: 17 new stubs, NO prunes,
+  NO new projects (still 32). Stubs (all in
+  yuzora-stubs/Android.bp, each with a prune-step check +
+  pre-build guard check): ALL plain cc_library (libfscrypt,
+  libfec, perfetto_trace_protos, libhealthloop,
+  android.hardware.health-V4-ndk,
+  android.hardware.health-translate-ndk, libpng,
+  android.hardware.health-V1-ndk,
+  android.hardware.health-translate-V1-ndk, libhealth2impl,
+  android.hardware.health@2.1, libvold_binder, libmediautils,
+  android.frameworks.schedulerservice@1.0,
+  lib_microdroid_metadata_proto, libsigningutils,
+  libverity_tree). No sdk_version on any new stub (no consumer
+  sets sdk_version - verified on every consumer block; the only
+  sdk_version in those files is apexd/Android.bp:117 inside
+  aidl_interface apex_aidl_interface's backend.java, not a
+  consumer). No prunes: the referencers are core platform
+  modules (system/core fs_mgr/healthd, system/apex apexd,
+  frameworks/native). Verified in the synced tree
+  (~/workspace/lights-local): 10 of the 17 modules are defined
+  NOWHERE in the tree (libfscrypt, libfec,
+  perfetto_trace_protos, libpng, libvold_binder, libmediautils,
+  android.frameworks.schedulerservice@1.0,
+  lib_microdroid_metadata_proto, libsigningutils,
+  libverity_tree); 7 are defined ONLY in
+  hardware/interfaces/health (pruned wholesale by the closure
+  prune, which keeps only light + compatibility_matrices +
+  common + input): libhealthloop + libhealth2impl
+  (health/utils), health-V1-ndk + health-V4-ndk +
+  health-translate-ndk + health-translate-V1-ndk (health/aidl),
+  health@2.1 (health/2.1). Dep-closure verified: every other
+  DIRECT dep of the erroring consumers is defined in-tree or
+  already stubbed - no provably-next layer beyond these
+  seventeen. FIRST-EVER reported HIDL @x.y lib:
+  android.hardware.health@2.1 surfaced in #175 (3 consumers),
+  plus the four health -ndk libs - the old "never surfaced"
+  rule now has its first exception; stub only what a raw log
+  reports. Checked, NOT stubbed (never reported in any raw log,
+  runs #6-#176): android.hardware.graphics.common@1.1/@1.2,
+  allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
+  libLibGuiProperties, libbootloader_message, liblmkd_utils,
+  libxml2, libhealthhalutils, libhealthshim, libfastbootshim,
+  libcharger_sysprop, libcom.android.sysprop.apex (both
+  sysprop-generated, never reported).
+
+  CACHE NOTE (runs #174/#175/#176): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS in
+  all three (0s, sync 11m38s on #176) and no cache was saved -
+  same as runs #118/#121/#124/#127/#130/#134/#137/#140/#143/
+  #146/#149/#152/#155/#158/#159/#160/#161/#162/#163/#164/#165/
+  #166/#167/#168/#169/#170/#171/#172/#173. The next run will
+  also restore-miss and sync ~9-12 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
