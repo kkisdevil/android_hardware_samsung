@@ -4507,6 +4507,218 @@ jobs:
           # any run); the separate restore+save steps need his word
           # (see the manifest). Expect Restore to miss and sync
           # ~9-12 min on the next run too.
+          # Runs #223/#224/#225/#226 fix: 2 stubs + 1 module disable.
+          # Runs #223 (46073941448, 12m45s, stubs push 35d5ab1, job
+          # 140757147473), #224 (46074141600, 12m59s, manifest push
+          # 36bed98, job 140757786281), #225 (46074241281, 13m49s,
+          # README push 942d822, job 140758102502) and #226
+          # (46074455325, 15m24s, manual dispatch ~03:35 IST on
+          # commit 942d822, job 140758791016) ALL FAILED at Soong
+          # ninja-file generation, on the SAME fix code (head
+          # 942d822 — the runs #219/#220/#221/#222 7-stub + 1-prune
+          # fix, workflow af8c423), except #223, which ran the
+          # PRE-fix workflow 1f43351 (staged-commit artifact: the
+          # stubs push landed before the workflow push — same
+          # pattern as #195/#199/#207/#211). Steps (#226): Restore
+          # 0s (MISS), sync 11m02s, Prune 1s (passed), Build 38s
+          # FAILED (exit 1). #224/#225: Build 38s FAILED.
+          # THE #222 FIX HELD for the 7 composer modules (zero
+          # genuine errors in #226) and THE #222 PRUNE HELD (zero
+          # librenderengine_bench lines in #224/#225/#226). #223's
+          # single libjnigraphics line is the staged old-workflow
+          # artifact, NOT a fix failure.
+          # NEW FAILURE LAYER — a NEW class (the filesystem /
+          # system-image layer), NOT a regular-module layer.
+          # #223 (whole raw log, confirmed 2026-11-28 ~04:22 IST):
+          # EXACTLY 1 genuine error — librenderengine_bench needs
+          # libjnigraphics
+          # (frameworks/native/libs/renderengine/benchmark/
+          # Android.bp:25:1, 22:13:33Z). ZERO system-image errors;
+          # neither consumer name occurs in the raw log at all (15
+          # other "depends on undefined module" occurrences are "#"
+          # comment echoes).
+          # #224/#225/#226: 315 genuine lines, 313 distinct modules,
+          # 2 consumers (whole raw log of #226, 1,449 lines, one
+          # error block 22:20:53.394–22:20:53.436Z, UI lines
+          # 808–1443; only "error: ... depends on undefined module
+          # ..." lines counted, "#" echoes and "Or did you mean"
+          # excluded). First genuine line:
+          #   error: build/soong/fsgen/Android.bp:31:1:
+          #   "yuzora_lights_generated_system_image" depends on
+          #   undefined module "libcompiler_rt".
+          # Last genuine line:
+          #   error: build/make/target/product/generic/Android.bp:
+          #   1037:1: "aosp_shared_system_image" depends on
+          #   undefined module "update_engine_client".
+          # Consumer 1 — yuzora_lights_generated_system_image
+          # (fsgen/Android.bp:31:1): 2 modules — libcompiler_rt,
+          # update_engine_sideload (1x each here; 2x each in total,
+          # see consumer 2).
+          # Consumer 2 — aosp_shared_system_image
+          # (generic/Android.bp:1037:1): 313 modules — the whole
+          # system-image contents (~60 apps, ~80 native libs, ~100
+          # binaries, framework jars, APEXes, filegroups; the full
+          # verbatim list is in research-226-modules.md and in the
+          # manifest doc block for this round). FAILED:
+          # out/soong/build.yuzora_lights.ninja — soong bootstrap
+          # failed, exit status 1.
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in #226 (only "#" comment
+          # lines + one "Or did you mean" suggestion). Same class
+          # as #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/
+          # #210/#214/#218/#222.
+          # MECHANISM — PHASE MASKING (why this layer appeared only
+          # now): the filesystem modules' deps resolve in a LATER
+          # phase than ordinary modules' deps, and a single
+          # remaining ordinary-module error masks the whole later
+          # layer. Evidence: #223 had exactly 1 ordinary-module
+          # error and ZERO filesystem errors (neither consumer name
+          # even occurs); #224/#225/#226 have zero ordinary-module
+          # errors and 315 filesystem errors. The layer's code
+          # existed in the synced tree since at least the 2026-11-26
+          # local sync (fsgen_mutators.go lists the 2 extras;
+          # generic/Android.bp holds the big deps list + the module
+          # block) — it is NOT new upstream code and NOT caused by
+          # the #222 fix (manifest diff pre222→222 is doc-only; the
+          # workflow diff is only the renderengine prune + stub
+          # checks). Same lesson as #185/#202: "never reported"
+          # means "not yet reached", not "exempt". After THIS fix
+          # the build reaches a still later phase (ninja generation
+          # → actual compilation); the next failure, if any, will
+          # be a NEW class. Do not assume the dep-error rounds are
+          # over until `m` actually compiles.
+          # ROOT CAUSE, consumer 1: the module is GENERATED at build
+          # time by the fsgen soong_filesystem_creator plugin
+          # (build/soong/fsgen/filesystem_creator.go:176:
+          # "%s_generated_%s", prefix = device product
+          # yuzora_lights, suffix system_image; its error position
+          # fsgen/Android.bp:31:1 is the soong_filesystem_creator
+          # block start). Its dep set (fsgen_mutators.go:88–110,
+          # 203–222, 268–278): depCandidates = PRODUCT_PACKAGES +
+          # PRODUCT_PACKAGES_DEBUG + generated prebuilt-etc names,
+          # added ONLY IF the module EXISTS in the tree
+          # (collectDepsMutator visits existing modules) — so the
+          # ~300 unsynced product packages are NEVER added; PLUS
+          # the hardcoded fsDeps["system"] extras, added
+          # UNCONDITIONALLY: com.android.apex.cts.shim.v1_prebuilt,
+          # dex_bootjars, framework_compatibility_matrix.device.xml,
+          # init.environ.rc-soong, libcompiler_rt, libdmabufheap,
+          # libgsi, llndk.libraries.txt, logpersist.start,
+          # update_engine_sideload. Of the 10, exactly 2 are
+          # undefined in our minimal tree (the other 8 resolve —
+          # proven by the #226 raw log, which reports ALL of a
+          # module's undefined deps). No other partition's generated
+          # module reported anything.
+          # ROOT CAUSE, consumer 2: the module (generic/Android.bp:
+          # 1037–1046) inherits its dep set from the
+          # system_image_defaults (android_filesystem_defaults)
+          # module in the SAME file (:468–~1029) via `defaults:` —
+          # a hardcoded `deps` list of the entire base_system /
+          # generic_system / handheld_system package set. A defaults
+          # module's `deps` create NO edges for the defaults module
+          # itself (it never appears as an erroring consumer); the
+          # edges attach to users of the defaults — here, only
+          # aosp_shared_system_image. In a full tree all ~313
+          # resolve; in our 32-project manifest they are undefined.
+          # NOTHING references aosp_shared_system_image (whole-tree
+          # grep over Android.bp + *.mk + *.go: only its own
+          # definition + one comment in fsgen/filesystem_creator.go:
+          # 225). The product's OWN system image is the generated
+          # one; the lights target does not need this module.
+          # FIX, part 1 — DISABLE aosp_shared_system_image: insert
+          # `enabled: false,` after its `name:` line in
+          # build/make/target/product/generic/Android.bp (prune
+          # step, awk insertion + verification + pre-build guard).
+          # One line, reversible. EVIDENCE it works: the other two
+          # android_system_image modules in the tree are DISABLED
+          # by default and produce ZERO errors despite undefined
+          # deps — android_gsi (gsi/Android.bp:155, enabled via
+          # soong_config_variable ANDROID/
+          # PRODUCT_INSTALL_DEBUG_POLICY_TO_SYSTEM_EXT, default
+          # false) and aosp_system_image (gsi/Android.bp:171,
+          # enabled via soong_config_variable gsi/building_gsi,
+          # default false). The gsi aosp_system_image deps include
+          # DeskClock, QuickSearchBox, SettingsIntelligence — all
+          # undefined here and all in #226's error list — yet it
+          # errors never. Same Soong version, same module type.
+          # system_image_defaults, android_rootdirs/symlinks and
+          # the rest of generic/Android.bp are untouched.
+          # FIX, part 2 — STUB the generated module's 2 undefined
+          # deps as plain cc_library in yuzora-stubs/Android.bp:
+          # libcompiler_rt + update_engine_sideload. Both are
+          # UNLOCATED definitions (whole-tree grep: zero
+          # definitions in the synced tree; web search did not pin
+          # down an Android.bp type at r32 either) → plain
+          # cc_library per the #186 libprotoutil / #202 libtestUtil
+          # precedent. The consumer edge is a filesystem `Deps`
+          # (install) edge, type-agnostic; the modules are never
+          # compiled for this target. No sdk_version on either stub
+          # (the consumer is a generated filesystem module).
+          # ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # stub all 313 modules (absurd — ~60 apps + ~80 libs +
+          # ~100 binaries + APEXes + filegroups, each needing a
+          # verified type, drifting with every upstream product
+          # change); DELETE the aosp_shared_system_image block (10
+          # lines — viable, but more destructive and more validation
+          # surface; the disable keeps the module defined so any
+          # future reference still resolves — revisit only if
+          # `enabled: false` somehow fails to suppress validation,
+          # the #227 run is the test); remove the 313 entries from
+          # the system_image_defaults deps list (313 sed-deletes,
+          # destroys the file's purpose); sync the unsynced projects
+          # (FORBIDDEN by standing rule); ALLOW_MISSING_DEPENDENCIES
+          # (FORBIDDEN); prune generic/Android.bp whole (too broad —
+          # it also defines android_rootdirs/symlinks,
+          # system_image_defaults, plat_and_vendor_file_contexts);
+          # prune the generated module (impossible — generated at
+          # build time, no file to prune).
+          # DEP-CLOSURE VERIFIED: the generated module's full dep
+          # set is product packages (existing only, existence-gated)
+          # + the 10 hardcoded extras (8 resolve, 2 stubbed now);
+          # no other generated partition module reported anything.
+          # After the disable, aosp_shared_system_image's dep set is
+          # never validated; nothing references the module, so
+          # disabling cannot create a new undefined-module error.
+          # The 2 new stubs are consumed only by the generated
+          # filesystem module (Deps edge); neither is in the lights
+          # HAL's closure. WATCH ITEM (not implemented):
+          # headers/symbols may be needed later IF a future round
+          # fails past Soong at compile/link — same watch-item form
+          # as #182/#186/#194/#195/#202/#206/#210/#214/#218/#222.
+          # NOT STUBBED (never reported in any raw log, runs #6–#226
+          # — do NOT stub unless a raw log reports one):
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as cc_library_static
+          # — a different module from -main), libcharger_sysprop
+          # (phantom), android.hardware.fastboot@1.0,
+          # android.hardware.boot@1.2, libLibGuiProperties,
+          # libcom.android.sysprop.apex (sysprop-generated),
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). libjnigraphics is now
+          # REPORTED (via aosp_shared_system_image in #224/#225/
+          # #226) but is NOT stubbed — covered by the disable, and
+          # its only Soong consumer remains the pruned benchmark
+          # dir. REMOVED from the never-reported list this round:
+          # libcompiler_rt + update_engine_sideload (reported in
+          # #224/#225/#226, now stubbed).
+          # FIRST-EVER reported: the first filesystem-layer failure
+          # (a NEW failure class, not a regular-module layer), the
+          # first android_system_image consumer, the first
+          # fsgen-generated consumer, the first 300+ error lines in
+          # one run, the first `enabled: false` disable (vs
+          # stub/prune), the first libcompiler_rt, the first
+          # update_engine_sideload, the first proof that a single
+          # remaining regular-module error masks a whole later
+          # layer (#223 vs #224).
+          # CACHE NOTE (runs #223/#224/#225/#226): Restore is
+          # expected to miss (0-1s, sync ~9-12 min) and no Save step
+          # is expected — save-always still does not save (#226:
+          # Restore 0s MISS, sync 11m02s; no "Cache saved" line in
+          # any run); the separate restore+save steps need his word
+          # (see the manifest). Expect Restore to miss and sync
+          # ~9-12 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4655,6 +4867,26 @@ jobs:
             echo "::error::prune failed — frameworks/native/libs/renderengine/benchmark present"
             exit 1
           fi
+          # Runs #223/#224/#225/#226 fix: disable the
+          # aosp_shared_system_image module in
+          # build/make/target/product/generic/Android.bp (BEGIN —
+          # validate_fix226.py extracts this block and runs it
+          # against a copy of the real generic/Android.bp; keep it
+          # self-contained). The module's deps (inherited from
+          # system_image_defaults) name the whole system-image
+          # contents — 313 undefined modules in our minimal
+          # manifest. `enabled: false` stops Soong validating its
+          # deps — the same form as the two gsi android_system_image
+          # modules, disabled by default, zero errors despite
+          # undefined deps (see the comment block at the top of this
+          # step). One line, reversible.
+          f=build/make/target/product/generic/Android.bp
+          n=$(grep -c 'name: "aosp_shared_system_image"' "$f" || true)
+          [ "$n" -eq 1 ] || { echo "::error::aosp_shared_system_image occurs ${n}x in $f (expected 1)"; exit 1; }
+          awk '{print} /name: "aosp_shared_system_image",/ && !done {print "    enabled: false,"; done=1}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          { grep -A1 'name: "aosp_shared_system_image"' "$f" || true; } | grep -Fq 'enabled: false' || { echo "::error::aosp_shared_system_image not disabled in $f"; exit 1; }
+          echo "runs #223/#224/#225/#226 disabled: aosp_shared_system_image (enabled: false) in $f."
+          # Runs #223/#224/#225/#226 fix: disable aosp_shared_system_image (END)
           if [ -d hardware/interfaces/light/aidl/vts ]; then
             echo "::error::prune failed — hardware/interfaces/light/aidl/vts present"
             exit 1
@@ -5628,6 +5860,21 @@ jobs:
             { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_library_headers"; exit 1; }
           done
           echo "runs #219/#220/#221/#222 stubs created: 2 plain cc_library + 5 cc_library_headers stubs (7 total); frameworks/native/libs/renderengine/benchmark pruned whole."
+          # Runs #223/#224/#225/#226 fix: verify the 2 new stubs are
+          # present in yuzora-stubs/Android.bp (same `name: "..."`
+          # grep form as the #222 loops above).
+          for stub in libcompiler_rt update_engine_sideload; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #223/#224/#225/#226 fix: the 2 new stubs must be
+          # plain cc_library (same SIGPIPE-safe wrapped form as the
+          # #222 loops above — see EDIT R in the #210 round: the bare
+          # producer | consumer form fails spuriously under pipefail
+          # when the producer dies of SIGPIPE, run #208).
+          for stub in libcompiler_rt update_engine_sideload; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
+          done
+          echo "runs #223/#224/#225/#226 stubs created: 2 plain cc_library stubs (libcompiler_rt + update_engine_sideload); aosp_shared_system_image disabled (enabled: false)."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5813,6 +6060,10 @@ jobs:
             echo "::error::pre-build guard: frameworks/native/libs/renderengine/benchmark present at build time"
             exit 1
           fi
+          # Runs #223/#224/#225/#226 fix: aosp_shared_system_image
+          # must stay disabled at build time (same wrapped check as
+          # the prune step above).
+          { grep -A1 'name: "aosp_shared_system_image"' build/make/target/product/generic/Android.bp || true; } | grep -Fq 'enabled: false' || { echo "::error::pre-build guard: aosp_shared_system_image not disabled at build time"; exit 1; }
           if [ -d hardware/interfaces/light/aidl/vts ]; then
             echo "::error::pre-build guard: hardware/interfaces/light/aidl/vts present at build time"
             exit 1
@@ -6279,6 +6530,17 @@ jobs:
           # check as the prune step above).
           for stub in android.hardware.graphics.composer@2.1-command-buffer android.hardware.graphics.composer@2.2-command-buffer android.hardware.graphics.composer@2.3-command-buffer android.hardware.graphics.composer@2.4-command-buffer android.hardware.graphics.composer3-command-buffer; do
             { grep -A1 'cc_library_headers {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_library_headers"; exit 1; }
+          done
+          # Runs #223/#224/#225/#226 fix: the new stubs must be present
+          # at build time (same `name: "..."` grep form as above).
+          for stub in libcompiler_rt update_engine_sideload; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #223/#224/#225/#226 fix: the 2 new stubs must be
+          # plain cc_library at build time (same wrapped check as the
+          # prune step above).
+          for stub in libcompiler_rt update_engine_sideload; do
+            { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
