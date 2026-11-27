@@ -5687,3 +5687,48 @@ rust_library {
         "//visibility:public",
     ],
 }
+// Runs #207/#208/#209/#210 fix: 3 new stubs (see the comment block in
+// the prune step of .github/workflows/build-lights-hal.yml for the
+// per-module verification).
+// 2 plain cc_library — both HIDL @x.y libs defined ONLY in pruned
+// hardware/interfaces dirs (graphics.composer@2.4,
+// graphics.common@1.0); same form as the #194 common@1.2 stub and
+// the #206 common@1.1 stub. A plain cc_library yields both variants,
+// so one stub satisfies shared_libs consumers (libtimestats,
+// libvulkan) alike.
+// 1 cc_library_shared (libnativebridge_lazy — upstream
+// cc_library_shared in platform/art/libnativebridge at r32; its
+// visibility lists exactly the two consumers, libEGL +
+// libvulkan, both via shared_libs — a cc_library_static stub could
+// not provide the shared variant, and the upstream type is verified
+// so it is mirrored, same rule as libhealthhalutils/libhealthshim
+// #195).
+// No sdk_version on any new stub: no consumer sets sdk_version
+// (verified on all four consumer files).
+cc_library {
+    name: "android.hardware.graphics.composer@2.4",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.graphics.common@1.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_shared {
+    name: "libnativebridge_lazy",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
