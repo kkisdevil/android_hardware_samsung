@@ -1627,6 +1627,70 @@ still 32 projects.
   `if: always()`), which touches the cache steps and needs his
   word - not changed in this fix round.
 
+  Runs #168 (45957321266, 14m30s, auto, manifest 754e76d),
+  #169 (45957461669, 13m48s, auto, README 1a0adc5) and #170
+  (45957587395, 13m12s, manual dispatch ~12:48 IST 2026-11-27,
+  head 1a0adc5 - the runs #165/#166/#167 fix, workflow
+  26403d9): ALL FAILED at Soong ninja-file generation, 24-35s
+  into the "Build lights HAL" step, on the SAME fix code. The
+  #165/#166/#167 fix HELD COMPLETELY in all three (prune step
+  passed + pre-build guard passed; ZERO genuine errors for any
+  of its 12 modules in any raw log). Each run reports a different
+  subset on one commit (subset variation - the fix covers the
+  UNION of 5 undefined modules). Raw-log verbatim error union,
+  verified TWICE (browser job-logs.txt read + direct grep of the
+  downloaded log archives; the two reads agree exactly):
+  #168 + #170 (2 lines each, identical): "libc_malloc_debug"
+  needs "libmemory_trace" + "libmemunreachable"
+  (bionic/libc/malloc_debug/Android.bp:57:1); #169 (6 lines):
+  those two PLUS "tombstoned.microdroid" + "tombstoned" need
+  "libevent" (system/core/debuggerd/Android.bp:543:1 / 537:1)
+  and "libdebuggerd" needs "scudo_headers" +
+  "gwp_asan_crash_handler" (Android.bp:232:1). UI-log note: the
+  first UI-log report said "libmemtrace" - the raw log says
+  "libmemory_trace" (UI truncation). The "ninja: error ...
+  libcharger_sysprop_rust.so ... missing and no known rule to
+  make it" line is a CONFIRMED PHANTOM again (1 match per raw
+  log, 0 genuine - the workflow's own history comment echo),
+  same class as #152/#161. Fix: 5 new stubs, NO prunes, NO new
+  projects (still 32). Stubs (all in yuzora-stubs/Android.bp,
+  each with a prune-step check + pre-build guard check):
+  libmemory_trace + gwp_asan_crash_handler cc_library_static
+  (whole_static_libs consumers libc_malloc_debug / libdebuggerd);
+  libmemunreachable + libevent plain cc_library (static_libs
+  consumers libc_malloc_debug / tombstoned_defaults - a plain
+  cc_library yields both variants, same precedent as the #165
+  libdexfile_support stub); scudo_headers cc_library_headers
+  (header_libs consumer libdebuggerd). No sdk_version on any new
+  stub (no consumer sets sdk_version - verified on all three
+  consumer blocks). No prunes: the referencers are core platform
+  modules (bionic/libc, system/core/debuggerd). Verified in the
+  synced tree (~/workspace/lights-local): all five modules are
+  defined NOWHERE in the tree. Dep-closure verified: every other
+  dep of libc_malloc_debug / libdebuggerd / tombstoned(_defaults)
+  / the debuggerd binary is defined in-tree or already stubbed
+  (gwp_asan_headers, libprocinfo, libprotobuf-cpp-lite,
+  libunwindstack, liblzma, libscudo, gwp_asan,
+  libdexfile_support, libdexfile, libtinyxml2 stubbed;
+  libdebuggerd_client, libprocessgroup, libdl_android defined
+  in-tree) - no provably-next layer beyond these five. Checked,
+  NOT stubbed (out-of-graph referencers only):
+  libnative_bridge_support_accessor_headers (crash_dump binary
+  only) + libtombstoned_client_static +
+  libnative_bridge_guest_state_accessor; the audio default's
+  shared_libs use of libmemunreachable is a cc_defaults not
+  instantiated in this build graph.
+
+  CACHE NOTE (runs #168/#169/#170): the save-always flip still
+  does NOT save the cache. "Restore repo cache" was a MISS in
+  all three (0-1s, sync 10m43s on #170) and no cache was saved -
+  same as runs #118/#121/#124/#127/#130/#134/#137/#140/#143/
+  #146/#149/#152/#155/#158/#159/#160/#161/#162/#163/#164/#165/
+  #166/#167. The next run will also restore-miss and sync ~9-12
+  min. The upstream-recommended fix is separate restore + save
+  steps (the save step with `if: always()`), which touches the
+  cache steps and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
