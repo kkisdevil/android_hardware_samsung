@@ -5528,3 +5528,89 @@ cc_library_static {
         "//visibility:public",
     ],
 }
+// Runs #199/#200/#201/#202 fix: 7 new stubs (see the comment block in
+// the prune step of .github/workflows/build-lights-hal.yml for the
+// per-module verification).
+// 5 plain cc_library — a plain cc_library yields both variants,
+// so one stub satisfies the shared_libs and static_libs consumers
+// alike; same form as the #156 allocator@2.0 stub and the #174
+// health@2.1 stub. 2 are HIDL @x.y libs (sensors@2.0 + @2.1),
+// 1 is an AIDL -ndk lib (common.fmq-V1-ndk), 1 is a plain library
+// (libfmq, upstream cc_library in system/libfmq), 1 is a test
+// utility (libtestUtil — upstream definition not located after
+// bounded search, plain per the #182 libincremental_aidl-cpp and
+// #186 libprotoutil precedent; consumed via static_libs by three
+// in-graph test/benchmark modules).
+// 1 cc_library_headers (android.hardware.sensors@2.X-shared-utils —
+// upstream cc_library_headers, consumed via header_libs by
+// libsensorservice; same form as libimapper_stablec /
+// libimapper_providerutils in #194).
+// 1 genrule (framework-cppstream-protos — upstream gensrcs in
+// frameworks/base/ProtoLibraries.bp; Soong REQUIRES a
+// SourceFileGenerator for generated_headers deps — build/soong/cc/
+// cc.go errors "module %q is not a genrule" otherwise — so a plain
+// cc_library stub would FAIL; genrule shape mirrors the
+// cxx-bridge-header / platform_tools_version stubs already in
+// this file).
+// No sdk_version on any new stub: no consumer sets sdk_version
+// (verified on both consumer files).
+cc_library {
+    name: "libtestUtil",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "libfmq",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.sensors@2.0",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.sensors@2.1",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library {
+    name: "android.hardware.common.fmq-V1-ndk",
+    srcs: ["empty.c"],
+    host_supported: true,
+    target: { windows: { enabled: true } },
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_library_headers {
+    name: "android.hardware.sensors@2.X-shared-utils",
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+genrule {
+    name: "framework-cppstream-protos",
+    out: ["framework-cppstream-protos.h"],
+    cmd: "touch $(out)",
+    visibility: [
+        "//visibility:public",
+    ],
+}
