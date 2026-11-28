@@ -3429,6 +3429,204 @@ jobs:
           # restore+save steps need his word (see the manifest).
           # Expect Restore to miss and sync ~10-13 min on the
           # next run too.
+          # Runs #278/#279/#280/#281 fix: 1 dummy jar (AndroidGlobalLintChecker.jar), no new stubs, no prunes.
+          # Runs #278 (46152142228, stubs push d297a33, 15m09s, job
+          # 141000879106), #279 (46152466989, manifest push c41747b,
+          # 14m35s, job 141001855890), #280 (46152662108, README push
+          # b051215, 14m01s, job 141002438019) and #281 (46152939977,
+          # manual dispatch ~19:36 IST 2026-11-28 on commit
+          # b051215, 13m18s, job 141003301429) ALL FAILED at Soong
+          # bootstrap, on the SAME fix code (head b051215 — the
+          # runs #274/#275/#276/#277 9-stub fix, workflow aeb7e76).
+          # Steps (#281, live run page + raw log): Restore 0s MISS,
+          # Init + sync 9m51s passed, Build 1m01s FAILED (exit 1),
+          # Verify / Save cache skipped. #278 tests partial code
+          # (new stubs, OLD workflow — no dummy creation);
+          # #279/#280/#281 test the full fix code (stubs + workflow
+          # + manifest byte-identical; only the README differs).
+          # #281 is the primary.
+          # THE #276 FIX HELD COMPLETELY: zero "undefined module"
+          # errors in #278, #279, #280 AND #281 — the
+          # apexer_test_host_tools wave is OVER (aapt2, e2fsdroid,
+          # mke2fs, resize2fs, make_f2fs, sload_f2fs, make_erofs,
+          # blkid, bundletool all resolve). The #274 fix HELD too
+          # (zero mkbootimg / sefcontext_compile errors) and the
+          # #270 fix HELD too (zero apksigner errors) and the #266
+          # fix HELD too (zero stats-log-api-gen / aprotoc errors)
+          # and the #262 / #258 / #254 / #250 / #246 / #242 / #238 /
+          # #234 / #230 / #226 fixes HELD too. libcharger_sysprop
+          # is a CONFIRMED PHANTOM again.
+          # NEW FAILURE CLASS — source-path validation,
+          # SIXTEENTH WAVE, and the FIRST TIME Soong gets past
+          # module resolution: the UNION across the four runs is 33
+          # distinct java_library stub modules, 52 genuine jar
+          # lines + 1 bundletool line = 53 genuine lines total.
+          # Every jar line has the form:
+          #   error: yuzora-stubs/Android.bp:<line>:1: module
+          #   "<name>" variant "android_common": source path
+          #   "prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar"
+          #   does not exist
+          # Counts per run (subset variation is BACK — same
+          # pattern, new phase): #278 6 lines (5 jar + 1
+          # bundletool), #279 6 lines, #280 15 lines, #281 26
+          # lines. #281 contains 5 of #279's 6 (all except
+          # frameworks-base-testutils) and 14 of #280's 15 (all
+          # except truth-proto-extension). The 33 modules (union):
+          # art.module.api.annotations.for.system.modules,
+          # libprotobuf-java-full, libprotobuf-java-lite,
+          # libprotobuf-java-nano,
+          # core-lambda-stubs-for-system-modules, androidx.test.runner,
+          # androidx.test.core, aconfig-annotations-lib,
+          # androidx.test.rules, testng, frameworks-base-testutils,
+          # guava, jcommander, truth, truth-liteproto-extension,
+          # truth-proto-extension, android_module_lib_stubs_current,
+          # core-lambda-stubs, android_stubs_current,
+          # android_test_stubs_current, android_system_stubs_current,
+          # sysprop-library-stub-platform, ext, framework,
+          # legacy.i18n.module.platform.api.stubs.exportable,
+          # stub-annotations, junit, kotlin-stdlib,
+          # kotlin-stdlib-jdk7, kotlin-stdlib-jdk8,
+          # kotlin-annotations, metalava-signature-reader,
+          # metalava-tools-common-m2-deps. The one non-jar error
+          # (only #278): module "bundletool" variant
+          # "linux_glibc_common": module source path
+          # "yuzora-stubs/BundletoolMain.java" does not exist —
+          # #278 ran the OLD workflow (no dummy creation for the 9
+          # new stubs); #279–#281 create the dummy, so no
+          # bundletool error there. Dummy creation WORKS; that error
+          # is already fixed on the current code. "undefined module"
+          # 0/0, "not a host tool provider" 0/0, "missing output
+          # file" 0/0 in every run; "avbtool" / "fec" / "zipalign" 0
+          # genuine in every run (echoed script lines only).
+          # MECHANISM — PHASE MASKING, one phase deeper: every
+          # round so far died at dependency resolution (undefined
+          # modules) BEFORE build-action generation. Now that all
+          # modules resolve, Soong reaches lint-rule generation,
+          # where PathForSource runs. The jar string appears in
+          # NEITHER the static stubs file NOR the workflow (grep: 0
+          # occurrences in both) — it is injected by Soong
+          # itself.
+          # ROOT CAUSE — PROVEN in the Soong source (full
+          # quotes in research-281-lint.md): build/soong/java/
+          # lint.go (android-15.0.0_r7, the LineageOS 22.2 base),
+          # line 232: linter.enabled() returns
+          # BoolDefault(Lint.Enabled, true) — lint is ON by
+          # default for every java module. Line 362: linter.lint()
+          # returns early only when lint is disabled, then lines
+          # 411–412 unconditionally append the global checker
+          # jar as a lint input for every lint-enabled java module:
+          #   l.extraLintCheckJars = append(l.extraLintCheckJars,
+          #       android.PathForSource(ctx,
+          #       "prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar"))
+          # PathForSource errors "source path ... does not exist"
+          # at build-action generation when the file is absent.
+          # Upstream provenance: frameworks/base/tools/lint README
+          # — the jar is built from the global lint checks and
+          # "downloaded as a prebuilt under the
+          # prebuilts/cmdline-tools subproject, and included by
+          # soong with all invocations of lint". prebuilts/
+          # cmdline-tools is UNSYNCED — NOT among the 32
+          # manifest projects; never sync it. All 33 modules are
+          # java_library with sdk_version "none" + system_modules
+          # "none" and no lint: block (verified locally, 33/33)
+          # — but those values are incidental; the operative
+          # property is "java module with lint enabled (the
+          # default)". Any of the 67 Empty.java java stubs could
+          # surface in a later run via subset variation; the jar
+          # fix covers all at once.
+          # FIX — WORKFLOW ONLY (the #183 precedent — no
+          # stubs, manifest or README change). The prune step
+          # creates prebuilts/cmdline-tools/
+          # AndroidGlobalLintChecker.jar as a VALID EMPTY ZIP
+          # (22-byte end-of-central-directory record) with python3
+          # zipfile — the EXACT form already used for the
+          # prebuilts/sdk empty-jar shims (lines 3834, 3974, 4002)
+          # — plus a zip-validity re-open and a test -s guard;
+          # the pre-build guard adds a test -s check. A 0-byte file
+          # would pass PathForSource but break lint if it ever
+          # opened the jar (JarFile ZipException), so the valid
+          # empty zip is cheap insurance. Lint never runs on these
+          # stubs in this build (lint outputs are not in the lights
+          # HAL target closure — only the jar output is), so
+          # the jar's contents are never read; the file only has to
+          # exist and be a valid jar if ever opened. Do NOT change
+          # the 33 stubs' srcs: (they correctly say Empty.java; the
+          # jar is not theirs). No new stubs. No new projects
+          # (still 32). No prunes.
+          # OPEN QUESTIONS (recorded honestly, NOT blockers):
+          # (1) THE AVBTOOL / FEC ANOMALY — STILL NOT CONVERTED
+          # (fourth round): both filegroup stubs sit in the
+          # apexer_test_host_tools tools: list and produced ZERO
+          # "not a host tool provider" lines in all four runs. NOTE:
+          # #278 did NOT test the masking prediction — it
+          # still died with 6 genuine errors (5 jar + 1
+          # bundletool), and the jar errors abort action generation
+          # before (or instead of) the genrule host-tool-provider
+          # check, exactly the same phase masking as before. The
+          # prediction stands untested. The NEXT run (with the jar
+          # present) is the real test: if it reports "avbtool" /
+          # "fec" is not a host tool provider, convert then per
+          # research-276-modules.md section 6 (avbtool to
+          # python_binary_host, main avbtool.py; fec to
+          # cc_binary_host, srcs fec_main.cc; both omit
+          # static_libs). The standing rule holds: stub ONLY what a
+          # raw log reports. (2) The six cc_binary +
+          # host_supported: true stubs from #276 remain narrow-sense
+          # unproven until a run clears Soong generation (same open
+          # question as before); the jar round does not test them
+          # either, because the jar errors abort generation first.
+          # (3) Subset variation may grow the union beyond 33
+          # modules in later runs — the jar fix covers all of
+          # them at once, so no per-module work follows. (4) The
+          # lint database files (prebuilts/sdk/current/.../
+          # api-versions.xml, annotations.zip) are only referenced
+          # via PathForSource when AlwaysUsePrebuiltSdks is true
+          # (product variable Always_use_prebuilt_sdks) — false
+          # here, no run has reported them; if a future run does,
+          # create the same kind of shim then (see
+          # research-281-lint.md section 3).
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED
+          # (recorded): lint: { enabled: false } on the 33 stubs
+          # (would also skip the PathForSource call, but requires
+          # editing 33 stub blocks + validator churn, deviates from
+          # the stubs' upstream-mirroring properties, and fixes
+          # only those 33 — a future java stub would fail the
+          # same way); sync prebuilts/cmdline-tools (FORBIDDEN);
+          # change the 33 stubs' srcs: to include the jar (wrong
+          # — the jar is not their source; it is Soong's lint
+          # input); 0-byte file instead of a valid empty zip
+          # (passes generation but breaks if lint ever opens it);
+          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN); preemptively
+          # convert avbtool / fec (see (1) above — decided
+          # strict).
+          # WATCH ITEMS (not implemented): (1) avbtool / fec —
+          # see (1) above; the next run is the test. (2) the six
+          # cc_binary + host_supported stubs — see (2) above.
+          # (3) other Soong-injected prebuilt paths that may surface
+          # once their generation phase is reached (same shim
+          # reasoning if reported — stub ONLY what a raw log
+          # reports). (4) the other vendorapex siblings,
+          # CtsShimPrivUpgradeWrongSHA, sharedlibs siblings
+          # (carried from the #270 block).
+          # FIRST-EVER reported: the first source-path-validation
+          # failure (not an undefined module); the first run to get
+          # past module resolution entirely; the first Soong-injected
+          # (not stub-declared) missing path; the first fix that is
+          # a single dummy file for 33 modules.
+          # NO WORKFLOW COMPACTION THIS ROUND: the workflow is
+          # 440,823 bytes, ~71 KB under the 500 KB limit; this
+          # block adds ~14 KB, leaving ~56 KB of margin — above
+          # the 50 KB compaction trigger. The next compaction
+          # round, when needed, compacts the #247/#248/#249/#250
+          # block onward the same way.
+          # CACHE NOTE (runs #278/#279/#280/#281): Restore is
+          # expected to miss (0s, sync ~10 min) and no Save step
+          # is expected — save-always still does not save
+          # (#281: Restore 0s MISS, sync 9m51s; no "Cache saved"
+          # line; Post Restore step skipped); the separate
+          # restore+save steps need his word (see the manifest).
+          # Expect Restore to miss and sync ~10 min on the
+          # next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4151,6 +4349,22 @@ jobs:
           done
           printf 'public class BundletoolMain { public static void main(String[] args) { } }\n' > yuzora-stubs/BundletoolMain.java || { echo "::error::stub source creation failed: yuzora-stubs/BundletoolMain.java"; exit 1; }
           test -f yuzora-stubs/BundletoolMain.java || { echo "::error::stub source missing after creation: yuzora-stubs/BundletoolMain.java"; exit 1; }
+          # Runs #278/#279/#280/#281 fix: the global lint checker
+          # jar Soong attaches to every lint-enabled java module
+          # (see the comment block at the top of this step).
+          # prebuilts/cmdline-tools is NOT synced, so create a
+          # valid EMPTY ZIP there (a jar is a zip — same form
+          # as the prebuilts/sdk shims above). The file only has
+          # to exist for Soong's PathForSource check at generation
+          # time; lint never runs on these stubs in this build.
+          # A 0-byte file would pass the existence check but break
+          # lint if it ever opened the jar, so the valid empty zip
+          # (22 bytes) is cheap insurance. Do NOT "fix" this by
+          # syncing prebuilts/cmdline-tools.
+          mkdir -p prebuilts/cmdline-tools
+          python3 -c "import zipfile; zipfile.ZipFile('prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar', 'w').close()" || { echo "::error::stub source creation failed: prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar"; exit 1; }
+          python3 -c "import zipfile; zipfile.ZipFile('prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar')" || { echo "::error::prune failed — lint checker jar is not a valid zip"; exit 1; }
+          test -s prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar || { echo "::error::stub source missing after creation: prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -5321,6 +5535,10 @@ jobs:
             test -f "yuzora-stubs/${_c}.c" || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/${_c}.c"; exit 1; }
           done
           test -f yuzora-stubs/BundletoolMain.java || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/BundletoolMain.java"; exit 1; }
+          # Runs #278/#279/#280/#281 fix: the global lint checker
+          # jar must exist at build time (test -s, not test -f —
+          # a valid empty jar is 22 bytes, non-empty).
+          test -s prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar || { echo "::error::pre-build guard: stub source missing at build time: prebuilts/cmdline-tools/AndroidGlobalLintChecker.jar"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
