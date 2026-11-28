@@ -3591,6 +3591,139 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #239 (46100843471, 14m9s, stubs push 83aa82d, job
+  140842680964), #240 (46101031386, 14m58s, manifest push
+  f3af25f, job 140843268287), #241 (46101131175, 14m10s, README
+  push de4ac91, job 140843587796) and #242 (46101215685, 14m0s,
+  manual dispatch ~08:36 IST on commit de4ac91, job
+  140843851818). ALL FAILED at Soong ninja-file generation, on
+  the SAME fix code (head de4ac91 - the runs #235/#236/#237/#238
+  4-filegroup-stub fix, workflow a33ce28). Steps (#242):
+  Restore 0s MISS, sync 11m7s, Prune 1s (passed), Build 37s
+  FAILED (exit 1). #239: Restore 0s MISS, sync ~11m, Prune 6s,
+  Build 43s FAILED. #240: Restore 0s MISS, sync ~11m, Prune 3s,
+  Build 54s FAILED. #241: Restore 0s MISS, sync ~11m, Prune 1s,
+  Build 36s FAILED.
+  THE #238 FIX HELD COMPLETELY: zero
+  cts-dalvik-device-test-runner / py3-cmd / avbtool / fec genuine
+  errors in all four runs - INCLUDING the required: ["avbtool"]
+  edge, the flagged untested assumption from the #238 round:
+  #239-#242 prove a filegroup stub satisfies a required: edge at
+  ninja generation. The #234 fix HELD too (zero mke2fs_conf /
+  current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
+  gcc.sysroot genuine errors) and the #230 fix HELD (zero
+  avb_testkey_rsa4096 genuine errors) and the #226 fix HELD (zero
+  aosp_shared_system_image / libcompiler_rt /
+  update_engine_sideload genuine errors).
+  NEW FAILURE LAYER - the filegroup-srcs / property-dep phase,
+  SIXTH WAVE of the same phase as #230/#234/#238. Whole raw logs
+  (only "error: ... depends on undefined module ..." lines
+  counted, "#" comment echoes and "Or did you mean"
+  excluded): #239: 1 genuine line, 1 module - libvibrator needs
+  libvibrator_aidl
+  (frameworks/native/libs/vibrator/Android.bp:49:1); no
+  releasetools error in this run. #240: 1 genuine line, 1 module
+  - releasetools_test needs
+  com.android.apex.vendor.foo.with_vintf
+  (build/make/tools/releasetools/Android.bp:657:1); no
+  libvibrator error in this run. #241: 2 genuine lines, 2
+  modules - BOTH errors, releasetools first. #242: 2 genuine
+  lines, 2 modules - BOTH errors, libvibrator first (opposite
+  order to #241). UNION: 2 distinct new modules, 6 genuine
+  lines total - NOT data: filegroups this time (one is a srcs:
+  filegroup edge of a cc_library, the other a
+  device_common_data: edge of a python_test_host). The
+  "libcharger_sysprop" lines are a CONFIRMED PHANTOM again
+  (zero genuine errors in all four runs), same class as
+  #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/#210/#214/
+  #218/#222/#226/#230/#234/#238.
+  MECHANISM - PHASE MASKING, sixth wave: both modules are
+  undefined-module errors at Soong ninja-file generation - the
+  same phase as #230/#234/#238, resolving LATER than the
+  filesystem Deps phase. SUBSET VARIATION, BOTH DIRECTIONS
+  (again): #239 reports libvibrator only; #240 reports
+  releasetools only; #241 and #242 are on the IDENTICAL commit
+  de4ac91 yet report the same two errors in OPPOSITE order. The
+  union rule cuts both ways: fix everything reported in ANY
+  sibling, and never treat absence in the latest run as proof a
+  module is fixed. Same lesson as #185/#202/#223/#226/#230/#234/
+  #238: "never reported" means "not yet reached".
+  Root causes, verified: (1) libvibrator_aidl is a filegroup in
+  unsynced platform/frameworks/base (core/java/Android.bp, AOSP
+  android-15.0.0_r32 lines 206-213; LineageOS lineage-22.2 lines
+  395-408: srcs ["android/os/IExternalVibrationController.aidl",
+  "android/os/IExternalVibratorService.aidl",
+  "android/os/ExternalVibrationScale.aidl"]). Consumer:
+  cc_library libvibrator
+  (frameworks/native/libs/vibrator/Android.bp:49) via srcs:
+  [":libvibrator_aidl", "ExternalVibration.cpp"]. Dep closure:
+  libvibrator_aidl is the ONLY undefined dep of libvibrator.
+  DUMMY CHOICE: the stub srcs is a single dummy text file, NOT
+  the real AIDL - libvibrator is NOT in the lights service's
+  closure (the service is defined in the fork at
+  aidl/light/Android.bp with shared_libs libbase, libbinder_ndk,
+  android.hardware.light-V2-ndk ONLY; a fork-wide search finds
+  no libvibrator reference outside stubs comments - verified
+  live 2026-11-28). The .aidl contents are compiled only if
+  libvibrator is built, and it never is for this target. #239
+  evidence: Soong does not validate filegroup srcs existence at
+  ninja generation. FALLBACK: if a future round ever builds
+  libvibrator, the stub srcs must become the real AIDL contents
+  verbatim (3 upstream files + ExternalVibration.aidl as a 4th
+  src). (2) com.android.apex.vendor.foo.with_vintf is an
+  apex_test in system/apex/tests/testdata/vendorapex/Android.bp
+  (AOSP android-15.0.0_r32, lines ~177-190). The project
+  platform/system/apex IS synced, but the workflow prunes
+  system/apex/tests whole (runs #75/#76/#77 fix) - a
+  SELF-INFLICTED prune; un-pruning is not viable (the dir holds
+  the 84-error host-test/tradefed family). Consumer:
+  python_test_host releasetools_test
+  (build/make/tools/releasetools/Android.bp:657) via its
+  defaults releasetools_test_defaults (:609)
+  device_common_data:
+  [":com.android.apex.compressed.v1",
+  ":com.android.apex.vendor.foo.with_vintf"]. Dep closure:
+  with_vintf is the ONLY undefined dep of releasetools_test.
+  A second synced consumer, ApexTestCases (cc_test,
+  system/apex/apexd/Android.bp:471), is fixed by the same stub.
+  The dummy .apex is a valid EMPTY ZIP (an APEX is a zip;
+  test_check_target_files_vintf.py:172 expects exactly that
+  filename). Honest limit: no prior round has stubbed an
+  apex_test module as a filegroup - the apex_test-to-filegroup
+  substitution is unproven until the run passes.
+  Fix: 2 new filegroup stubs (libvibrator_aidl,
+  com.android.apex.vendor.foo.with_vintf), mirroring the
+  reference form, srcs ["<dummy file>"], public visibility; the
+  2 dummy source files are created by the prune step (the
+  with_vintf dummy is a valid EMPTY ZIP, same as android.jar in
+  #234 and the cts jar in #238; libvibrator_aidl is a text
+  placeholder, plainly marked NOT REAL) and guarded with test
+  -f in the prune step + pre-build guard. No sdk_version on any
+  new stub. No prunes. No new projects (still 32). The stub
+  type for libvibrator_aidl MATCHES the upstream type
+  (filegroup); the stub type for with_vintf deliberately does
+  NOT mirror the upstream apex_test type. The prune-step check
+  and the pre-build guard both verify the new stubs, their type,
+  and the dummy files. Alternatives rejected (recorded in the
+  workflow comment): prune frameworks/native/libs/vibrator whole
+  (unknown consumer set; risks CREATING new errors); prune
+  releasetools_test (targeted edit of synced build/make); un-prune
+  system/apex/tests (re-admits the 84-error family); real-AIDL
+  stub srcs for libvibrator_aidl (rejected on the closure proof
+  - contents never compiled); sync platform/frameworks/base
+  (forbidden); ALLOW_MISSING_DEPENDENCIES (forbidden).
+
+  CACHE NOTE (runs #239/#240/#241/#242): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0s,
+  sync ~11 min) and no Save step is expected to run - #242:
+  Restore 0s MISS, sync 11m7s; #239: Restore 0s MISS, sync
+  ~11m; #240: Restore 0s MISS, sync ~11m; #241: Restore 0s MISS,
+  sync ~11m; no "Cache saved" line in any run. The next run
+  will also restore-miss and sync ~11 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
