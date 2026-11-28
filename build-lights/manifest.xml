@@ -4262,6 +4262,152 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #259 (46127644495, stubs push 2aa2126, 15m54s, job
+  140925685490), #260 (46127985671, manifest push 47ad093, 13m00s,
+  job 140926727987), #261 (46128091166, README push 750ac60,
+  11m57s, job 140927054414) and #262 (46128174028, manual dispatch
+  ~14:27 IST 2026-11-28 on commit 750ac60, 12m14s, job
+  140927323665). ALL FAILED at Soong ninja-file generation, on the
+  SAME fix code (head 750ac60 - the runs #255/#256/#257/#258
+  1-stub fix, workflow b25967b). Steps (#262, live run page):
+  Restore 0s MISS, sync 8m49s, Prune 2s passed, Build 59s FAILED
+  (exit 1), Verify / Disk usage / Upload skipped. #261: job
+  11m54s. #260: job 12m56s. #259: job 15m51s. #259 tests the stubs
+  commit only, with the OLD workflow (f3ce109 - no virt dummy
+  creation); #260/#261 test the full #258 fix code; #262 (manual
+  dispatch) is the primary. Commit b25967b (workflow push) got NO
+  separate run (same pattern as f3ce109 in the #258 round:
+  #259 = 2aa2126 immediately followed by #260 = 47ad093;
+  b25967b's workflow code was first exercised by #260 - likely
+  one push, inference only).
+  THE #258 FIX HELD COMPLETELY: zero apex_available "not a valid
+  module name" errors in #259, #260, #261 AND #262 ("not a valid
+  module name" 0/0 in every job) - the FIRST filegroup stub for an
+  apex_available name is now PROVEN end to end. The #254 fix HELD
+  too (zero key:/certificate: genuine errors) and the #250 /
+  #246 / #242 / #238 / #234 / #230 / #226 fixes HELD too.
+  NEW FAILURE LAYER - genrule tools: host-tool edge, ELEVENTH
+  WAVE of the same phase as #230/#234/#238/#242/#246/#250/#254/
+  #258, and a NEW FAILURE CLASS (not an undefined module in the
+  usual dep sense - a missing HOST TOOL). Raw job logs (only lines
+  starting "error:" counted): EVERY run reports EXACTLY the same
+  4 lines - NO subset variation this round, the third round in a
+  row with zero subset variation (after #251-#254 and #255-#258;
+  only the ORDER varies). UNION: 1 distinct new module, 16
+  genuine lines total (4 + 4 + 4 + 4):
+  frameworks/native/services/inputflinger/rust/Android.bp:20:1
+  "inputflinger_rs_bootstrap_bridge_code" depends on undefined
+  module "cxxbridge"; :30:1 "inputflinger_rs_bootstrap_bridge_
+  header" depends on undefined module "cxxbridge";
+  frameworks/native/libs/input/rust/Android.bp:60:1
+  "libinput_cxx_bridge_code" depends on undefined module
+  "cxxbridge"; :68:1 "libinput_cxx_bridge_header" depends on
+  undefined module "cxxbridge" (#262 log lines 979, 981, 983,
+  985 of 992; #259 lines 966, 968, 970, 972; #260/#261 lines
+  979, 981, 983, 985). The "libcharger_sysprop" lines are a
+  CONFIRMED PHANTOM again (zero genuine errors in #259-#262),
+  same class as #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/
+  #210/#214/#218/#222/#226/#230/#234/#238/#242/#246/#250/#254/#258.
+  MECHANISM - PHASE MASKING, eleventh wave: the apex_available
+  errors of wave #258 masked this check - the apex transition
+  mutator failed before (or instead of) the genrule tool deps
+  being validated. With the virt name now defined, the mutator
+  passes and the first missing host tool surfaces.
+  Root cause, verified: cxxbridge is the CXX bridge codegen host
+  tool (the cxxbridge-cmd crate): a command-line binary that
+  reads a Rust #[cxx::bridge] source and emits the C++ header/
+  source. All four reporting modules are genrules in SYNCED
+  frameworks/native (LineageOS lineage-22.2), each with tools:
+  ["cxxbridge"] and cmd "$(location cxxbridge) $(in) ... >>
+  $(out)" - verified by raw fetch of both files:
+  services/inputflinger/rust/Android.bp
+  (inputflinger_rs_bootstrap_bridge_code,
+  inputflinger_rs_bootstrap_bridge_header) and
+  libs/input/rust/Android.bp (libinput_cxx_bridge_code,
+  libinput_cxx_bridge_header). The tool is defined upstream in
+  external/rust/crates/cxxbridge-cmd/ (unsynced - NOT among the
+  32 manifest projects; never sync it). The same tool is also
+  named by the ALREADY-STUBBED cxx-bridge-header genrule in
+  external/rust/cxx (r32 lines 190-200, tools cxxbridge, out
+  rust/cxx.h) - stubbed in the #119/#120/#121 round as a genrule
+  with tools OMITTED ("cxxbridge unsynced", never runs). That
+  stub never surfaced the missing tool because its own tools
+  list is empty; the four inputflinger/libinput genrules DO list
+  the tool, so they surface it now.
+  TYPE REQUIREMENT - the SAME conclusion as #254, from the same
+  method, and the OPPOSITE of #258: Soong
+  build/soong/genrule/genrule.go hard-requires a tools: dep to
+  be a host tool. toolDepsMutator adds every tools: entry as a
+  hostToolDependencyTag (line 466, host variation), and
+  generateCommonBuildActions resolves it (lines 648, 670-674,
+  726-732): if the dep does NOT provide android.HostToolProvider,
+  Soong errors `"X" is not a host tool provider`; if it provides
+  one but HostToolPath is invalid, Soong errors `host tool "X"
+  missing output file`. build/soong/rust/rust.go HostToolPath()
+  (lines 3245-3269) returns a valid path ONLY when the module is
+  a host module AND its compiler is *binaryDecorator (or
+  *procMacroDecorator), and build/soong/rust/binary.go (lines
+  37-43, 98-104) registers rust_binary_host with exactly that
+  compiler. A filegroup stub FAILS the first check; a
+  rust_library stub FAILS the second. The stub MUST be
+  rust_binary_host - the exact upstream type of the
+  cxxbridge-cmd binary (invoked as an executable via
+  $(location cxxbridge)). The check runs for every genrule at
+  GenerateBuildActions time, which is why all four genrules are
+  reported at once.
+  Fix: 1 new stub (cxxbridge as a rust_binary_host, crate_name
+  "cxxbridge_cmd", srcs ["cxxbridge_main.rs"], edition "2021" -
+  mirrors upstream, public visibility), 1 dummy file (valid `fn
+  main() {}` created by the prune step); the prune-step check
+  and the pre-build guard both verify the new stub, its type,
+  and the dummy file. No prunes. No new projects (still 32). No
+  sdk_version on the stub (rust binaries do not take one). The
+  dummy binary is never built or run: the four bridge genrules
+  are NOT in the lights HAL target closure (libinputflinger /
+  libinput_rust are not deps of the lights HAL), so the stub
+  only has to exist with a valid host-tool output path for
+  Soong's graph validation.
+  OPEN QUESTIONS (recorded, not blockers): (1) log positions
+  Android.bp:20:1 / :30:1 / :60:1 / :68:1 vs the branch-tip raw
+  fetch rendering the same genrules at displayed lines 36/55
+  and 113/128 - the same fetch line-number inflation seen in
+  #258. (2) the upstream cxxbridge-cmd Android.bp itself could
+  not be fetched verbatim (googlesource + GitHub-mirror URL
+  guesses for the crates repo 404'd) - the stub type does NOT
+  depend on that fetch: it is proven from the Soong side alone
+  (genrule.go + rust.go + binary.go) plus the $(location
+  cxxbridge) invocation form and the cxx-build docs (the tool
+  is packaged as the cxxbridge-cmd crate).
+  NO WORKFLOW COMPACTION THIS ROUND: the workflow is 419,731
+  bytes, ~92 KB under the 500 KB limit; the pointer block says
+  the next compaction compacts #227-#230 onward the same way.
+  DUMMY CHOICE: the stub src only has to exist and be valid
+  Rust if ever compiled (fn main) - the binary is never built
+  because the four bridge genrules are outside the lights
+  target closure.
+  FALLBACKS: if a future round reports another tools: "<name>"
+  undefined-module line for a different tool name, stub that
+  name the same way (host binary) - stub ONLY what a raw log
+  reports. Alternatives rejected (recorded in the workflow
+  comment): filegroup stub (fails the HostToolProvider check);
+  rust_library stub (fails the HostToolPath check); prune the
+  two rust dirs (the bridge genrules are referenced by the
+  same-file cc_defaults as generated_headers / generated_sources,
+  so pruning would leave dangling references); sync
+  external/rust/crates/cxxbridge-cmd (forbidden);
+  ALLOW_MISSING_DEPENDENCIES (forbidden); preemptively stub
+  other tools: names.
+
+  CACHE NOTE (runs #259/#260/#261/#262): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0s,
+  sync ~10 min) and no Save step is expected to run - #262:
+  Restore 0s MISS, sync 8m49s; no "Cache saved" line; Post
+  Restore step skipped. The next run
+  will also restore-miss and sync ~10 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
