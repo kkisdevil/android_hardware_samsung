@@ -1299,1677 +1299,35 @@ jobs:
           # the top of this step for the verified upstream type and
           # the stub-alternative reasoning).
           rm -rf frameworks/native/libs/renderengine/benchmark
-          # Runs #165/#166/#167 fix: prune four dirs and stub eleven
-          # modules. Runs #165 (45947910369, 14m15s, auto, manifest
-          # 5bb1797), #166 (45948101732, 13m37s, auto, README 435b5bc)
-          # and #167 (45948263759, 15m39s, manual dispatch ~11:21 IST
-          # 2026-11-27, head 435b5bc — the runs #162/#163/#164 fix,
-          # workflow ddd6322) ALL FAILED at Soong ninja-file
-          # generation, 33-36s into the "Build lights HAL" step, on
-          # the same fix code. The #162/#163/#164 fix HELD
-          # COMPLETELY in all three (prune step passed in 1-2s +
-          # pre-build guard passed; ZERO genuine trusty_driver_test
-          # / py3-stdlib / py3-launcher-autorun / libbpf errors in
-          # any raw log — those names occur only in this file's own
-          # history comment echo). Subset variation again: the fix
-          # covers the UNION (12 distinct undefined modules).
-          # Raw-log verbatim error union (browser job-logs.txt read
-          # of all three raw logs; the first UI-log report's
-          # "ninja: error ... libcharger_sysprop_rust.so ... missing
-          # and no known rule to make it" appears NOWHERE in either
-          # raw log — a CONFIRMED PHANTOM, same class as #152/#161):
-          #   #165 (6 lines): bionic-benchmarks, bionic-benchmarks-
-          #     static + libBionicLoaderTests need "libmeminfo";
-          #     libnativehelper_internal_tests_jni needs
-          #     "libnativetesthelper_jni"; libprefetch_rs needs
-          #     "librustutils"; libfdtrack needs "libdexfile_support".
-          #   #166 (15 lines): libmeminfo x5 (+ malloc-rss-benchmark,
-          #     bionic-stress-tests), libhealthd_draw needs
-          #     "libminui", run-as needs "libminijail", libtimeinstate
-          #     needs "bpf_prog_headers" + "bpf_headers" +
-          #     "libbpf_bcc" + "libbpf_minimal", libprefetch_rs needs
-          #     "librustutils", libfdtrack needs "libdexfile_support",
-          #     libtrusty_coverage + libtrusty_line_coverage need
-          #     "libdmabufheap".
-          #   #167 (3 lines): libcharger_sysprop_rust +
-          #     libcom_android_sysprop_apex_rust need "librustutils";
-          #     libstatspull_rust needs "libstatslog_rust_header".
-          # PRUNES (4 dirs, each verified in the synced tree):
-          #   bionic/benchmarks — every libmeminfo referencer in
-          #     this dir; all 54 top-level + 183 subdir modules are
-          #     benchmark/test-only with ZERO referencers outside
-          #     the dir (every name: checked). The libmeminfo stub
-          #     below covers the bionic/tests referencers, which
-          #     CANNOT be pruned: bionic/libfdtrack's fdtrack_test
-          #     takes whole_static_libs ["libBionicCtsGtestMain"],
-          #     defined in bionic/tests/Android.bp — pruning tests/
-          #     would CREATE that undefined-module error.
-          #   libnativehelper/tests — defines
-          #     libnativehelper_internal_tests_jni (the #165
-          #     referencer); all 7 top-level names + jni_gtest_headers
-          #     / jni_gtest_defaults have ZERO referencers outside
-          #     the dir. libnativetesthelper_jni is defined NOWHERE
-          #     in the synced tree.
-          #   libnativehelper/tests_mts/jni — belt-and-braces
-          #     no-op: its libnativehelper_jni_defaults takes
-          #     whole_static_libs ["libnativetesthelper_jni"], but
-          #     the parent tests_mts is ALREADY pruned whole above
-          #     (runs #48/#49/#50 fix), so the dir is already gone;
-          #     the explicit line documents the second referencer.
-          #   system/core/libstats/pull_rust — defines
-          #     libstatspull_rust (the #167 referencer, rustlibs
-          #     liblog_rust + libstatslog_rust_header +
-          #     libstatspull_bindgen) + libstatspull_bindgen +
-          #     libstatspull_bindgen_test; all three are referenced
-          #     NOWHERE outside this one file, and
-          #     libstatslog_rust_header is referenced nowhere else
-          #     in the tree. Pruning kills the bindgen too (its
-          #     shared/static_libs libstatspull + libstatssocket
-          #     are already stubbed, so the bindgen has not errored
-          #     yet — the prune is for libstatspull_rust itself).
-          # STUBS (11, all in yuzora-stubs/Android.bp below):
-          #   librustutils — rust_library (crate_name "rustutils",
-          #     srcs lib.rs, edition 2021, host_supported, public —
-          #     same form as the #116 rust stubs; lib.rs already
-          #     created by the #96 fix). One stub covers all three
-          #     referencers (libprefetch_rs rustlibs, verified
-          #     in-tree; libcharger_sysprop_rust +
-          #     libcom_android_sysprop_apex_rust per the raw logs —
-          #     those two modules are NOT in the synced local tree
-          #     at all, so their rustlibs use is per the raw logs,
-          #     which are authoritative). librustutils is defined
-          #     NOWHERE in the synced tree.
-          #   libdexfile_support + libdexfile — plain cc_library
-          #     (upstream types in unsynced art/libdexfile; a plain
-          #     cc_library yields both variants, so it satisfies
-          #     libfdtrack's static_libs use and debuggerd's four
-          #     static_libs uses). libdexfile is the provably-next
-          #     layer, not speculation: debuggerd takes it in
-          #     target.android runtime_libs, and Soong reports only
-          #     the FIRST undefined dep per module, so the
-          #     libdexfile error is masked until libdexfile_support
-          #     exists. Both are defined NOWHERE in the synced tree.
-          #   libminui — plain cc_library (upstream type in
-          #     unsynced bootable/recovery/minui; libhealthd_draw
-          #     takes it in static_libs). Do NOT prune healthd:
-          #     the librustutils stub already covers its other
-          #     error. libminui is defined NOWHERE in the tree.
-          #   libminijail — plain cc_library (upstream type in
-          #     unsynced system/core/libminijail — the dir does not
-          #     even exist in the synced tree, and the workflow
-          #     never pruned it). The stub beats pruning run-as:
-          #     debuggerd + sdcard take libminijail too (static_libs
-          #     + shared_libs), so pruning run-as alone would leave
-          #     those two erroring next.
-          #   libdmabufheap — plain cc_library (upstream type in
-          #     unsynced system/memory/libdmabufheap). The stub
-          #     beats pruning trusty/coverage + line-coverage:
-          #     libdmabufheap is ALSO taken in shared_libs by kept
-          #     trusty/apploader, confirmationui, libtrusty/tipc-test
-          #     and utils/acvp + utils/coverage-controller, so
-          #     pruning the two coverage dirs would leave those
-          #     five erroring — and pruning coverage/line-coverage
-          #     would CREATE errors, because kept trusty/fuzz takes
-          #     libtrusty_coverage and kept coverage-controller
-          #     takes libtrusty_line_coverage. One stub fixes all
-          #     seven referencers and leaves the coverage dirs
-          #     parsing (their other deps libext2_uuid + libtrusty
-          #     are already stubbed/defined).
-          #   libmeminfo — plain cc_library (upstream type in
-          #     unsynced system/memory/libmeminfo; see the prune
-          #     note above for why bionic/tests is stubbed, not
-          #     pruned). Defined NOWHERE in the synced tree.
-          #   bpf_prog_headers + bpf_headers — cc_library_headers
-          #     (header_libs use); libbpf_bcc + libbpf_minimal —
-          #     plain cc_library (shared_libs use). One stub per
-          #     module beats pruning cputimeinstate: the same four
-          #     are ALSO taken by kept dirs — gpuservice/gpumem +
-          #     gpuwork + tests/unittests take bpf_headers +
-          #     libbpf_bcc, and kept system/core/libsysutils takes
-          #     bpf_headers — so pruning cputimeinstate alone
-          #     would leave those four erroring. (CORRECTION to the
-          #     first draft of this fix: external/bpf was NOT
-          #     pruned in the #162 fix — the workflow never mentions
-          #     external/bpf; all four bpf modules are defined
-          #     NOWHERE in the synced tree. The
-          #     hardware/interfaces/health/utils/libhealthloop
-          #     referencer IS already pruned by the closure prune.)
-          # PRUNE-GAP CHECK: there is NO prune of system/apex/apexd
-          #   or system/core/libstats anywhere in this file — no
-          #   rm -rf line and no echo line claims either as pruned
-          #   (the only system/apex prune is system/apex/tests;
-          #   libstats is only stubbed-around). apexs is
-          #   DELIBERATELY KEPT (run #58: apexs_testdata is
-          #   referenced by the kept apexs/Android.bp; run #61
-          #   copies API files into it), so
-          #   system/apex/apexd/sysprop/Android.bp parsing and
-          #   erroring on librustutils is expected, not a prune
-          #   gap — the librustutils stub above is the fix. The
-          #   glob prune loops only cover hardware/* +
-          #   kernel/configs vts; nothing about the prune mechanism
-          #   needed fixing. The cache steps are untouched (see the
-          #   save-always note below).
+          # COMPACTED 2026-11-28 (runs #231/#232/#233/#234 fix):
+          # the full comment blocks for rounds #165/#166/#167
+          # through #192/#193/#194 were removed from this file to
+          # stay under GitHub's 500 KB workflow limit (the file was
+          # 479,097 bytes; the removed prose was ~101 KB). NOTHING
+          # else changed: every prune/check/guard CODE line from
+          # those rounds is intact below and in the stub-check and
+          # guard sections. The full per-round narrative lives in
+          # the manifest doc blocks for those rounds and in the
+          # preserved cron_body history files. One-line pointers:
+          # Runs #165/#166/#167 fix: prune 4 dirs + stub 11 modules.
+          # Runs #168/#169/#170 fix: stub 5 modules, prune nothing.
+          # Runs #171/#172/#173 fix: stub 9 modules, prune nothing.
+          # Runs #174/#175/#176 fix: stub 17 modules, prune nothing.
+          # Runs #177/#178/#179 fix: stub 6 modules, prune nothing.
+          # Runs #180/#181/#182 fix: stub 13 modules, prune nothing
+          # (the stray-# defect + fix are runs #183/#184/#185; the
+          # 500 KB size-limit restructure is runs #187-#190).
+          # Runs #192/#193/#194 fix: stub 39 modules, no prunes.
+          # SIZE LIMIT (runs #187-#190): a workflow file over 500 KB
+          # fails EVERY run at startup; stubs live in the static
+          # file build-lights/yuzora-stubs-Android.bp, not in this
+          # file. Keep this file under 500 KB — check with wc -c
+          # before upload. The next compaction round, when needed,
+          # compacts the #195/#196/#197/#198 block onward the same way.
           rm -rf bionic/benchmarks
           rm -rf libnativehelper/tests
           rm -rf libnativehelper/tests_mts/jni
           rm -rf system/core/libstats/pull_rust
-          # Runs #168/#169/#170 fix: stub five modules, prune
-          # nothing. Runs #168 (45957321266, 14m30s, auto, manifest
-          # 754e76d), #169 (45957461669, 13m48s, auto, README 1a0adc5)
-          # and #170 (45957587395, 13m12s, manual dispatch ~12:48 IST
-          # 2026-11-27, head 1a0adc5 — the runs #165/#166/#167 fix,
-          # workflow 26403d9) ALL FAILED at Soong ninja-file
-          # generation, 24-35s into the "Build lights HAL" step, on
-          # the same fix code. The #165/#166/#167 fix HELD
-          # COMPLETELY in all three (prune step passed + pre-build
-          # guard passed; ZERO genuine errors for any of its 12
-          # modules in any raw log). Subset variation again: the fix
-          # covers the UNION (5 distinct undefined modules).
-          # Raw-log verbatim error union — verified TWICE (browser
-          # job-logs.txt read of all three raw logs + direct grep of
-          # the downloaded log archives; the two reads agree
-          # exactly, genuine "error:" lines only — each raw log also
-          # has 32 script-echo/comment matches for the phrase):
-          #   #168 (2 lines, 07:30:51Z) + #170 (2 lines, 07:31:56Z,
-          #     IDENTICAL to #168): "libc_malloc_debug" needs
-          #     "libmemory_trace" + "libmemunreachable"
-          #     (bionic/libc/malloc_debug/Android.bp:57:1).
-          #   #169 (6 lines, 07:31:23Z): those two PLUS
-          #     "tombstoned.microdroid" + "tombstoned" need
-          #     "libevent" (system/core/debuggerd/Android.bp:543:1 /
-          #     537:1) and "libdebuggerd" needs "scudo_headers" +
-          #     "gwp_asan_crash_handler" (Android.bp:232:1).
-          # UI-LOG TRUNCATION, not a new module: the first UI-log
-          # report said "libmemtrace" — the raw log says
-          # "libmemory_trace" (the UI view truncates the name).
-          # The "ninja: error ... libcharger_sysprop_rust.so ...
-          # missing and no known rule to make it" line: 1 match per
-          # raw log, 0 genuine — the only match is this file's own
-          # history comment echo. CONFIRMED PHANTOM, same class as
-          # #152/#161. FAILED line in all three is
-          # out/soong/build.yuzora_lights.ninja, soong bootstrap
-          # failed, exit status 1. Cache: Restore MISS 0-1s in all
-          # three (sync 10m43s on #170), no cache saved — same as
-          # every run since #118; the separate restore+save steps
-          # still need his word, NOT changed here.
-          # STUBS (5, all in yuzora-stubs/Android.bp below):
-          #   libmemory_trace — cc_library_static (whole_static_libs
-          #     consumer libc_malloc_debug; same form as the #153
-          #     libscudo + gwp_asan stubs). Defined NOWHERE in the
-          #     synced tree; only referencer is libc_malloc_debug.
-          #   libmemunreachable — plain cc_library (static_libs
-          #     consumer libc_malloc_debug + shared_libs consumer
-          #     android.hardware.audio-impl_default, which is a
-          #     cc_defaults NOT instantiated in this build graph —
-          #     out of graph, so it never errors; a plain cc_library
-          #     yields both variants, so one stub satisfies both
-          #     list types — same precedent as the #165
-          #     libdexfile_support stub, which satisfied
-          #     libfdtrack's + debuggerd's static_libs uses and has
-          #     not errored since). Defined NOWHERE in the tree.
-          #   libevent — plain cc_library (static_libs consumer
-          #     tombstoned_defaults, used by tombstoned +
-          #     tombstoned.microdroid; upstream type in unsynced
-          #     external/libevent). Defined NOWHERE in the tree.
-          #   scudo_headers — cc_library_headers (header_libs
-          #     consumer libdebuggerd; same form as the #165
-          #     bpf_headers stub). Defined NOWHERE in the tree.
-          #   gwp_asan_crash_handler — cc_library_static
-          #     (whole_static_libs consumer libdebuggerd; same form
-          #     as the #153 libscudo stub). Defined NOWHERE in the
-          #     synced tree. NOT the same module as gwp_asan (the
-          #     #153 stub, already present) or gwp_asan_headers
-          #     (already stubbed) — all three are distinct modules.
-          # NO PRUNES this round: the referencers are core platform
-          # modules — libc_malloc_debug lives in bionic/libc and
-          # tombstoned/libdebuggerd live in system/core/debuggerd;
-          # neither dir can be pruned. The stub-only fix is the
-          # whole fix.
-          # NO sdk_version on any new stub: no consumer sets
-          # sdk_version (verified on all three consumer blocks:
-          # libc_malloc_debug, libdebuggerd, tombstoned_defaults
-          # — no sdk_version / min_sdk_version anywhere in them),
-          # so no stub needs the sdk variant (same rule as the
-          # #159/#160/#161 fix).
-          # CHECKED, NOT STUBBED (out-of-graph referencers only):
-          #   libnative_bridge_support_accessor_headers —
-          #     referenced ONLY by the crash_dump binary
-          #     (header_libs + target.android header_libs), which
-          #     is not in the lights build graph, so it never
-          #     errors; same for libtombstoned_client_static +
-          #     libnative_bridge_guest_state_accessor (crash_dump
-          #     static_libs). Do NOT stub any of these unless a raw
-          #     log reports one.
-          # DEP-CLOSURE VERIFIED (every other dep of the erroring
-          # consumers is defined in-tree or already stubbed, so
-          # there is no provably-next layer beyond these five):
-          #   libc_malloc_debug: libasync_safe + libbase +
-          #     libc_malloc_debug_backtrace defined in-tree,
-          #     libunwindstack already stubbed; its backtrace
-          #     lib's own deps are libbase + libasync_safe.
-          #   libdebuggerd: header_libs bionic_libc_platform_headers
-          #     + liblog_headers + libdebuggerd_common_headers
-          #     defined, gwp_asan_headers stubbed; static_libs
-          #     libdexfile_support + libunwindstack + liblzma
-          #     stubbed, libbase + libcutils defined;
-          #     whole_static_libs libdebuggerd_tombstone_proto_to_text
-          #     + libtombstone_proto + libasync_safe defined,
-          #     libprocinfo + libprotobuf-cpp-lite + libscudo
-          #     stubbed; target recovery/vendor_ramdisk excludes
-          #     reference libdexfile_support + libdexfile (stubbed).
-          #   tombstoned_defaults: libbase + libcutils + liblog
-          #     defined, libevent is the new stub; header_libs
-          #     defined in-tree. debuggerd binary: libbase +
-          #     libdebuggerd_client + liblog + libprocessgroup
-          #     defined in-tree, libprocinfo stubbed; required
-          #     crash_dump.policy is a prebuilt_etc defined in the
-          #     same debuggerd/Android.bp. libtinyxml2 (the
-          #     malloc_debug_unit_tests dep) is already stubbed.
-          # Runs #171/#172/#173 fix: stub nine modules, prune
-          # nothing. Runs #171 (45963013734, 14m39s, auto, manifest
-          # b55e406), #172 (45963169508, 14m15s, auto, README
-          # bbbab53) and #173 (45963299051, 13m26s, manual dispatch
-          # ~13:37 IST 2026-11-27, head bbbab53 — the runs
-          # #168/#169/#170 fix, workflow 09d5008) ALL FAILED at
-          # Soong ninja-file generation, 36s (#171/#173) / 44s
-          # (#172) into the "Build lights HAL" step, on the same
-          # fix code. The #168/#169/#170 fix HELD COMPLETELY in
-          # all three (prune step passed + pre-build guard passed;
-          # ZERO genuine errors for any of its 5 modules in any
-          # raw log). Subset variation again: the fix covers the
-          # UNION (9 distinct undefined modules, 12 error lines).
-          # Raw-log verbatim error union — verified TWICE (browser
-          # job-logs.txt read of all three raw logs + direct grep
-          # of the downloaded log archives; the two reads agree
-          # exactly, genuine "error:" lines only):
-          #   #171 (4 lines, 08:20:07Z): "libsnapshot_headers"
-          #     needs "update_metadata-protos"
-          #     (system/core/fs_mgr/libsnapshot/Android.bp:99:1);
-          #     "crash_dump" needs
-          #     "libnative_bridge_support_accessor_headers" +
-          #     "libnative_bridge_guest_state_accessor"
-          #     (system/core/debuggerd/Android.bp:438:1);
-          #     "libnetutils" needs "libip_checksum"
-          #     (system/core/libnetutils/Android.bp:18:1).
-          #   #172 (5 lines, 08:20:59Z): "libgui_headers" needs
-          #     "android.hidl.token@1.0-utils" +
-          #     "android.hardware.graphics.bufferqueue@1.0" +
-          #     "android.hardware.graphics.bufferqueue@2.0"
-          #     (frameworks/native/libs/gui/Android.bp:49:1);
-          #     "android.hardware.confirmationui.not-so-secure-input"
-          #     needs "libteeui_hal_support"
-          #     (system/core/trusty/confirmationui/Android.bp:105:1);
-          #     "trusty_acvp_modulewrapper" needs
-          #     "libacvp_modulewrapper"
-          #     (system/core/trusty/utils/acvp/Android.bp:18:1).
-          #   #173 (3 lines, 08:21:10Z): the "libgui_headers" trio,
-          #     IDENTICAL to #172's first three.
-          # Soong reports each undefined module ONCE: e.g.
-          # "update_metadata-protos" is referenced by three
-          # modules (libsnapshot_defaults, fastboot, init) but
-          # reported once, at libsnapshot_headers:99.
-          # UI-LOG READ OF #173 WAS ENTIRELY PHANTOM: it invented
-          # "libsamsung_symbols" errors (libprocessgroup/libbase/
-          # liblog/libutils/libcutils "referenced" from
-          # hardware/samsung/libsamsung_symbols/libsamsung_symbols.cc)
-          # that appear NOWHERE in any raw log, and a step named
-          # "Prune + sync hardware/samsung (minimal)" that does
-          # not exist in the workflow file. The raw log is
-          # authoritative — third UI-read failure of this class
-          # (after #84/#96/#107/#161). libsamsung_symbols.cc does
-          # not exist in the synced tree (hardware/samsung/* is
-          # pruned except aidl/light); libprocessgroup/libbase/
-          # liblog/libutils/libcutils are all defined in-tree.
-          # The "ninja: error ... libcharger_sysprop_rust.so ..."
-          # line: 1 match per raw log, 0 genuine — the workflow's
-          # own history comment echo. CONFIRMED PHANTOM, same
-          # class as #152/#161. FAILED line in all three is
-          # out/soong/build.yuzora_lights.ninja, soong bootstrap
-          # failed, exit status 1. Cache: Restore MISS 0s in all
-          # three (sync 9m18s on #173), no cache saved — same as
-          # every run since #118; the separate restore+save steps
-          # still need his word, NOT changed here.
-          # STUBS (9, all in yuzora-stubs/Android.bp below):
-          #   android.hidl.token@1.0-utils — plain cc_library
-          #     (shared_libs consumer libgui_headers + libgui;
-          #     upstream type cc_library in unsynced
-          #     hardware/interfaces/token/1.0/utils — the synced
-          #     tree has no hardware/interfaces/token dir at all).
-          #     Defined NOWHERE in the tree.
-          #   android.hardware.graphics.bufferqueue@1.0 +
-          #     @2.0 — plain cc_library (shared_libs consumers
-          #     libgui_headers + libgui_bufferqueue_static + libgui
-          #     + android.frameworks.automotive.display@1.0-service;
-          #     upstream hidl_interface in
-          #     hardware/interfaces/graphics/bufferqueue/{1.0,2.0}
-          #     — hardware/interfaces IS synced but the closure
-          #     prune deletes graphics/*, same story as
-          #     allocator@2.0 (#156)). Defined only there.
-          #   update_metadata-protos — plain cc_library
-          #     (static_libs consumers libsnapshot_defaults +
-          #     fastboot + init, export_static_lib_headers
-          #     consumer libsnapshot_defaults; a plain cc_library
-          #     yields both variants — #165 libdexfile_support
-          #     precedent). Defined NOWHERE in the tree.
-          #   libnative_bridge_support_accessor_headers —
-          #     cc_library_headers (header_libs consumer crash_dump,
-          #     same form as the #165 bpf_headers / #168
-          #     scudo_headers stubs). Defined NOWHERE.
-          #   libnative_bridge_guest_state_accessor — plain
-          #     cc_library (static_libs consumer crash_dump).
-          #     Defined NOWHERE. CORRECTION of the #168 assessment:
-          #     the #168 fix listed these two as "out-of-graph
-          #     (crash_dump binary only), do NOT stub" — #171 proves
-          #     crash_dump IS evaluated by Soong, so that reasoning
-          #     was wrong; the subset-reporting rule is operative.
-          #   libip_checksum — plain cc_library (static_libs
-          #     consumer libnetutils). Defined NOWHERE.
-          #   libteeui_hal_support — plain cc_library (shared_libs
-          #     consumer android.hardware.confirmationui
-          #     .not-so-secure-input). Defined NOWHERE.
-          #   libacvp_modulewrapper — plain cc_library
-          #     (static_libs consumer trusty_acvp_modulewrapper).
-          #     Defined NOWHERE.
-          # NO PRUNES this round: the referencers are core platform
-          # modules — libgui lives in frameworks/native, the rest in
-          # system/core (fs_mgr, debuggerd, libnetutils, trusty,
-          # fastboot, init); none of those dirs can be pruned. The
-          # trusty confirmationui + utils/acvp dirs could in
-          # principle be pruned whole (trusty-only, like
-          # trusty/test + trusty/stats in #162/#68), but stubbing
-          # the two libs is lower-risk and follows the stub
-          # precedent; the dirs stay.
-          # NO sdk_version on any new stub: no consumer sets
-          # sdk_version (verified on every consumer block:
-          # libgui_headers + libgui carry min_sdk_version "29"
-          # only; libsnapshot_defaults, crash_dump /
-          # debuggerd_defaults, libnetutils, confirmationui,
-          # acvp, fastboot, init — zero sdk_version lines in any
-          # of those files), so no stub needs the sdk variant
-          # (same rule as the #159/#160/#161 fix).
-          # CHECKED, NOT STUBBED (never reported in any raw log,
-          # runs #6–#173 — do NOT stub unless a raw log reports
-          # one; stubbing a module Soong may consider defined
-          # risks a duplicate-definition error):
-          #   android.hardware.graphics.common@1.1/@1.2,
-          #     allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0 —
-          #     referenced by surviving modules in the local tree
-          #     (libgui_bufferqueue-defaults shared_libs, libui,
-          #     libnativewindow, surfaceflinger) and still listed
-          #     in the live upstream lineage-22.2 libs/gui/ +
-          #     libs/ui/Android.bp (verified 2026-11-27:
-          #     common@1.1 still listed twice in gui, allocator@3.0/
-          #     @4.0 + common@1.2 + mapper@2.0/2.1/3.0/4.0 still in
-          #     ui), yet never errored in any run — Soong does not
-          #     validate those references (same class as the
-          #     -ndk/HIDL libs rule). Same for libLibGuiProperties
-          #     (whole_static_libs of libgui_bufferqueue-defaults,
-          #     defined nowhere in the local tree, never reported).
-          #   libbootloader_message, liblmkd_utils, libxml2
-          #     (fastboot/init deps; defined nowhere in the synced
-          #     tree — bootable/external unsynced) +
-          #     libhealthhalutils / libhealthshim / libfastbootshim
-          #     (defined only in pruned hardware/interfaces/health
-          #     + fastboot/aidl dirs): same rule.
-          #   libtombstoned_client_static — defined in-tree
-          #     (system/core/debuggerd/Android.bp:73); needs nothing.
-          # DEP-CLOSURE VERIFIED (every other DIRECT dep of the
-          # erroring consumers is defined in-tree or already
-          # stubbed; the defaults-inherited HIDL deps above are
-          # the only known exception and are in the NOT-STUBBED
-          # bucket, never reported in 173 runs):
-          #   libgui_headers: libguiflags defined in-tree. libgui
-          #     (bufferqueue-static via defaults + shared lib):
-          #     libbase/libcutils/libEGL/liblog/libnativewindow/
-          #     libsync/libui/libutils defined, libhidlbase
-          #     stubbed.
-          #   libsnapshot_headers via libsnapshot_defaults:
-          #     libbase/libcutils/liblog defined, libchrome
-          #     stubbed; libbrotli/libz/libext2_uuid/libext4_utils
-          #     stubbed; libdm/libfstab/libsnapuserd_client/
-          #     libfiemap_headers/libstorage_literals_headers/
-          #     fs_mgr_defaults defined in-tree,
-          #     libupdate_engine_headers stubbed (#119).
-          #   crash_dump: header_libs bionic_libc_platform_headers
-          #     defined; static_libs libtombstoned_client_static +
-          #     libdebuggerd + libcutils + libtombstone_proto
-          #     defined, libprotobuf-cpp-lite stubbed; shared_libs
-          #     libbase + liblog defined, libprocinfo +
-          #     libunwindstack stubbed; target.android shared_libs
-          #     libdl_android defined in-tree; required
-          #     crash_dump.policy is a prebuilt_etc defined in the
-          #     same debuggerd/Android.bp.
-          #   libnetutils: libcutils + liblog defined.
-          #   confirmationui not-so-secure-input: libbase defined,
-          #     libcrypto stubbed.
-          #   trusty_acvp_modulewrapper: libbase/libc/liblog
-          #     defined, libdmabufheap stubbed, libtrusty defined
-          #     in-tree, libssl stubbed.
-          # Runs #174/#175/#176 fix: stub seventeen modules, prune
-          # nothing. Runs #174 (45968461820, 11m50s, auto, manifest
-          # b181a17), #175 (45968650640, 12m15s, auto, README
-          # af180ee) and #176 (45968827104, 14m53s, manual dispatch
-          # ~14:20 IST 2026-11-27, head af180ee — the runs
-          # #171/#172/#173 fix, workflow d98eedb) ALL FAILED at
-          # Soong ninja-file generation, 26s (#174) / 37s (#175) /
-          # 38s (#176) into the "Build lights HAL" step, on the
-          # SAME fix code. The #171/#172/#173 fix HELD COMPLETELY
-          # in all three (prune step passed + pre-build guard
-          # passed; ZERO genuine errors for any of its 9 modules in
-          # any raw log). Subset variation, worse than ever: #174
-          # and #176 report 3 lines each, #175 reports 25 — the
-          # fix covers the UNION (17 distinct undefined modules,
-          # 31 error lines). Soong reports each (consumer, module)
-          # pair once: e.g. libhealthloop is reported 3x in #175
-          # (once per consumer: libhealthd_charger_ui,
-          # libhealthd_charger_ui-V1, libhealthd_charger_nops).
-          # Raw-log verbatim error union — verified TWICE (browser
-          # job-logs.txt read of all three raw logs + direct grep
-          # of the downloaded log archives; the two reads agree
-          # exactly, genuine "error:" lines only):
-          #   #174 (3 lines, 08:59:43Z): "libfs_mgr" needs
-          #     "libfscrypt" + "libfec"
-          #     (system/core/fs_mgr/Android.bp:149:1);
-          #     "libtracing_perfetto_tests" needs
-          #     "perfetto_trace_protos"
-          #     (frameworks/native/libs/tracing_perfetto/tests/Android.bp:24:1).
-          #   #175 (25 lines, 09:01:34Z):
-          #     "libhealthd_charger_ui" needs "libhealthloop" +
-          #     "android.hardware.health-V4-ndk" +
-          #     "android.hardware.health-translate-ndk" + "libpng"
-          #     (system/core/healthd/Android.bp:166:1);
-          #     "libhealthd_charger_ui-V1" needs "libhealthloop" +
-          #     "android.hardware.health-V1-ndk" +
-          #     "android.hardware.health-translate-V1-ndk" + "libpng"
-          #     (healthd/Android.bp:181:1);
-          #     "libtracing_perfetto_tests" needs
-          #     "perfetto_trace_protos" (same line as #174);
-          #     "libhealthd_charger_nops" needs "libhealthloop" +
-          #     "libhealth2impl" + "android.hardware.health@2.1"
-          #     (healthd/Android.bp:106:1);
-          #     "libapexd_checkpoint_vold" needs "libvold_binder"
-          #     (system/apex/apexd/Android.bp:214:1);
-          #     "libbatterymonitor" needs
-          #     "android.hardware.health-translate-ndk" +
-          #     "android.hardware.health-V4-ndk" +
-          #     "android.hardware.health@2.1"
-          #     (healthd/Android.bp:77:1);
-          #     "libbatterymonitor-V1" needs
-          #     "android.hardware.health-translate-V1-ndk" +
-          #     "android.hardware.health-V1-ndk" +
-          #     "android.hardware.health@2.1"
-          #     (healthd/Android.bp:92:1);
-          #     "libschedulerservicehidl" needs "libmediautils" +
-          #     "android.frameworks.schedulerservice@1.0"
-          #     (frameworks/native/services/schedulerservice/Android.bp:10:1);
-          #     "libapexd" needs "lib_microdroid_metadata_proto" +
-          #     "libsigningutils" + "libverity_tree" +
-          #     "libvold_binder" (apexd/Android.bp:187:1).
-          #   #176 (3 lines, 09:05:32Z): IDENTICAL to #174.
-          # UI-LOG READ OF #176 WAS ENTIRELY PHANTOM: it invented
-          # "FAILED: ninja: 'out/target/product/m51/obj/EXECUTABLES/
-          # android.hardware.lights-service.samsung_intermediates/
-          # android.hardware.lights-service.samsung', missing and no
-          # known rule to make it" — the plural name + product m51
-          # match NOTHING in the tree, workflow or fork (the module
-          # is android.hardware.light-service.samsung, singular,
-          # product yuzora_lights); the raw log has ZERO genuine
-          # "no known rule" lines. Another UI-read failure of this
-          # class (after #84/#96/#107/#161/#173). The UI-log read of
-          # #175 UNDERCOUNTED (5 of 25 genuine errors — only the
-          # tail of the error block was visible in the screenshot);
-          # UI reads can truncate as well as invent. The raw log is
-          # authoritative. The "ninja: error ...
-          # libcharger_sysprop_rust.so ... missing and no known rule
-          # to make it" line is a CONFIRMED PHANTOM again (2
-          # matches per raw log, 0 genuine — the workflow's own
-          # history comment echo), same class as #152/#161.
-          # STUBS (17, all plain cc_library, all in
-          # yuzora-stubs/Android.bp below):
-          #   libfscrypt — plain cc_library (whole_static_libs
-          #     consumer libfs_mgr via libfs_mgr_defaults).
-          #     Defined NOWHERE in the tree.
-          #   libfec — plain cc_library (shared_libs consumer
-          #     libfs_mgr via libfs_mgr_defaults). Defined NOWHERE.
-          #   perfetto_trace_protos — plain cc_library
-          #     (static_libs consumer libtracing_perfetto_tests).
-          #     Defined NOWHERE (same form as the #171
-          #     update_metadata-protos stub).
-          #   libhealthloop — plain cc_library (static_libs
-          #     consumers libhealthd_charger_ui via defaults,
-          #     libhealthd_charger_ui-V1 via defaults,
-          #     libhealthd_charger_nops; upstream
-          #     cc_library_static). Defined ONLY in pruned
-          #     hardware/interfaces/health/utils/libhealthloop.
-          #   android.hardware.health-V4-ndk — plain cc_library
-          #     (static_libs consumers libhealthd_charger_ui,
-          #     libbatterymonitor; whole_static_libs consumer
-          #     libbatterymonitor via defaults is the -translate
-          #     lib). Defined ONLY in pruned
-          #     hardware/interfaces/health/aidl (aidl_library
-          #     generated).
-          #   android.hardware.health-translate-ndk — plain
-          #     cc_library (whole_static_libs consumers
-          #     libbatterymonitor, libhealthd_charger_ui).
-          #     Defined ONLY in pruned health/aidl.
-          #   libpng — plain cc_library (shared_libs consumer
-          #     libhealthd_charger_ui via defaults). Defined
-          #     NOWHERE (external/libpng unsynced).
-          #   android.hardware.health-V1-ndk — plain cc_library
-          #     (static_libs consumers libhealthd_charger_ui-V1,
-          #     libbatterymonitor-V1). Defined ONLY in pruned
-          #     health/aidl.
-          #   android.hardware.health-translate-V1-ndk — plain
-          #     cc_library (whole_static_libs consumers
-          #     libbatterymonitor-V1, libhealthd_charger_ui-V1).
-          #     Defined ONLY in pruned health/aidl.
-          #   libhealth2impl — plain cc_library (static_libs
-          #     consumer libhealthd_charger_nops; upstream
-          #     cc_library_static). Defined ONLY in pruned
-          #     health/utils/libhealth2impl.
-          #   android.hardware.health@2.1 — plain cc_library
-          #     (shared_libs consumers libhealthd_charger_nops,
-          #     libbatterymonitor(-V1) via defaults; upstream
-          #     hidl_interface). Defined ONLY in pruned
-          #     health/2.1. FIRST-EVER reported HIDL @x.y lib:
-          #     the old rule ("shared_libs references to
-          #     android.hardware.*-ndk / @1.0 HIDL libs have NEVER
-          #     surfaced") now has its first exception — health@2.1
-          #     surfaced in #175 (3 consumers), and the four
-          #     health -ndk libs surfaced too. Do NOT chase
-          #     unreported HIDL/-ndk refs; stub only what a raw
-          #     log reports (this round stubs exactly those five).
-          #   libvold_binder — plain cc_library (static_libs
-          #     consumers libapexd_checkpoint_vold, libapexd via
-          #     libapexd-deps). Defined NOWHERE (system/vold
-          #     unsynced).
-          #   libmediautils — plain cc_library (shared_libs
-          #     consumer libschedulerservicehidl). Defined NOWHERE
-          #     (frameworks/av unsynced).
-          #   android.frameworks.schedulerservice@1.0 — plain
-          #     cc_library (shared_libs consumer
-          #     libschedulerservicehidl; upstream hidl_interface).
-          #     Defined NOWHERE.
-          #   lib_microdroid_metadata_proto — plain cc_library
-          #     (static_libs consumer libapexd via libapexd-deps).
-          #     Defined NOWHERE.
-          #   libsigningutils — plain cc_library (static_libs
-          #     consumer libapexd via libapexd-deps). Defined
-          #     NOWHERE.
-          #   libverity_tree — plain cc_library (static_libs
-          #     consumer libapexd via libapexd-deps). Defined
-          #     NOWHERE.
-          #   A plain cc_library yields both variants, so one stub
-          #   satisfies the shared_libs consumers (libfs_mgr,
-          #     libhealthd_charger_ui*, libbatterymonitor*,
-          #     libschedulerservicehidl) and the static_libs /
-          #   whole_static_libs consumers alike; same form as the
-          #   #156 allocator@2.0 stub (also a HIDL lib) and the
-          #   #165 libdexfile_support stub. Why not un-prune
-          #   hardware/interfaces/health instead: the prune keeps
-          #   only light + compatibility_matrices + common + input
-          #   by design, and keeping health/aidl + health/2.0 +
-          #   health/2.1 + health/utils would pull their own dep
-          #   closures (hidl-gen outputs, more -ndk libs) into the
-          #   graph; stubbing the 7 health modules follows the
-          #   #171 bufferqueue precedent (defined only in a pruned
-          #   dir, stubbed plain cc_library).
-          # NO PRUNES this round: the referencers are core platform
-          # modules — system/core (fs_mgr, healthd), system/apex
-          # (apexd), frameworks/native (tracing_perfetto tests,
-          # schedulerservice); none of those dirs can be pruned.
-          # The tracing_perfetto/tests dir could in principle be
-          # pruned whole (test-only, like trusty/test in #162),
-          # but stubbing the one proto lib follows the #171
-          # update_metadata-protos precedent; the dir stays.
-          # NO sdk_version on any new stub: no consumer sets
-          # sdk_version (verified on every consumer block:
-          # libfs_mgr_defaults, libhealthd_charger_ui_defaults,
-          # libbatterymonitor_defaults, libtracing_perfetto_tests,
-          # libapexd-deps + libapex-deps, libapexd_checkpoint_vold,
-          # libschedulerservicehidl — zero sdk_version lines in any
-          # of those blocks; the only sdk_version in those files is
-          # apexd/Android.bp:117 inside aidl_interface
-          # apex_aidl_interface's backend.java, not a consumer), so
-          # no stub needs the sdk variant (same rule as the
-          # #159/#160/#161 fix).
-          # CHECKED, NOT STUBBED (never reported in any raw log,
-          # runs #6–#176 — do NOT stub unless a raw log reports
-          # one; stubbing a module Soong may consider defined
-          # risks a duplicate-definition error):
-          #   android.hardware.graphics.common@1.1/@1.2,
-          #     allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0 —
-          #     referenced by surviving modules in the local tree
-          #     (libgui_bufferqueue-defaults shared_libs, libui,
-          #     libnativewindow, surfaceflinger) and still listed
-          #     in the live upstream lineage-22.2 libs/gui/ +
-          #     libs/ui/Android.bp (verified 2026-11-27),
-          #     yet never errored in any run — Soong does not
-          #     validate those references (same class as the
-          #     -ndk/HIDL libs rule). Same for libLibGuiProperties
-          #     (whole_static_libs of libgui_bufferqueue-defaults,
-          #     defined nowhere in the local tree, never reported).
-          #   libbootloader_message, liblmkd_utils, libxml2
-          #     (fastboot/init deps; defined nowhere in the synced
-          #     tree — bootable/external unsynced) +
-          #     libhealthhalutils / libhealthshim / libfastbootshim
-          #     (defined only in pruned hardware/interfaces/health
-          #     + fastboot/aidl dirs): same rule.
-          #   libcharger_sysprop + libcom.android.sysprop.apex
-          #     (sysprop-generated libs, referenced by
-          #     libhealthd_charger_ui_defaults + libhealthd_draw +
-          #     libapexd-deps; defined nowhere as a named module,
-          #     never reported in 176 runs): same rule.
-          # DEP-CLOSURE VERIFIED (every other DIRECT dep of the
-          # erroring consumers is defined in-tree or already
-          # stubbed; the defaults-inherited HIDL/-ndk deps above
-          # are the only known exception and are in the NOT-STUBBED
-          # bucket, never reported in 176 runs):
-          #   libfs_mgr via libfs_mgr_defaults: libbase/libcrypto_
-          #     utils/libcutils/liblog/liblp/libfs_avb/liblogwrap/
-          #     libdm/libfstab/libfiemap_headers/
-          #     libstorage_literals_headers defined in-tree;
-          #     libcrypto/libext4_utils/libavb/libgsi/libext2_uuid/
-          #     libselinux stubbed.
-          #   libhealthd_charger_ui via libhealthd_charger_ui_
-          #     defaults: libhealthd_draw/libhealthd_headers
-          #     defined in-tree; libminui stubbed (#165);
-          #     libbase/libcutils/liblog/libsuspend/libutils
-          #     defined; libcharger_sysprop sysprop-generated,
-          #     NOT stubbed (never reported).
-          #   libhealthd_charger_ui-V1: same defaults as above.
-          #   libhealthd_charger_nops: libhealthd_headers/libutils
-          #     defined in-tree.
-          #   libbatterymonitor(-V1) via libbatterymonitor_defaults:
-          #     libutils/libbase defined; libhealthd_headers
-          #     defined.
-          #   libtracing_perfetto_tests: libgmock +
-          #     libtracing_perfetto defined in-tree; libflagtest +
-          #     libperfetto_c + android.os.flags-aconfig-cc-host +
-          #     libprotobuf-cpp-lite stubbed.
-          #   libapexd via libapexd-deps + libapex-deps: liblog/
-          #     liblogwrap/libdm/libfstab defined in-tree;
-          #     libvintf/libprotobuf-cpp-full/libziparchive/libavb/
-          #     libtinyxml2/libext2_uuid stubbed; lib_apex_blocklist_
-          #     proto/lib_apex_session_state_proto/
-          #     lib_apex_manifest_proto/libapex defined in-tree;
-          #     apex_flags_defaults defined in-tree;
-          #     libcom.android.sysprop.apex sysprop-generated, NOT
-          #     stubbed (never reported).
-          #   libapexd_checkpoint_vold: libbase/libutils defined.
-          #   libschedulerservicehidl: liblog/libutils defined;
-          #     libhidlbase stubbed; libcutils_headers defined.
-          # Runs #177/#178/#179 fix: stub six modules, prune
-          # nothing. Runs #177 (45974079475, 13m6s, auto, manifest
-          # 5bd5386), #178 (45974242578, 16m0s, auto, README
-          # cedf713) and #179 (45974397532, 12m9s, manual dispatch
-          # ~15:01 IST 2026-11-27, head cedf713 — the runs
-          # #174/#175/#176 fix, workflow fd32fc3) ALL FAILED at
-          # Soong ninja-file generation, 50s (#177) / 53s (#178) /
-          # 37s (#179) into the "Build lights HAL" step, on the
-          # SAME fix code. The #174/#175/#176 fix HELD COMPLETELY
-          # in all three (prune step passed + pre-build guard
-          # passed; ZERO genuine errors for any of its 17 modules
-          # in any raw log). Subset variation again: #177 reports
-          # 6 lines, #178 reports 2, #179 reports 1 — the fix
-          # covers the UNION (6 distinct undefined modules, 9
-          # error lines). Raw-log verbatim error union — verified
-          # TWICE (browser job-logs.txt read of all three raw logs
-          # + direct grep of the downloaded log archives; the two
-          # reads agree exactly, genuine "error:" lines only):
-          #   #177 (6 lines, 09:42:05Z): "libsnapshot_test_helpers"
-          #     needs "android.hardware.boot@1.1"
-          #     (system/core/fs_mgr/libsnapshot/Android.bp:229:1);
-          #     "apexd.microdroid" needs "libprotobuf-cpp-full-ndk"
-          #     (system/apex/apexd/Android.bp:155:1);
-          #     "libsnapshot_nobinder" needs
-          #     "android.hardware.boot@1.0" +
-          #     "android.hardware.boot@1.1" +
-          #     "android.hardware.boot-V1-ndk" +
-          #     "libboot_control_client"
-          #     (libsnapshot/Android.bp:157:1).
-          #   #178 (2 lines, 09:46:10Z): "libhealthd_charger"
-          #     needs "android.hardware.health@1.0-convert"
-          #     (system/core/healthd/Android.bp:195:1);
-          #     "apexd.microdroid" needs "libprotobuf-cpp-full-ndk"
-          #     (same line as #177).
-          #   #179 (1 line, 09:43:22Z): "libhealthd_charger"
-          #     needs "android.hardware.health@1.0-convert"
-          #     (same line as #178).
-          # UI-LOG READ OF #179 WAS ACCURATE this time (1 of 1
-          # genuine errors, matching the raw log exactly) —
-          # contrast the #176 UI read, which was entirely phantom
-          # (after #84/#96/#107/#161/#173). The raw log remains
-          # authoritative: #177/#178 were verified from the raw
-          # logs directly, never from a UI read. The "ninja: error
-          # ... libcharger_sysprop_rust.so ... missing and no known
-          # rule to make it" line is a CONFIRMED PHANTOM again (6
-          # lines per raw log contain "libcharger_sysprop_rust",
-          # 0 genuine — all `#` comment echoes of the workflow's
-          # own history comment in the prune step; the Build step
-          # log has 0 occurrences and 0 "no known rule" lines),
-          # same class as #152/#161/#174.
-          # STUBS (6, all plain cc_library, all in
-          # yuzora-stubs/Android.bp below):
-          #   android.hardware.health@1.0-convert — plain
-          #     cc_library (static_libs consumer libhealthd_charger;
-          #     upstream cc_library_static). Defined ONLY in pruned
-          #     hardware/interfaces/health/1.0/default. FIRST-EVER
-          #     reported HIDL -convert lib (the #138 sensors
-          #     -V1-convert was AIDL, not HIDL).
-          #   android.hardware.boot@1.0 — plain cc_library
-          #     (shared_libs consumer libsnapshot_nobinder via
-          #     libsnapshot_hal_deps; upstream hidl_interface).
-          #     Defined ONLY in pruned hardware/interfaces/boot/1.0.
-          #     Second HIDL @x.y lib ever reported (after health@2.1
-          #     in #175) — the old "never surfaced" rule now has
-          #     three exceptions.
-          #   android.hardware.boot@1.1 — plain cc_library
-          #     (shared_libs consumers libsnapshot_nobinder via
-          #     libsnapshot_hal_deps + libsnapshot_test_helpers;
-          #     upstream hidl_interface). Defined ONLY in pruned
-          #     hardware/interfaces/boot/1.1. Third HIDL @x.y lib.
-          #   android.hardware.boot-V1-ndk — plain cc_library
-          #     (shared_libs consumer libsnapshot_nobinder via
-          #     libsnapshot_hal_deps; generated NDK lib of the
-          #     aidl_interface android.hardware.boot in pruned
-          #     hardware/interfaces/boot/aidl, frozen v1). Defined
-          #     NOWHERE in the tree.
-          #   libboot_control_client — plain cc_library
-          #     (shared_libs consumer libsnapshot_nobinder via
-          #     libsnapshot_hal_deps; upstream plain cc_library).
-          #     Defined ONLY in pruned
-          #     hardware/interfaces/boot/aidl/client.
-          #   libprotobuf-cpp-full-ndk — plain cc_library
-          #     (static_libs consumer apexd.microdroid — the .bp
-          #     comment says the -ndk variant is used deliberately
-          #     because libprotobuf-cpp-full is a shared lib in
-          #     general). Defined NOWHERE (external/protobuf
-          #     unsynced). Same form as the #99 libprotobuf-cpp-full
-          #     stub (plain cc_library).
-          #   A plain cc_library yields both variants, so one stub
-          #   satisfies the shared_libs consumers
-          #   (libsnapshot_nobinder, libsnapshot_test_helpers) and
-          #   the static_libs consumers (libhealthd_charger,
-          #   apexd.microdroid) alike; same form as the #156
-          #   allocator@2.0 stub (also a HIDL lib), the #174
-          #   health@2.1 stub and the #165 libdexfile_support stub.
-          #   Stubbing a module removes its dep subtree from the
-          #   graph, so the real libboot_control_client's own
-          #   shared_libs (incl. android.hardware.boot@1.2) never
-          #   enter it — @1.2 is NOT stubbed (see below).
-          # NO PRUNES this round: the referencers are core platform
-          # modules — system/core (healthd, fs_mgr/libsnapshot),
-          # system/apex (apexd); none of those dirs can be pruned.
-          # The libsnapshot dir in particular cannot be pruned:
-          # synced, kept system/core/fastboot references
-          # libsnapshot_nobinder (fastboot/Android.bp:200), and
-          # libsnapshot_test_helpers shares the same .bp file, so
-          # pruning the dir would break fastboot's dep. Stubbing
-          # the 4 boot modules follows the #171 bufferqueue
-          # precedent (defined only in a pruned dir, stubbed plain
-          # cc_library).
-          # NO sdk_version on any new stub: no consumer sets
-          # sdk_version (verified on every consumer block:
-          # libhealthd_charger, apexd.microdroid,
-          # libsnapshot_nobinder + libsnapshot_test_helpers via
-          # libsnapshot_defaults + libsnapshot_hal_deps — zero
-          # sdk_version lines in any of those blocks), so no stub
-          # needs the sdk variant (same rule as the #159/#160/#161
-          # fix).
-          # CHECKED, NOT STUBBED (never reported in any raw log,
-          # runs #6–#179 — do NOT stub unless a raw log reports
-          # one; stubbing a module Soong may consider defined
-          # risks a duplicate-definition error):
-          #   android.hardware.boot@1.2 — referenced only by the
-          #     REAL libboot_control_client's shared_libs; the stub
-          #     has no deps, so @1.2 never enters the graph.
-          #   android.hardware.graphics.common@1.1/@1.2,
-          #     allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
-          #     libLibGuiProperties, libbootloader_message,
-          #     liblmkd_utils, libxml2, libhealthhalutils,
-          #     libhealthshim, libfastbootshim, libcharger_sysprop,
-          #     libcom.android.sysprop.apex (both sysprop-generated):
-          #     same rule as the #174 round (carried forward).
-          # DEP-CLOSURE VERIFIED (every other DIRECT dep of the
-          # erroring consumers is defined in-tree or already
-          # stubbed):
-          #   libhealthd_charger: libcharger_sysprop
-          #     sysprop-generated, NOT stubbed (never reported);
-          #     libhealth2impl stubbed (#174); libhealthd_charger_ui
-          #     defined in-tree; android.hardware.health@2.1 stubbed
-          #     (#174); libbase/libcutils/liblog/libutils defined.
-          #   apexd.microdroid via apex_flags_defaults +
-          #     libapex-deps + libapexd-deps: libapex/libapexd
-          #     defined in-tree; libprotobuf-cpp-full + libvintf
-          #     (exclude_shared_libs) stubbed/defined; verified in
-          #     the #174 round.
-          #   libsnapshot_nobinder via libsnapshot_defaults +
-          #     libsnapshot_hal_deps: libfs_mgr defined in-tree;
-          #     libselinux stubbed; libsnapshot_defaults shared
-          #     libbase/libchrome/libcutils/liblog defined;
-          #     static libbrotli/libdm/libfstab defined/stubbed +
-          #     update_metadata-protos stubbed (#171); whole_static
-          #     libbrotli/libcutils/libext2_uuid/libext4_utils/
-          #     libfstab/libz defined/stubbed + libsnapuserd_client
-          #     defined in-tree (libsnapshot/snapuserd/Android.bp);
-          #     header_libs libfiemap_headers/
-          #     libstorage_literals_headers defined +
-          #     libupdate_engine_headers stubbed (#119).
-          #   libsnapshot_test_helpers via libsnapshot_defaults
-          #     (same as above): libcrypto stubbed.
-          # Runs #180/#181/#182 fix: stub thirteen modules, prune
-          # nothing. Runs #180 (45979326743, 16m28s, auto, manifest
-          # 191f287), #181 (45979571732, 14m20s, auto, README
-          # b74ed2a) and #182 (45979813017, 10m57s, manual dispatch
-          # ~15:40 IST 2026-11-27, head b74ed2a — the runs
-          # #177/#178/#179 fix, workflow 11948cb) ALL FAILED at
-          # Soong ninja-file generation, 51s (#180) / 37s (#181) /
-          # 36s (#182) into the "Build lights HAL" step, on the
-          # SAME fix code. The #177/#178/#179 fix HELD COMPLETELY
-          # in all three (prune step passed in all three — 1s/4s/4s
-          # — + pre-build guard passed in #182; ZERO genuine errors
-          # for any of its 6 modules in any raw job log). Subset
-          # variation again: #182 reports the libinit 4 + 6 others,
-          # #181 reports the same 6 non-libinit errors, #180 reports
-          # those 6 + the health pair — the fix covers the UNION
-          # (12 distinct undefined modules). Raw-log verbatim error
-          # union (runs #180/#181/#182 job logs):
-          #   #182: "libinit.microdroid" + "libinit" need
-          #     "libavf_cc_flags" + "libbootloader_message" +
-          #     "liblmkd_utils" + "libxml2"
-          #     (system/core/init/Android.bp, init_defaults);
-          #     "atrace" needs "android.hardware.atrace@1.0";
-          #     "libfs_mgr_binder" needs "gsi_aidl_interface-cpp";
-          #     "libgraphicsenv" needs "libnativeloader-headers";
-          #     "libstatsbootstrap" needs
-          #     "android.os.statsbootstrap_aidl-cpp";
-          #     "liblogd_binder" needs "libincremental_aidl-cpp";
-          #     "servicedispatcher" needs "android.debug_aidl-cpp".
-          #   #181: the same 6 non-libinit errors as #182.
-          #   #180: those 6 plus "charger" /
-          #     "libhealthd_charger_test" / "charger_test" need
-          #     "android.hardware.health@2.0" +
-          #     "android.hardware.health@1.0"
-          #     (system/core/healthd/Android.bp).
-          # The "ninja: error ... libcharger_sysprop_rust.so ..."
-          # line is a CONFIRMED PHANTOM again: 0 lines in #182's
-          # whole job log contain "libcharger_sysprop_rust", same
-          # class as #152/#161/#174/#177.
-          # STUBS (13: 12 plain cc_library + 1 cc_library_headers,
-          # all in yuzora-stubs/Android.bp below):
-          #   libavf_cc_flags — plain cc_library (static_libs
-          #     consumers libinit + libinit.microdroid via
-          #     init_defaults; upstream cc_aconfig_library
-          #     PRESUMED, definition NOT located — presumed
-          #     packages/modules/Virtualization; exact file not
-          #     found). Defined NOWHERE in the tree.
-          #   libbootloader_message — plain cc_library (same
-          #     consumers; upstream cc_library,
-          #     bootable/recovery/bootloader_message/Android.bp).
-          #     Defined NOWHERE (project unsynced).
-          #   liblmkd_utils — plain cc_library (same consumers;
-          #     upstream cc_library_static, system/memory/lmkd/
-          #     Android.bp — NOT system/core/lmkd, that path is
-          #     stale). Defined NOWHERE (project unsynced).
-          #   libxml2 — plain cc_library (same consumers; upstream
-          #     cc_library, external/libxml2/Android.bp). Defined
-          #     NOWHERE (project unsynced). Sibling libxml2_ndk is
-          #     a DIFFERENT module — do NOT copy its sdk_version
-          #     "current" onto this stub.
-          #   android.hardware.atrace@1.0 — plain cc_library
-          #     (shared_libs consumer atrace; upstream
-          #     hidl_interface, hardware/interfaces/atrace/1.0/
-          #     Android.bp). Defined ONLY in a pruned dir.
-          #   gsi_aidl_interface-cpp — plain cc_library
-          #     (whole_static_libs consumer libfs_mgr_binder via
-          #     libfiemap_binder_defaults; upstream aidl_interface,
-          #     system/gsid/Android.bp — NOT system/gsi, no such
-          #     project). Defined NOWHERE (project unsynced).
-          #     Siblings libgsi / libgsid / libgsi_headers are
-          #     ALREADY stubbed (do not duplicate).
-          #   libnativeloader-headers — cc_library_headers (the
-          #     ONE headers stub: header_libs consumer
-          #     libgraphicsenv; upstream cc_library_headers,
-          #     art/libnativeloader/Android.bp — NOT
-          #     system/core/libnativeloader, no such dir; art is
-          #     on the never-sync list). Defined NOWHERE. No srcs
-          #     (headers stub, same form as libgsi_headers).
-          #   android.os.statsbootstrap_aidl-cpp — plain cc_library
-          #     (shared_libs consumer libstatsbootstrap via
-          #     libstatsbootstrap_defaults; AIDL-generated by name,
-          #     definition NOT located — ruled out StatsD aidl/ +
-          #     system/core/libstats/). Defined NOWHERE.
-          #   libincremental_aidl-cpp — plain cc_library
-          #     (whole_static_libs consumer liblogd_binder;
-          #     AIDL-generated by name, definition NOT located —
-          #     ruled out system/incremental_delivery/). Defined
-          #     NOWHERE. The one module whose bare stub is
-          #     plausibly sufficient (no consumer source uses its
-          #     headers/symbols).
-          #   android.debug_aidl-cpp — plain cc_library
-          #     (shared_libs consumer servicedispatcher; AIDL-
-          #     generated by name, definition NOT located — likely
-          #     packages/modules/adbd, NOT aidl/Android.bp at r32).
-          #     Defined NOWHERE.
-          #   android.hardware.health@2.0 — plain cc_library
-          #     (shared_libs consumer charger + static_libs
-          #     charger_test / libhealthd_charger_test; upstream
-          #     hidl_interface, hardware/interfaces/health/2.0/
-          #     Android.bp; its interfaces include health@1.0 —
-          #     both stubs are needed together). Defined ONLY in a
-          #     pruned dir.
-          #   android.hardware.health@1.0 — plain cc_library
-          #     (static_libs consumers charger_test /
-          #     libhealthd_charger_test; upstream hidl_interface,
-          #     hardware/interfaces/health/1.0/Android.bp; NOT
-          #     health@1.0-convert, already stubbed in #177).
-          #     Defined ONLY in a pruned dir.
-          #   A plain cc_library yields both variants, so one stub
-          #   satisfies the shared_libs consumers (atrace, charger,
-          #   libstatsbootstrap, servicedispatcher) and the
-          #   static_libs / whole_static_libs consumers (libinit,
-          #   libinit.microdroid, libfs_mgr_binder, liblogd_binder,
-          #   charger_test, libhealthd_charger_test) alike; same
-          #   form as the #156 allocator@2.0 stub (also a HIDL
-          #   lib), the #174 health@2.1 stub and the #165
-          #   libdexfile_support stub.
-          # SIBLING (rule 4, #111 libgsi/libgsid precedent — one
-          # added, the rest checked and rejected):
-          #   libnativeloader_lazy — plain cc_library (upstream
-          #     cc_library_shared in art/libnativeloader/
-          #     Android.bp, the SAME file as
-          #     libnativeloader-headers; referenced in shared_libs
-          #     by libvulkan + libEGL, both unpruned and in the
-          #     graph — libvulkan also lists
-          #     libnativeloader-headers, which errored — so it WILL
-          #     surface in a later run; stubbed now). A plain
-          #     cc_library yields the shared variant the consumers
-          #     need, same as the #177 libboot_control_client note
-          #     (upstream cc_library there; here upstream is
-          #     cc_library_shared — the stub type follows the
-          #     project pattern, not the upstream type, except for
-          #     the headers stub above).
-          #   REJECTED siblings (do NOT stub unless a raw log
-          #     reports one):
-          #   libbootloader_message_vendor — referenced ONLY by
-          #     hardware/google/pixel/bootctrl + misc_writer, and
-          #     the prune deletes ALL hardware/google/pixel/*/
-          #     subdirs before Soong runs, so the reference never
-          #     enters the graph.
-          #   misctrl / gsid / gsi_tool — referenced ONLY in the
-          #     build/make/target/product/generic/Android.bp
-          #     product-packages list, which is NOT a Soong dep
-          #     edge (it also lists lmkd, defined nowhere in the
-          #     tree, never reported in runs #6–#182).
-          #   libstatslogc, libxml2_ndk, libnativeloader —
-          #     unreferenced anywhere in the synced tree.
-          #   libgsi / libgsid / libgsi_headers — already stubbed.
-          #   atrace/1.0, health/2.0, health/1.0 Android.bp files
-          #     define a single module each — no siblings.
-          #   libavf_cc_flags / android.os.statsbootstrap_aidl-cpp
-          #   / libincremental_aidl-cpp / android.debug_aidl-cpp:
-          #   defining file NOT located — no sibling check
-          #   possible.
-          # NO PRUNES this round: the referencers are core platform
-          # modules — system/core (init, fs_mgr, healthd, libstats,
-          # logd), system/apex (apexd), frameworks/native (atrace,
-          # graphicsenv, binder, vulkan, opengl) — none of those
-          # dirs can be pruned. Stubbing the 3 pruned-dir HIDL libs
-          # follows the #171 bufferqueue precedent (defined only in
-          # a pruned dir, stubbed plain cc_library).
-          # NO sdk_version on any new stub: no consumer sets
-          # sdk_version (verified on every consumer block:
-          # init_defaults / libinit_defaults / libinit /
-          # libinit.microdroid, atrace, libfiemap_binder_defaults,
-          # libgraphicsenv, libstatsbootstrap_defaults /
-          # libstatsbootstrap, liblogd_binder, servicedispatcher,
-          # charger / charger_test / libhealthd_charger_test,
-          # libvulkan, libEGL — zero sdk_version lines in any of
-          # those blocks; the only sdk_version-adjacent lines
-          # anywhere near are min_sdk_version: "29" on
-          # libbinder_headers_base / libbinder_headers, which are
-          # NOT consumers, and min_sdk_version alone does NOT set
-          # UseSdk() per the #159 lesson). Do NOT copy
-          # sdk_version / min_sdk_version from sibling modules
-          # (libxml2_ndk "current", libgsi_headers min_sdk_version
-          # 31 belong to different modules).
-          # CHECKED, NOT STUBBED (never reported in any raw log,
-          # runs #6–#182 — do NOT stub unless a raw log reports
-          # one; stubbing a module Soong may consider defined
-          # risks a duplicate-definition error):
-          #   libcharger_sysprop — sysprop-generated; the ONE
-          #     undefined-but-unreported DIRECT dep of the
-          #     erroring consumers (dep-closure audit below).
-          #   avf_build_flags_cc — ALREADY stubbed (cc_defaults,
-          #     earlier round); not a missing module. Do NOT
-          #     confuse with libavf_cc_flags.
-          #   android.hardware.boot@1.2 (carried forward — only
-          #     referenced by the real libboot_control_client's
-          #     shared_libs; the stub has no deps so @1.2 never
-          #     enters the graph), android.hardware.graphics.common
-          #     @1.1/@1.2, allocator@3.0/@4.0, mapper@2.0/2.1/3.0/
-          #     4.0, libLibGuiProperties, libhealthhalutils,
-          #     libhealthshim, libfastbootshim, libcharger_sysprop,
-          #     libcom.android.sysprop.apex (both sysprop-generated).
-          # DEP-CLOSURE VERIFIED (audit script over the erroring
-          # consumers' DIRECT deps, following defaults one level —
-          # every other direct dep is defined in-tree (non-pruned)
-          # or already stubbed):
-          #   libinit / libinit.microdroid via init_defaults +
-          #     libinit_defaults: libavb/libbase/libbinder/libcap/
-          #     libcutils/libdl/libext4_utils/libfs_mgr/
-          #     libgenfslabelsversion.ffi/libgsi (stubbed)/
-          #     libkeyutils/liblog/liblogwrap/liblp/liblz4/
-          #     libmodprobe/libprocessgroup/libprocessgroup_setup/
-          #     libprocinfo/libpropertyinfoparser/
-          #     libpropertyinfoserializer/libprotobuf-cpp-lite/
-          #     libselinux/libsnapshot_cow/libsnapshot_init/
-          #     libunwindstack/libutils/libvendorsupport/libzstd/
-          #     update_metadata-protos (stubbed) + avf_build_flags_cc
-          #     (stubbed cc_defaults) + bootimg_headers defined.
-          #   atrace: libbase/libbinder/libcutils/libhidlbase/
-          #     liblog/libutils/libz defined.
-          #   libfs_mgr_binder via libfiemap_binder_defaults:
-          #     libbinder/libgsi/libgsid (stubbed)/libutils defined;
-          #     libfs_mgr_binder itself: libavb/libcrypto/
-          #     libcrypto_utils/libdm/libext2_uuid/libext4_utils/
-          #     libfec/libfiemap_headers/libfs_avb/libfstab/liblog/
-          #     liblogwrap/liblp/libselinux/
-          #     libstorage_literals_headers defined/stubbed.
-          #   libgraphicsenv: libbase/libbinder/libcutils/
-          #     libdl_android/liblog/libutils defined.
-          #   libstatsbootstrap: libbinder/libutils defined.
-          #   liblogd_binder: libbase/libbinder/libcutils_headers/
-          #     libutils/libz/libzstd defined.
-          #   servicedispatcher: libbase/libbinder/liblog/libutils
-          #     defined.
-          #   charger / charger_test / libhealthd_charger_test:
-          #     android.hardware.health-V4-ndk + @1.0-convert + @2.1
-          #     (stubbed), libhealth2impl + libhealthloop + libpng
-          #     (stubbed), libbatterymonitor/libhealthd_charger/
-          #     libhealthd_charger_nops/libhealthd_charger_ui/
-          #     libhealthd_draw/libminui/libsuspend defined,
-          #     libbase/libcutils/libhidlbase/liblog/libutils
-          #     defined; libcharger_sysprop sysprop-generated, NOT
-          #     stubbed (never reported).
-          # WATCH ITEM (not implemented): headers/symbols may be
-          # needed later IF a future round fails past Soong at
-          # compile/link — several consumers #include generated
-          # headers or call real functions (see
-          # research-182-modules.md §§1–12 for the per-module
-          # header/symbol notes). The build target is ONLY
-          # android.hardware.light-service.samsung (shared_libs
-          # libbase, libbinder_ndk, android.hardware.light-V2-ndk)
-          # — NONE of the 13 is in its closure, verified locally
-          # — so bare stubs suffice for THIS target. If a future
-          # round fails past Soong, ship the headers/symbols then;
-          # do not pre-build them now.
-          # CACHE NOTE (run #182): Restore 0s MISS, sync 7m12s, no
-          # Save step — save-always still does not save; the
-          # separate restore+save steps need his word (see the
-          # manifest). Expect Restore to miss and sync ~9-12 min
-          # on the next run too.
-          # Run #186 fix: prune one dir whole + stub three modules.
-          # Run #186 (45990278315, 12m59s, manual dispatch ~16:54
-          # IST 2026-11-27, head 6423961 — the run #185 stray-#
-          # fix, workflow 6423961) FAILED at Soong ninja-file
-          # generation, 38s into the "Build lights HAL" step.
-          # The #185 stray-# fix HELD (zero "expected assignment or
-          # module definition" lines anywhere in the whole raw job
-          # log) and the #180/#181/#182 fix HELD (prune step passed
-          # 1s + pre-build guard passed; ZERO genuine errors for any
-          # of its 13 modules in the raw log). Failure (verbatim
-          # from the #186 whole-job raw log, 11 lines at 11:37:50
-          # UTC, 6 distinct undefined modules):
-          #   "trusty_keymaster_set_attestation_key" /
-          #   "libtrusty_ipc" / "trusty_rkp_set_uds_cert" /
-          #   "trusty_keymaster_set_attestation_ids" /
-          #   "android.hardware.keymaster@4.0-service.trusty" /
-          #   "android.hardware.keymaster@3.0-service.trusty" (all
-          #   in system/core/trusty/keymaster/Android.bp) need
-          #   "libkeymaster_messages" (6x) + "libkeymaster4" +
-          #   "android.hardware.keymaster@4.0" +
-          #   "libkeymaster3device" + "android.hardware.keymaster@3.0";
-          #   "libgfxstats" needs "libprotoutil"
-          #   (frameworks/native/services/gpuservice/gpustats/
-          #   Android.bp:24:1).
-          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
-          #   bootstrap failed, exit status 1.
-          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
-          # again: 17 lines in the raw log, ALL in the 11:37:12
-          # script echo (# comments quoting earlier runs) — ZERO
-          # in the actual build output, same class as
-          # #152/#161/#174/#177/#182.
-          # FIRST-EVER reported: the first Trusty keymaster errors,
-          # the first keymaster HIDL libs, the first libprotoutil.
-          # Note the trusty keymaster dir existed in the tree for
-          # all 186 runs and only surfaced now — a consumer can stay
-          # silent for 185 runs and then appear (subset variation is
-          # real and lossy, proven by #180/#181/#182: 11 vs 6 vs 14
-          # lines on identical code).
-          # PRUNE (1 dir, whole — not stubbing the 10 keymaster
-          # lines): system/core/trusty/keymaster. All 6 erroring
-          # consumers live in that one file (Trusty TEE keymaster /
-          # keymint services + test / set-attestation binaries);
-          # NOTHING else in the synced tree references anything
-          # defined there (whole-tree grep, excluding the dir
-          # itself: zero refs to libtrusty_ipc, the @3.0/@4.0-
-          # service.trusty + keymint-service.trusty names, the
-          # set-attestation binaries, the xml modules; zero path
-          # refs; zero .mk PRODUCT_PACKAGES refs — the only .mk hit,
-          # system/core/trusty/keymint/trusty-keymint.mk:39, is
-          # itself referenced NOWHERE). Precedent: #162 pruned
-          # system/core/trusty/test whole on exactly this reasoning
-          # ("nothing in the synced tree references
-          # trusty_driver_test or py3-stdlib, so the whole dir
-          # goes"). The prune also removes
-          # android.hardware.security.keymint-service.trusty +
-          # the two prebuilt_etc xml modules, all unreferenced
-          # elsewhere (verified above). Sibling dirs
-          # (trusty/keymint/, libtrusty/, gatekeeper/,
-          # confirmationui/) are NOT touched.
-          # STUBS (3, all plain cc_library, all in
-          # yuzora-stubs/Android.bp below):
-          #   libprotoutil — plain cc_library (shared_libs consumer
-          #     libgfxstats via libgfxstats_deps; also
-          #     libsensorservice shared_libs + gpuservice unittests;
-          #     definition NOT located — bounded search ruled out
-          #     frameworks/native/libs/ (r32 listing, no protoutil/)
-          #     + packages/modules/StatsD/lib/ (r32 listing, no
-          #     libprotoutil/) + web search (no definition). No
-          #     consumer source includes its headers (GpuStats.cpp:
-          #     no protoutil include; sensorservice sources: zero
-          #     protoutil mentions) — bare stub plausibly
-          #     sufficient, same class as libincremental_aidl-cpp
-          #     in #182). Defined NOWHERE in the tree.
-          #   libkeymaster4 — plain cc_library (REPORTED in #186
-          #     via the trusty consumer AND a second, unpruned
-          #     in-graph consumer remains after the prune:
-          #     android.hardware.keymaster@4.0-service.samsung
-          #     (hardware/samsung/hidl/keymaster/Android.bp,
-          #     shared_libs) — Rule-4, #182 libnativeloader_lazy
-          #     precedent: the #186 subset did not report the
-          #     samsung consumer, same subset variation as
-          #     #180/#181/#182; upstream cc_library,
-          #     system/keymaster/Android.bp r32 lines 650–704 —
-          #     NOT system/security/keymaster, that path 404s at
-          #     r32). Defined NOWHERE (project unsynced). A bare
-          #     stub has no deps, so upstream's shared_libs
-          #     (libkeymaster_messages + keymaster@4.0 +
-          #     libkeymaster_portable + libpuresoftkeymasterdevice +
-          #     libkeymaster4support + ...) do NOT enter the graph.
-          #   android.hardware.keymaster@4.0 — plain cc_library
-          #     (same Rule-4 reasoning: REPORTED in #186 via trusty
-          #     + the samsung service lists it in shared_libs;
-          #     upstream hidl_interface,
-          #     hardware/interfaces/keymaster/4.0/Android.bp —
-          #     interfaces keymaster@3.0 + hidl.base@1.0,
-          #     gen_java false). Defined ONLY in a pruned dir. A
-          #     bare stub declares no interfaces, so NO @3.0 edge
-          #     is created through the stub (contrast #182's
-          #     health@2.0, where BOTH were stubbed because BOTH
-          #     were reported).
-          #   A plain cc_library yields both variants, so one stub
-          #   satisfies the shared_libs consumers (libgfxstats,
-          #   libsensorservice, the samsung keymaster service)
-          #   alike; same form as the #156 allocator@2.0 stub (also
-          #   a HIDL lib) and the #174 health@2.1 stub.
-          # SIBLINGS (rule 4 — checked, only the two above added):
-          #   system/keymaster siblings libkeymaster41 /
-          #   libkeymaster4support / libkeymaster_portable /
-          #   libpuresoftkeymasterdevice / libsoftkeymasterdevice /
-          #   libkeymasterconfig / libkeymint / libcppcose_rkp /
-          #   lib_android_keymaster_keymint_utils — EVERY in-tree
-          #   reference is in a pruned hardware/interfaces/* dir
-          #   (gatekeeper/aidl/software, identity/aidl/default|vts|
-          #   support, keymaster/3.0/default); libkeymaster41 has
-          #   zero references anywhere. None stubbed.
-          #   keymaster@4.0's upstream interfaces include @3.0 —
-          #   no stub edge (see above).
-          # NO sdk_version on any new stub: no consumer sets
-          # sdk_version (verified: trusty/keymaster file — none;
-          # samsung service — none; gpustats — none; sensorservice
-          # — none). Upstream libkeymaster4 / keymaster @3.0/@4.0
-          # carry no sdk_version either.
-          # CHECKED, NOT STUBBED (never reported from an unpruned
-          # consumer in any raw log, runs #6–#186 — do NOT stub
-          # unless a raw log reports one):
-          #   libkeymaster_messages — REPORTED in #186, but after
-          #     the prune its only remaining refs are
-          #     hardware/interfaces/identity/aidl/default (pruned
-          #     dir). Upstream cc_library_shared,
-          #     system/keymaster/Android.bp r32 lines 158–206.
-          #   libkeymaster3device — REPORTED in #186, but after the
-          #     prune its only remaining ref is
-          #     hardware/interfaces/keymaster/3.0/default (pruned
-          #     dir). Upstream cc_library_shared,
-          #     system/keymaster/Android.bp r32 lines 576–646.
-          #   android.hardware.keymaster@3.0 — REPORTED in #186, but
-          #     after the prune its only remaining refs are the
-          #     trusty consumer (pruned) + pruned keymaster dirs
-          #     (3.0/default, 4.0/support, 4.0/Android.bp
-          #     interfaces edge — all pruned). Upstream
-          #     hidl_interface, hardware/interfaces/keymaster/3.0/
-          #     Android.bp (interfaces hidl.base@1.0).
-          #   libcharger_sysprop — sysprop-generated; the CONFIRMED
-          #     PHANTOM (17 script-echo lines in #186, zero in
-          #     build output).
-          #   libsensorservice's other undefined deps:
-          #   android.hardware.sensors@1.0/@2.0/@2.1 (HIDL, pruned
-          #   dirs), libactivitymanager_aidl, libbatterystats_aidl,
-          #   libsensorprivacy, libpermission, libfmq,
-          #   packagemanager_aidl-cpp,
-          #   android.hardware.common-V2-ndk,
-          #   android.hardware.common.fmq-V1-ndk,
-          #   libaconfig_storage_read_api_cc, libaidlcommonsupport,
-          #   android.hardware.sensors@1.0-convert,
-          #   framework-cppstream-protos. libsensorservice IS in
-          #   build/make/target/product/base_system.mk:195
-          #   PRODUCT_PACKAGES (and generic/Android.bp:990) — the
-          #   same file that lists atrace (:34), which DOES surface
-          #   — yet libsensorservice has never errored in 186 runs
-          #   despite its undefined deps. The reporting mechanism
-          #   is not fully understood (Soong's subset reporting is
-          #   lossy/nondeterministic — #180/#181/#182 prove it on
-          #   identical code); the empirical rule stands: never
-          #   reported → do not stub.
-          #   Carried forward: android.hardware.boot@1.2,
-          #   android.hardware.graphics.common@1.1/@1.2,
-          #   allocator@3.0/@4.0, mapper@2.0/2.1/3.0/4.0,
-          #   libLibGuiProperties, libhealthhalutils, libhealthshim,
-          #   libfastbootshim, libcom.android.sysprop.apex (both
-          #   sysprop-generated); avf_build_flags_cc — ALREADY
-          #   stubbed (cc_defaults, earlier round); not a missing
-          #   module.
-          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
-          # DIRECT deps — every other direct dep is defined in-tree
-          # (non-pruned) or already stubbed):
-          #   libgfxstats via libgfxstats_deps: libcutils /
-          #     libgraphicsenv / liblog / libstatslog (stubbed #141)
-          #     / libstatspull (stubbed #141) / libstatssocket
-          #     (stubbed #99/#100/#101) / libutils defined/stubbed;
-          #     libprotoutil STUBBED this round.
-          #   android.hardware.keymaster@4.0-service.samsung:
-          #     libbase / libcutils / libhardware (stubbed #135) /
-          #     libhidlbase / liblog / libutils defined/stubbed;
-          #     keymaster@4.0 + libkeymaster4 STUBBED this round;
-          #     select() takes the default [] branch (BoardConfig
-          #     sets no target_keymaster4_library — verified live
-          #     from the fork).
-          #   trusty/keymaster consumers: PRUNED whole dir; their
-          #     other deps are moot.
-          # WATCH ITEM (not implemented): headers/symbols may be
-          # needed later IF a future round fails past Soong at
-          # compile/link — hardware/samsung/hidl/keymaster/
-          # service.cpp includes
-          # <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-          # (generated HIDL header) + <AndroidKeymaster4Device.h>
-          # (from libkeymaster4's ng/include); if the build ever
-          # compiles that service, the generated headers + stub
-          # functions will be needed. The build target is ONLY
-          # android.hardware.light-service.samsung (shared_libs
-          # libbase, libbinder_ndk, android.hardware.light-V2-ndk)
-          # — NONE of the 3 new stubs is in its closure, verified
-          # locally — so bare stubs suffice for THIS target. If a
-          # future round fails past Soong, ship the headers/symbols
-          # then; do not pre-build them now. (Same watch-item form
-          # as #182.)
-          # CACHE NOTE (run #186): Restore 0s MISS, sync 8m41s, no
-          # Save step — save-always still does not save; the
-          # separate restore+save steps need his word (see the
-          # manifest). Expect Restore to miss and sync ~9-12 min
-          # on the next run too.
-          # Runs #192/#193/#194 fix: stub 39 modules, no prunes.
-          # Runs #192 (45996579969, 14m54s, manifest push d5be373),
-          # #193 (45996789317, 13m46s, README push f652300) and #194
-          # (45996947386, 12m0s, manual dispatch ~17:44 IST
-          # 2026-11-27, head f652300 — the #187-#190 size-limit
-          # restructure, workflow e15e187) ALL FAILED at Soong
-          # ninja-file generation, 37-52s into the "Build lights
-          # HAL" step, on the SAME fix code. Raw-log verbatim
-          # (whole-job raw logs, browser job-log reads, counts
-          # re-verified with the error block fully rendered — the
-          # first #193 enumeration undercounted at 35 because the
-          # top 5 lines sat above the rendered window): #194 = 2
-          # lines, #192 = 5 lines, #193 = 40 lines; 39 distinct
-          # undefined modules in the union. The #186 fix HELD
-          # (zero genuine errors for any of its 3 modules in any
-          # raw log) and the #180/#181/#182 fix HELD (zero genuine
-          # errors for any of its 13 modules); zero "expected
-          # assignment or module definition" lines (the #185
-          # stray-# fix HELD). Pre-build guard PASSED in all three.
-          # Failure (verbatim, raw logs):
-          #   #194 (2): lshal_test needs
-          #   android.hardware.tests.inheritance@1.0
-          #   (frameworks/native/cmds/lshal/Android.bp:83:1);
-          #   libbinderthreadstateutils_test needs
-          #   binderthreadstateutilstest@1.0
-          #   (frameworks/native/libs/binderthreadstate/
-          #   Android.bp:66:1).
-          #   #192 (5): init_first_stage + init_first_stage.
-          #   microdroid need libfec_rs + libsquashfs_utils
-          #   (system/core/init/Android.bp:467:1 / :472:1);
-          #   libbinderthreadstateutils_test needs
-          #   binderthreadstateutilstest@1.0 (same as #194).
-          #   #193 (40): libstatshidl needs
-          #   android.frameworks.stats@1.0 +
-          #   android.frameworks.stats-V2-ndk
-          #   (frameworks/native/services/stats/Android.bp:15:1);
-          #   libsurfaceflinger_backend_headers needs
-          #   android.hardware.configstore-utils +
-          #   android.hardware.configstore@1.0 + @1.1
-          #   (frameworks/native/services/surfaceflinger/
-          #   Android.bp:163:1); remount needs libavb_user
-          #   (system/core/fs_mgr/Android.bp:198:1); usbd needs
-          #   android.hardware.usb.gadget@1.0 +
-          #   android.hardware.usb.gadget-V1-ndk
-          #   (system/core/usbd/Android.bp:5:1); libui needs
-          #   libimapper_stablec + libimapper_providerutils +
-          #   libaidlcommonsupport +
-          #   android.hardware.graphics.allocator@3.0 + @4.0 +
-          #   android.hardware.graphics.common@1.2 +
-          #   android.hardware.graphics.mapper@2.0 + @2.1 + @3.0
-          #   (frameworks/native/libs/ui/Android.bp:105:1);
-          #   libpowermanager needs android.hardware.power@1.0 +
-          #   @1.1 + @1.2 + @1.3 (frameworks/native/services/
-          #   powermanager/Android.bp:10:1); libidlcli needs
-          #   android.hardware.vibrator-V3-ndk +
-          #   android.hardware.vibrator@1.0 + @1.1 + @1.2 + @1.3
-          #   (frameworks/native/cmds/idlcli/Android.bp:44:1);
-          #   libmemtrackproxy needs
-          #   android.hardware.memtrack@1.0 +
-          #   android.hardware.memtrack-V1-ndk
-          #   (frameworks/native/services/memtrackproxy/
-          #   Android.bp:24:1); storageproxyd.system needs
-          #   libhardware_legacy (system/core/trusty/storage/
-          #   proxy/Android.bp:62:1); libvibratorservice needs
-          #   android.hardware.vibrator-V3-ndk +
-          #   android.hardware.vibrator@1.0 + @1.1 + @1.2 + @1.3
-          #   (frameworks/native/services/vibratorservice/
-          #   Android.bp:24:1); gatekeeperd needs libscrypt_static
-          #   + libgatekeeper +
-          #   lib_android_keymaster_keymint_utils +
-          #   android.hardware.gatekeeper-V1-ndk +
-          #   android.hardware.gatekeeper@1.0 +
-          #   android.security.authorization-ndk
-          #   (system/core/gatekeeperd/Android.bp:57:1).
-          #   FAILED: out/soong/build.yuzora_lights.ninja — soong
-          #   bootstrap failed, exit status 1, in all three.
-          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
-          # again: 19 lines in EACH raw log, ALL in the Prune
-          # step's "#" comment echo (the workflow file's own
-          # history comments) — ZERO in any Build step output,
-          # same class as #152/#161/#174/#177/#182/#186.
-          # FIRST-EVER reported: the first HIDL configstore libs,
-          # the first usb.gadget libs, the first graphics
-          # allocator@3.0/@4.0 + common@1.2 + mapper@2.0/2.1/3.0,
-          # the first power HIDL libs, the first vibrator HIDL
-          # libs, the first memtrack libs, the first stats
-          # HIDL/AIDL libs, the first gatekeeper HIDL/AIDL libs,
-          # the first libfec_rs / libsquashfs_utils / libavb_user /
-          # libhardware_legacy / libscrypt_static / libgatekeeper /
-          # lib_android_keymaster_keymint_utils, the first
-          # cc_library_headers stubs (libimapper_stablec +
-          # libimapper_providerutils), the first cc_library_static
-          # stubs for a reported module since #168. Note #194
-          # reported only 2 lines and #192 only 5 on the SAME code
-          # that gave #193 40 — subset variation is real and lossy,
-          # proven again (same pattern as #180/#181/#182: 11 vs 6
-          # vs 14).
-          # STUBS (39, all in build-lights/yuzora-stubs-Android.bp
-          # — the static file, NOT the workflow; the workflow only
-          # gains this comment block + the prune-step + guard
-          # checks below):
-          #   34 plain cc_library: 22 HIDL @x.y libs defined ONLY
-          #     in pruned dirs (hardware/interfaces/*, plus
-          #     frameworks/native/libs/binderthreadstate/1.0 —
-          #     pruned in #84): android.hardware.tests.inheritance
-          #     @1.0, binderthreadstateutilstest@1.0,
-          #     android.hardware.configstore@1.0 + @1.1,
-          #     android.hardware.usb.gadget@1.0,
-          #     android.hardware.graphics.allocator@3.0 + @4.0,
-          #     android.hardware.graphics.common@1.2,
-          #     android.hardware.graphics.mapper@2.0 + @2.1 + @3.0,
-          #     android.hardware.power@1.0 + @1.1 + @1.2 + @1.3,
-          #     android.hardware.vibrator@1.0 + @1.1 + @1.2 + @1.3,
-          #     android.hardware.memtrack@1.0,
-          #     android.hardware.gatekeeper@1.0,
-          #     android.frameworks.stats@1.0; 6 AIDL -ndk libs
-          #     (generated from aidl_interface defs in pruned dirs
-          #     or unsynced projects): android.frameworks.stats-
-          #     V2-ndk, android.hardware.usb.gadget-V1-ndk,
-          #     android.hardware.vibrator-V3-ndk,
-          #     android.hardware.memtrack-V1-ndk,
-          #     android.hardware.gatekeeper-V1-ndk,
-          #     android.security.authorization-ndk; 6 other
-          #     upstream cc_library / cc_library_shared libs from
-          #     unsynced projects: libfec_rs, libsquashfs_utils,
-          #     lib_android_keymaster_keymint_utils,
-          #     android.hardware.configstore-utils,
-          #     libhardware_legacy, libgatekeeper.
-          #   2 cc_library_headers: libimapper_stablec +
-          #     libimapper_providerutils — upstream
-          #     cc_library_headers (hardware/interfaces/graphics/
-          #     mapper/stable-c/Android.bp), referenced by libui
-          #     via header_libs; a plain cc_library stub would be
-          #     the wrong shape for a header_libs consumer.
-          #   3 cc_library_static: libavb_user, libscrypt_static,
-          #     libaidlcommonsupport — all upstream
-          #     cc_library_static (external/avb/Android.bp,
-          #     external/scrypt/Android.bp, hardware/interfaces/
-          #     common/support/Android.bp); libavb_user is consumed
-          #     via static_libs by remount, libscrypt_static via
-          #     static_libs by gatekeeperd, libaidlcommonsupport
-          #     via static_libs by libui.
-          #   A plain cc_library yields both variants, so one stub
-          #   satisfies the shared_libs consumers alike; same form
-          #   as the #156 allocator@2.0 stub (also a HIDL lib) and
-          #   the #174 health@2.1 stub. The three upstream
-          #   cc_library_shared modules (configstore-utils,
-          #   libhardware_legacy, libgatekeeper) are stubbed as
-          #   plain cc_library on the #122 libcrypto lesson
-          #   (shared -> plain) + the #186 both-variants reasoning:
-          #   a shared-only stub cannot provide a static variant
-          #   if a future consumer needs one.
-          #   libfec_rs is C (Reed-Solomon), NOT Rust: upstream
-          #   cc_library in platform/external/fec,
-          #   external/fec/Android.bp:37-65 (r32) — NOT in
-          #   platform/system/core/libfec (that path 404s at r32)
-          #   and NOT a rust_library. Same correction class as
-          #   #186's system/keymaster vs system/security/keymaster.
-          #   libavb_user is in top-level external/avb/Android.bp
-          #   :250-277 (r32), NOT system/core/libavb (404).
-          #   libhardware_legacy is in platform/hardware/
-          #   libhardware_legacy, hardware/libhardware_legacy/
-          #   Android.bp:86-113 (r32), NOT system/core (404); its
-          #   upstream shared_libs (android.system.suspend-V1-ndk
-          #   + libdl) do NOT enter the graph through the bare stub.
-          #   libscrypt_static is in top-level external/scrypt/
-          #   Android.bp:49-61 (r32), NOT lib/crypto (404); srcs
-          #   via defaults libscrypt_sources in sources.bp.
-          #   libgatekeeper is in platform/system/gatekeeper,
-          #   system/gatekeeper/Android.bp:21-48 (r32), NOT
-          #   system/core/gatekeeperd (which defines only
-          #   libgatekeeper_aidl).
-          #   lib_android_keymaster_keymint_utils is cc_library in
-          #   platform/system/keymaster, system/keymaster/
-          #   Android.bp:378-396 (r32); the #186 round listed it as
-          #   checked-not-stubbed because every in-tree reference
-          #   then was in a pruned dir — gatekeeperd (unpruned,
-          #   in-tree) now references it and it IS reported, so it
-          #   is stubbed this round.
-          #   android.security.authorization-ndk is generated from
-          #   aidl_interface android.security.authorization in
-          #   platform/system/security, system/security/keystore2/
-          #   aidl/Android.bp:24-44 (r32, ndk backend enabled).
-          #   android.frameworks.stats@1.0 + stats-V2-ndk live in
-          #   frameworks/hardware/interfaces/stats/ (NOT synced;
-          #   no such dir in the local tree) — their files were NOT
-          #   re-verified this round; the stub type does not depend
-          #   on them (every @x.y HIDL lib + every -ndk AIDL lib
-          #   in this project is stubbed as plain cc_library).
-          #   The -ndk libs' aidl_interface defs were verified
-          #   locally for the four in pruned dirs: usb.gadget,
-          #   vibrator, memtrack, gatekeeper (hardware/interfaces/
-          #   */aidl/Android.bp).
-          # CORRECTION to the carried-forward "NOT stubbed" list:
-          #   android.hardware.graphics.mapper@4.0 is ALREADY
-          #   stubbed (cc_library_shared, #111/#112/#113) — NOT
-          #   added again. android.hardware.power-ndk_export_shared
-          #   (cc_defaults) + android.os.hintmanager_aidl-ndk
-          #   (cc_library_static) are ALREADY stubbed, which closes
-          #   libpowermanager's dep closure. The remaining
-          #   carried-forward entries are still un-stubbed and
-          #   still unreported: android.hardware.boot@1.2,
-          #   android.hardware.graphics.common@1.1,
-          #   libLibGuiProperties, libhealthhalutils, libhealthshim,
-          #   libfastbootshim, libcom.android.sysprop.apex
-          #   (sysprop-generated); avf_build_flags_cc — ALREADY
-          #   stubbed (cc_defaults, earlier round).
-          # NO sdk_version on any new stub: no consumer sets
-          # sdk_version (verified by grep over all 15 consumer
-          # files — the only hits are min_sdk_version: libui
-          # "apex_inherit" + "29", libbinderthreadstateutils "29").
-          # Per the #159 lesson, min_sdk_version alone does NOT set
-          # UseSdk(), so a min_sdk_version-only consumer never
-          # demands the sdk variant. Upstream libscrypt_static
-          # carries sdk_version "17" — NOT mirrored (no consumer
-          # demands it). No stl on any upstream definition or
-          # consumer.
-          # NO PRUNES this round: unlike #186 (all 6 erroring
-          # consumers in one prunable file), the 15 erroring
-          # consumers live in 15 files across frameworks/native
-          # (8 files) + system/core (5 files) — pruning any of
-          # those dirs would delete modules the HAL closure needs
-          # (libui, libfs_mgr, init_first_stage, libstatshidl are
-          # real in-tree libraries, not test dirs).
-          # CHECKED, NOT STUBBED (never reported in any raw log,
-          # runs #6–#194 — do NOT stub unless a raw log reports
-          # one):
-          #   libcharger_sysprop — sysprop-generated; the CONFIRMED
-          #   PHANTOM (19 lines per raw log in #192/#193/#194, ALL
-          #   in the Prune step's "#" comment echo, zero in any
-          #   Build step output).
-          #   libsensorservice's other undefined deps:
-          #   android.hardware.sensors@1.0/@2.0/@2.1 (HIDL, pruned
-          #   dirs), libactivitymanager_aidl, libbatterystats_aidl,
-          #   libsensorprivacy, libpermission, libfmq,
-          #   packagemanager_aidl-cpp,
-          #   android.hardware.common-V2-ndk,
-          #   android.hardware.common.fmq-V1-ndk,
-          #   libaconfig_storage_read_api_cc,
-          #   android.hardware.sensors@1.0-convert,
-          #   framework-cppstream-protos. (libaidlcommonsupport
-          #   leaves this list — reported via libui in #193 and
-          #   stubbed this round.) libsensorservice IS in
-          #   build/make/target/product/base_system.mk:195
-          #   PRODUCT_PACKAGES yet has never errored in 194 runs
-          #   despite its undefined deps; the empirical rule stands:
-          #   never reported → do not stub.
-          #   Carried forward: android.hardware.boot@1.2,
-          #   android.hardware.graphics.common@1.1,
-          #   libLibGuiProperties, libhealthhalutils, libhealthshim,
-          #   libfastbootshim, libcom.android.sysprop.apex (both
-          #   sysprop-generated); libkeymaster_messages,
-          #   libkeymaster3device, android.hardware.keymaster@3.0
-          #   (reported in #186 but, after the trusty/keymaster
-          #   prune, referenced only in pruned hardware/interfaces/*
-          #   dirs).
-          # DEP-CLOSURE VERIFIED (audit over the erroring consumers'
-          # DIRECT deps — every other direct dep is defined in-tree
-          # (non-pruned) or already stubbed):
-          #   lshal_test: libgmock / libvintf (stubbed #141) /
-          #     libvintf_static_user_defaults (stubbed) /
-          #     lshal_defaults (in-file) defined/stubbed.
-          #   libbinderthreadstateutils_test:
-          #     binderthreadstateutilstest.aidl-cpp (aidl_interface
-          #     in-file) / libbinderthreadstateutils (in-file) /
-          #     libbase / libbinder / libcutils / libhidlbase
-          #     (stubbed) / libutils / liblog defined/stubbed.
-          #   init_first_stage(.microdroid) via
-          #     init_first_stage_defaults: libfs_avb / libavf_cc_flags
-          #     (stubbed cc_defaults) / libfs_mgr / libfec (stubbed
-          #     #174) / libcrypto_utils / libavb (stubbed) / liblp /
-          #     libcrypto_static (stubbed) / libselinux (stubbed) /
-          #     libcap (stubbed #125) / libgsi (stubbed #111) /
-          #     liblzma (stubbed #125) / libunwindstack_no_dex
-          #     (stubbed #168) / libmodprobe / libext2_uuid (stubbed
-          #     #111) / libprotobuf-cpp-lite (stubbed) /
-          #     libsnapshot_cow / libsnapshot_init / liblz4 / libzstd
-          #     (stubbed #119) / update_metadata-protos (stubbed
-          #     #171) / libprocinfo (stubbed) / libbootloader_message
-          #     (stubbed #182) defined/stubbed; .microdroid adds
-          #     avf_build_flags_cc (stubbed cc_defaults).
-          #   libstatshidl: libbinder_ndk / libexpresslog /
-          #     libhidlbase (stubbed) / libstatslog (stubbed #141) /
-          #     libstatssocket (stubbed #99/#100/#101) / liblog /
-          #     libutils defined/stubbed.
-          #   libsurfaceflinger_backend_headers: libbinder_ndk /
-          #     libserviceutils defined.
-          #   remount: libgsid (stubbed #111) / libvold_binder
-          #     (stubbed #174) / libbootloader_message (stubbed
-          #     #182) / libfs_mgr_binder (in-tree) / libext4_utils
-          #     (stubbed #122) / liblp / libselinux (stubbed) /
-          #     libcrypto (stubbed) / libcutils_headers (in-tree) /
-          #     libbase / libbinder / libcutils / liblog / libutils
-          #     defined/stubbed; defaults fs_mgr_defaults (in-file,
-          #     no module deps).
-          #   usbd: libhardware (stubbed #135) / libbase /
-          #     libbinder_ndk / libhidlbase (stubbed) / liblog /
-          #     libutils defined/stubbed.
-          #   libui: allocator@2.0 (stubbed #156) / mapper@4.0
-          #     (stubbed #111) / libgralloctypes / libbase_headers /
-          #     libnativebase_headers / libnativewindow_headers /
-          #     libhardware_headers (stubbed) / libui_headers
-          #     (in-file) / libarect / libmath / libgrallocusage /
-          #     libui-types (in-file) / libbase / libbinder_ndk /
-          #     libcutils / libhidlbase (stubbed) / libsync /
-          #     libutils / liblog / libvndksupport defined/stubbed.
-          #   libpowermanager: android.hardware.power-ndk_export_
-          #     shared (stubbed cc_defaults) /
-          #     android.os.hintmanager_aidl-ndk (stubbed
-          #     cc_library_static) / libbinder / libbinder_ndk /
-          #     libhidlbase (stubbed) / liblog / libutils
-          #     defined/stubbed.
-          #   libidlcli: libbase / libbinder_ndk / libhidlbase
-          #     (stubbed) / liblog / libutils defined/stubbed.
-          #   libmemtrackproxy: libbase / libbinder_ndk / libbinder /
-          #     libhidlbase (stubbed) / liblog / libcutils / libutils
-          #     defined/stubbed.
-          #   storageproxyd.system via storageproxyd.defaults:
-          #     libfstab / libtrustystorageinterface / libtrusty /
-          #     libgsi_headers (stubbed #111) / libbase /
-          #     libbinder_ndk / libcutils / liblog defined/stubbed.
-          #   libvibratorservice: libbinder_ndk / libhidlbase
-          #     (stubbed) / liblog / libutils defined/stubbed.
-          #   gatekeeperd via gatekeeperd_defaults: libgsi (stubbed
-          #     #111) / libhardware (stubbed #135) / libcrypto
-          #     (stubbed) / libgatekeeper_aidl (in-file) /
-          #     keymint_use_latest_hal_aidl_ndk_shared (stubbed
-          #     cc_defaults) / libbinder / libbinder_ndk / libbase /
-          #     libutils / liblog / libhidlbase (stubbed)
-          #     defined/stubbed.
-          # WATCH ITEM (not implemented): headers/symbols may be
-          # needed later IF a future round fails past Soong at
-          # compile/link — the two cc_library_headers stubs export
-          # real upstream header dirs (mapper stable-c include/ +
-          # implutils/include/); libvibratorservice's aidl
-          # include_dirs point at the pruned hardware/interfaces/
-          # vibrator/aidl/. The build target is ONLY
-          # android.hardware.light-service.samsung (shared_libs
-          # libbase, libbinder_ndk, android.hardware.light-V2-ndk)
-          # — NONE of the 39 new stubs is in its closure, verified
-          # locally — so bare stubs suffice for THIS target. If a
-          # future round fails past Soong, ship the headers/symbols
-          # then; do not pre-build them now. (Same watch-item form
-          # as #182/#186.)
-          # CACHE NOTE (runs #192/#193/#194): Restore 0-1s MISS in
-          # all three (sync 8m02s #194 / 12m19s #192 / 10m40s #193),
-          # no Save step — save-always still does not save; the
-          # separate restore+save steps need his word (see the
-          # manifest). Expect Restore to miss and sync ~9-12 min
-          # on the next run too.
           # Runs #195/#196/#197/#198 fix: stub 10 modules, prune 3 dirs.
           # Runs #195 (46013432537, 12m41s), #196 (46014181177, 15m27s),
           # #197 (46014519921, 15m39s) and #198 (46015052689, 19m41s)
@@ -4903,6 +3261,212 @@ jobs:
           # line in any run); the separate restore+save steps need
           # his word (see the manifest). Expect Restore to miss
           # and sync ~9-12 min on the next run too.
+          # Runs #231/#232/#233/#234 fix: 6 filegroup stubs, no prunes.
+          # Runs #231 (46086837909, 13m21s, stubs push e62a89c, job
+          # 140798275600), #232 (46087163932, 11m28s, manifest push
+          # 95e9793, job 140799322205), #233 (46087269326, 13m24s,
+          # README push 5268b15, job 140799677042) and #234
+          # (46087777789, 15m45s, manual dispatch ~05:55 IST on
+          # commit 5268b15, job 140801316703) ALL FAILED at Soong
+          # ninja-file generation, on the SAME fix code (head
+          # 5268b15 — the runs #227/#228/#229/#230 1-stub + 1-prune
+          # fix, workflow 5001412), except #231, which ran the
+          # PRE-fix workflow a4dd91f (staged-commit artifact: the
+          # stubs push landed before the workflow push — same
+          # pattern as #195/#199/#207/#211/#223/#227).
+          # Steps (#234): Restore 1s, sync 12m12s, Prune 3s
+          # (passed), Build 53s FAILED (exit 1). #231: Restore 0s,
+          # sync 9m58s, Prune 3s, Build 36s FAILED. #232: Restore
+          # 0s, sync 8m15s, Prune 3s, Build 54s FAILED. #233:
+          # Restore 0s, sync 10m54s, Prune 2s, Build 55s FAILED.
+          # THE #230 FIX HELD COMPLETELY: zero avb_testkey_rsa4096
+          # genuine errors in all four runs (the filegroup stub
+          # works — #231 ran the old workflow, which never creates
+          # the dummy .pem, and still no error, re-proving filegroup
+          # srcs files are not existence-checked at ninja
+          # generation); zero android.hidl.base@1.0_hal genuine
+          # errors in #232/#233/#234 (the c2hal/test prune works —
+          # #231 is neutral on the prune: old workflow, and the
+          # error surfaced only in #228 anyway); zero
+          # aosp_shared_system_image / libcompiler_rt /
+          # update_engine_sideload genuine errors in all four runs.
+          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
+          # phase, FOURTH WAVE of the same phase as #230 (not a new
+          # phase: a genrule's srcs filegroup edge + a toolchain
+          # module's deps filegroup edges). Whole raw logs (only
+          # "error: ... depends on undefined module ..." lines
+          # counted, "#" echoes and "Or did you mean" excluded):
+          # #231: 6 genuine lines, 6 modules, 2 consumers. #232: 5
+          # genuine lines, 5 modules. #233/#234: 2 genuine lines
+          # each. UNION: 6 distinct new modules, ALL filegroups.
+          #   error: system/apex/apexer/Android.bp:54:1:
+          #   "mke2fs_conf_for_apexer" depends on undefined module
+          #   "mke2fs_conf". (in all four runs)
+          #   error: system/apex/apexer/Android.bp:151:1:
+          #   "apexer_test_host_tools" depends on undefined module
+          #   "current_android_jar". (in #231/#233/#234 — NOT #232)
+          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
+          #   depends on undefined module "gcc.lib". (in #231/#232)
+          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
+          #   depends on undefined module "gcc.lib32". (in #231/#232)
+          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
+          #   depends on undefined module "gcc.lib64". (in #231/#232)
+          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
+          #   depends on undefined module "gcc.sysroot". (in #231/#232)
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in all four runs (only "#"
+          # comment lines). Same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230.
+          # MECHANISM — PHASE MASKING, fourth wave (why this layer
+          # appeared only now): the filegroup-srcs / property-dep
+          # phase resolves LATER than the filesystem Deps phase, and
+          # Soong reports one wave per run — the #230 wave (avb/c2hal)
+          # and this wave (apexer/gcc) never co-occur in one run's
+          # genuine set. SUBSET VARIATION, BOTH DIRECTIONS (new):
+          # the gcc layer appears in #231 + #232 and VANISHES in
+          # #233 + #234, while current_android_jar appears in #231,
+          # vanishes in #232, and reappears in #233 + #234 — on
+          # effectively identical code (#232 vs #233 differ only in
+          # manifest/README doc text). A module can be reported in
+          # early siblings and absent in later ones WITHOUT any fix.
+          # The union rule cuts both ways: fix everything reported
+          # in ANY sibling, and never treat absence in the latest
+          # run as proof a module is fixed. Same lesson as
+          # #185/#202/#223/#226/#230: "never reported" means "not
+          # yet reached", not "exempt". After THIS fix the build
+          # reaches a still later phase (ninja generation → actual
+          # compilation); do not assume the dep-error rounds are
+          # over until `m` actually compiles.
+          # ROOT CAUSE 1 — mke2fs_conf: upstream it is a filegroup
+          # in unsynced system/extras (ext4_utils/Android.bp, read
+          # live from LineageOS lineage-22.2: srcs ["mke2fs.conf"],
+          # visibility //development/build + //system/apex/apexer).
+          # Consumer: the genrule mke2fs_conf_for_apexer (local
+          # system/apex/apexer/Android.bp:54-59, srcs
+          # [":mke2fs_conf"]), feeding the apexer python_binary_host.
+          # Whole-tree grep: zero definitions, zero refs outside
+          # the apexer dir.
+          # ROOT CAUSE 2 — current_android_jar: upstream it is a
+          # filegroup in unsynced prebuilts/sdk (current/Android.bp:
+          # 313-333, read live on android.googlesource.com at
+          # android-15.0.0_r32, blob 54af35d6: srcs
+          # ["public/android.jar"], visibility includes
+          # //system/apex/apexer). Not the java_import
+          # "android_current" (:292-300) in the same file.
+          # Consumers: the genrule_defaults apexer_test_host_tools_
+          # list (:147) + the genrule apexer_test_host_tools (:151),
+          # both srcs [":current_android_jar"]. Whole-tree grep:
+          # zero definitions; refs only in that file.
+          # ROOT CAUSE 3 — gcc.lib / gcc.lib32 / gcc.lib64 /
+          # gcc.sysroot: upstream they are filegroups in unsynced
+          # prebuilts/gcc (linux-x86/host/x86_64-linux-glibc2.17-4.8/
+          # Android.bp:1-24, read live via Android Code Search at
+          # android-15.0.0_r32 — the standalone-repo Gitiles URL
+          # 404s because the tag is a superproject tag, not a
+          # per-repo git tag). Consumer: the rust_toolchain_rustc_
+          # prebuilt module rustc (prebuilts/rust/Android.bp:512-526,
+          # read live on android.googlesource.com, blob 76bb5041:
+          # deps [":gcc.lib", ":gcc.lib32", ":gcc.lib64",
+          # ":gcc.sysroot", ":stdlib_prebuilts"]). The 5th dep
+          # :stdlib_prebuilts resolves in-tree (defined in
+          # prebuilts/rust/Android.bp, synced on the runner), so the
+          # 4 gcc filegroups are rustc's only undefined deps. The
+          # local tree has no prebuilts/rust dir (the 2026-11-26
+          # local sync stopped before that project's checkout), so
+          # the consumer was verified upstream, not locally.
+          # FIX — STUB all 6 as filegroups in yuzora-stubs/Android.bp,
+          # mirroring each upstream type exactly, srcs ["<dummy file>"]
+          # (relative to the stubs dir), public visibility, same
+          # precedent as the avb_testkey_rsa4096 filegroup stub
+          # (#230). The 6 dummy source files are created by the
+          # prune step (text placeholders, plainly marked NOT REAL,
+          # except android.jar, which is a valid EMPTY ZIP — a jar is
+          # a zip and the genrule zips it, so an empty zip is cheap
+          # insurance if the test tool is ever built) and guarded
+          # with test -f in the prune step + pre-build guard. No
+          # sdk_version on any new stub: filegroups do not take one.
+          # DEP-CLOSURE VERIFIED: mke2fs_conf_for_apexer has no other
+          # dep; apexer_test_host_tools(_list) tools resolve (signapk
+          # is defined in-tree, build/make/tools/signapk/Android.bp:
+          # 24; apexer_deps_tools members resolve; debugfs_static +
+          # fsck.erofs were stubbed in #131); rustc's other dep
+          # :stdlib_prebuilts resolves in-tree. No other direct dep
+          # of any erroring consumer is undefined.
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # prune system/apex/apexer whole (would kill both apexer
+          # consumers) — REJECTED: the apexer python_binary_host is
+          # the host tool Soong's APEX builder expects
+          # (build/soong/apex/builder.go:44, HostBinToolVariable
+          # ("apexer", "apexer")), and APEX modules ARE in the graph
+          # (fsgen's hardcoded list includes
+          # com.android.apex.cts.shim.v1_prebuilt); pruning the tool
+          # would leave the builder's tool reference dangling.
+          # Prune prebuilts/rust whole (would kill rustc) — REJECTED:
+          # rustc is the Rust toolchain for the whole build, and the
+          # tree already carries rust_library stubs whose consumers
+          # assume it exists. Sync prebuilts/gcc / prebuilts/sdk /
+          # system/extras (FORBIDDEN); ALLOW_MISSING_DEPENDENCIES
+          # (FORBIDDEN).
+          # WATCH ITEM (not implemented): if a future round fails
+          # PAST Soong at compile/link and the trace shows the Rust
+          # toolchain actually running, the dummy gcc filegroup
+          # contents may need to become real libgcc/sysroot files
+          # (the toolchain copies deps files when instantiated).
+          # Today nothing in the lights service's closure compiles
+          # Rust (its shared_libs are libbase, libbinder_ndk,
+          # android.hardware.light-V2-ndk), so bare filegroup stubs
+          # suffice for THIS target. Same watch-item form as #182/#186.
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #234 — do NOT stub unless a raw log reports one):
+          # bundletool (referenced in the SAME genrule's tools list,
+          # :160, and in build/soong/scripts/Android.bp:253, with NO
+          # definition anywhere in the synced tree, yet NEVER
+          # reported as undefined in any run — mechanism unproven,
+          # recorded honestly: genrule tools/required deps evidently
+          # do not surface at ninja generation the way srcs/deps do),
+          # stdlib_prebuilts (resolves in-tree),
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as
+          # cc_library_static — a different module from -main),
+          # libcharger_sysprop (phantom), android.hardware.
+          # fastboot@1.0, android.hardware.boot@1.2,
+          # libLibGuiProperties, libcom.android.sysprop.apex,
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). REMOVED from the
+          # never-reported list this round: mke2fs_conf +
+          # current_android_jar + gcc.lib + gcc.lib32 + gcc.lib64 +
+          # gcc.sysroot (reported in #231–#234, now stubbed).
+          # libjnigraphics was reported in #224–#227 (via
+          # aosp_shared_system_image) but is NOT stubbed — covered
+          # by the #226 disable. android.hidl.base@1.0_hal was
+          # reported in #228 but is NOT stubbed — covered by the
+          # c2hal/test prune.
+          # FIRST-EVER reported: the first APEX-tool failure
+          # (apexer), the first Rust-toolchain failure (rustc/gcc
+          # filegroups), the first filegroup stubs for toolchain
+          # files, the first subset variation in BOTH directions,
+          # the first workflow comment-block compaction (rounds
+          # #165–#194 prose removed this round — see the COMPACTED
+          # pointer block above).
+          # COMPACTION NOTE: this round compacted the oldest
+          # workflow comment blocks (#165–#194, ~101 KB of prose)
+          # to a pointer block, per the #230 prescription — the
+          # workflow was 479,097 bytes (margin 32,909) and a new
+          # comment block alone would have left ~17 KB. After
+          # compaction + this block the file is far under the limit
+          # again; the next compaction round, when needed, compacts
+          # the #195/#196/#197/#198 block onward the same way.
+          # CACHE NOTE (runs #231/#232/#233/#234): Restore is
+          # expected to miss (0-1s, sync ~8-12 min) and no Save
+          # step is expected — save-always still does not save
+          # (#234: Restore 1s MISS, sync 12m12s; #231: Restore 0s
+          # MISS, sync 9m58s; #232: Restore 0s MISS, sync 8m15s;
+          # #233: Restore 0s MISS, sync 10m54s; no "Cache saved"
+          # line in any run); the separate restore+save steps need
+          # his word (see the manifest). Expect Restore to miss
+          # and sync ~8-12 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -5430,6 +3994,39 @@ jobs:
           NOT A REAL KEY - dummy source for the avb_testkey_rsa4096 filegroup stub (runs #227/#228/#229/#230 fix).
           EOF
           test -f yuzora-stubs/testkey_rsa4096.pem || { echo "::error::stub source missing after creation: yuzora-stubs/testkey_rsa4096.pem"; exit 1; }
+          # Runs #231/#232/#233/#234 fix: dummy source files for
+          # the 6 new filegroup stubs above. All plainly marked NOT
+          # REAL — the lights HAL build never runs the apexer test
+          # tool or the Rust toolchain (none of the 6 stubs'
+          # consumers is in the lights service's closure); the files
+          # only have to exist for the filegroups' Srcs(). The
+          # android.jar dummy is a valid EMPTY ZIP (a jar is a zip,
+          # and the apexer_test_host_tools genrule zips it — cheap
+          # insurance if the test tool is ever built). Same heredoc
+          # style as the testkey_rsa4096.pem above; python3 is
+          # already used in this workflow (manifest ET.parse check).
+          cat > yuzora-stubs/mke2fs.conf <<'EOF'
+          NOT A REAL CONFIG - dummy source for the mke2fs_conf filegroup stub (runs #231/#232/#233/#234 fix).
+          EOF
+          test -f yuzora-stubs/mke2fs.conf || { echo "::error::stub source missing after creation: yuzora-stubs/mke2fs.conf"; exit 1; }
+          python3 -c "import zipfile; zipfile.ZipFile('yuzora-stubs/android.jar', 'w').close()" || { echo "::error::stub source creation failed: yuzora-stubs/android.jar"; exit 1; }
+          test -f yuzora-stubs/android.jar || { echo "::error::stub source missing after creation: yuzora-stubs/android.jar"; exit 1; }
+          cat > yuzora-stubs/gcc.lib <<'EOF'
+          NOT A REAL FILE - dummy source for the gcc.lib filegroup stub (runs #231/#232/#233/#234 fix).
+          EOF
+          test -f yuzora-stubs/gcc.lib || { echo "::error::stub source missing after creation: yuzora-stubs/gcc.lib"; exit 1; }
+          cat > yuzora-stubs/gcc.lib32 <<'EOF'
+          NOT A REAL FILE - dummy source for the gcc.lib32 filegroup stub (runs #231/#232/#233/#234 fix).
+          EOF
+          test -f yuzora-stubs/gcc.lib32 || { echo "::error::stub source missing after creation: yuzora-stubs/gcc.lib32"; exit 1; }
+          cat > yuzora-stubs/gcc.lib64 <<'EOF'
+          NOT A REAL FILE - dummy source for the gcc.lib64 filegroup stub (runs #231/#232/#233/#234 fix).
+          EOF
+          test -f yuzora-stubs/gcc.lib64 || { echo "::error::stub source missing after creation: yuzora-stubs/gcc.lib64"; exit 1; }
+          cat > yuzora-stubs/gcc.sysroot <<'EOF'
+          NOT A REAL FILE - dummy source for the gcc.sysroot filegroup stub (runs #231/#232/#233/#234 fix).
+          EOF
+          test -f yuzora-stubs/gcc.sysroot || { echo "::error::stub source missing after creation: yuzora-stubs/gcc.sysroot"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -6099,6 +4696,21 @@ jobs:
           # when the producer dies of SIGPIPE, run #208).
           { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "avb_testkey_rsa4096"' || { echo "::error::stub avb_testkey_rsa4096 is not a filegroup"; exit 1; }
           echo "runs #227/#228/#229/#230 stub created: 1 filegroup stub (avb_testkey_rsa4096); system/tools/hidl/c2hal/test pruned whole."
+          # Runs #231/#232/#233/#234 fix: verify the 6 new
+          # filegroup stubs are present in yuzora-stubs/Android.bp
+          # (same `name: "..."` grep form as the #230 loop above).
+          for stub in mke2fs_conf current_android_jar gcc.lib gcc.lib32 gcc.lib64 gcc.sysroot; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #231/#232/#233/#234 fix: the 6 new stubs must be
+          # filegroups (same SIGPIPE-safe wrapped form as the #230
+          # loop above — see EDIT R in the #210 round: the bare
+          # producer | consumer form fails spuriously under pipefail
+          # when the producer dies of SIGPIPE, run #208).
+          for stub in mke2fs_conf current_android_jar gcc.lib gcc.lib32 gcc.lib64 gcc.sysroot; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a filegroup"; exit 1; }
+          done
+          echo "runs #231/#232/#233/#234 stubs created: 6 filegroup stubs (mke2fs_conf + current_android_jar + gcc.lib + gcc.lib32 + gcc.lib64 + gcc.sysroot); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -6360,6 +4972,15 @@ jobs:
           # the avb_testkey_rsa4096 filegroup stub must exist at
           # build time.
           test -f yuzora-stubs/testkey_rsa4096.pem || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/testkey_rsa4096.pem"; exit 1; }
+          # Runs #231/#232/#233/#234 fix: the 6 dummy source
+          # files for the new filegroup stubs must exist at build
+          # time.
+          for f in yuzora-stubs/mke2fs.conf yuzora-stubs/android.jar yuzora-stubs/gcc.lib yuzora-stubs/gcc.lib32 yuzora-stubs/gcc.lib64 yuzora-stubs/gcc.sysroot; do
+            test -f "$f" || { echo "::error::pre-build guard: stub source missing at build time: $f"; exit 1; }
+          done
+          # Runs #231/#232/#233/#234 fix: the android.jar dummy
+          # must still be a valid zip at build time.
+          python3 -c "import zipfile, sys; sys.exit(0 if zipfile.is_zipfile('yuzora-stubs/android.jar') else 1)" || { echo "::error::pre-build guard: stub source is not a valid zip at build time: yuzora-stubs/android.jar"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -6784,6 +5405,18 @@ jobs:
           # filegroup at build time (same wrapped check as the
           # prune step above).
           { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "avb_testkey_rsa4096"' || { echo "::error::pre-build guard: stub avb_testkey_rsa4096 is not a filegroup"; exit 1; }
+          # Runs #231/#232/#233/#234 fix: the 6 new filegroup
+          # stubs must be present at build time (same `name: "..."`
+          # grep form as above).
+          for stub in mke2fs_conf current_android_jar gcc.lib gcc.lib32 gcc.lib64 gcc.sysroot; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #231/#232/#233/#234 fix: the 6 new stubs must be
+          # filegroups at build time (same wrapped check as the
+          # prune step above).
+          for stub in mke2fs_conf current_android_jar gcc.lib gcc.lib32 gcc.lib64 gcc.sysroot; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a filegroup"; exit 1; }
+          done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
