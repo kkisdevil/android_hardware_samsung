@@ -3342,6 +3342,118 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #231 (46086837909, 13m21s, stubs push e62a89c, job
+  140798275600), #232 (46087163932, 11m28s, manifest push 95e9793,
+  job 140799322205), #233 (46087269326, 13m24s, README push
+  5268b15, job 140799677042) and #234 (46087777789, 15m45s, manual
+  dispatch ~05:55 IST on commit 5268b15, job 140801316703). ALL
+  FAILED at Soong ninja-file generation, on the SAME fix code
+  (head 5268b15 - the runs #227/#228/#229/#230 1-stub + 1-prune
+  fix, workflow 5001412), except #231, which ran the PRE-fix
+  workflow a4dd91f (staged-commit artifact: the stubs push landed
+  before the workflow push, same pattern as
+  #195/#199/#207/#211/#223/#227). Steps (#234): Restore 1s, sync
+  12m12s, Prune 3s (passed), Build 53s FAILED (exit 1). #231:
+  Restore 0s, sync 9m58s, Prune 3s, Build 36s FAILED. #232:
+  Restore 0s, sync 8m15s, Prune 3s, Build 54s FAILED. #233:
+  Restore 0s, sync 10m54s, Prune 2s, Build 55s FAILED.
+  THE #230 FIX HELD COMPLETELY: zero avb_testkey_rsa4096 genuine
+  errors in all four runs (the filegroup stub works - #231 ran the
+  old workflow, which never creates the dummy .pem, and still no
+  error, re-proving filegroup srcs files are not existence-checked
+  at ninja generation); zero android.hidl.base@1.0_hal genuine
+  errors in #232/#233/#234 (the c2hal/test prune works - #231 is
+  neutral on the prune: old workflow, and the error surfaced only
+  in #228 anyway); zero aosp_shared_system_image / libcompiler_rt
+  / update_engine_sideload genuine errors in all four runs.
+  NEW FAILURE LAYER - the filegroup-srcs / property-dep phase,
+  FOURTH WAVE of the same phase as #230. Whole raw logs (only
+  "error: ... depends on undefined module ..." lines counted, "#"
+  comment echoes and "Or did you mean" excluded): #231: 6 genuine
+  lines, 6 modules, 2 consumers - mke2fs_conf_for_apexer needs
+  mke2fs_conf (system/apex/apexer/Android.bp:54:1); rustc needs
+  gcc.lib + gcc.lib32 + gcc.lib64 + gcc.sysroot
+  (prebuilts/rust/Android.bp:512:1); apexer_test_host_tools needs
+  current_android_jar (system/apex/apexer/Android.bp:151:1).
+  #232: 5 genuine lines - the 4 rustc/gcc lines + mke2fs_conf
+  (notably NO current_android_jar genuine error). #233/#234: 2
+  genuine lines each - mke2fs_conf + current_android_jar. UNION:
+  6 distinct new modules, ALL filegroups. The "libcharger_sysprop"
+  lines are a CONFIRMED PHANTOM again (zero genuine errors in all
+  four runs), same class as #152/#161/#174/#177/#182/#186/#194/
+  #198/#202/#206/#210/#214/#218/#222/#226/#230.
+  MECHANISM - PHASE MASKING, fourth wave: the filegroup-srcs /
+  property-dep phase resolves LATER than the filesystem Deps
+  phase, and Soong reports one wave per run - the #230 wave
+  (avb/c2hal) and this wave (apexer/gcc) never co-occur in one
+  run's genuine set. SUBSET VARIATION, BOTH DIRECTIONS (new):
+  the gcc layer appears in #231 + #232 and VANISHES in #233 +
+  #234, while current_android_jar appears in #231, vanishes in
+  #232, and reappears in #233 + #234 - on effectively identical
+  code (#232 vs #233 differ only in manifest/README doc text).
+  A module can be reported in early siblings and absent in later
+  ones WITHOUT any fix. The union rule cuts both ways: fix
+  everything reported in ANY sibling, and never treat absence in
+  the latest run as proof a module is fixed. Same lesson as
+  #185/#202/#223/#226/#230: "never reported" means "not yet
+  reached".
+  Root causes, verified: (1) mke2fs_conf is a filegroup in
+  unsynced system/extras (ext4_utils/Android.bp, read live from
+  LineageOS lineage-22.2: srcs ["mke2fs.conf"], visibility
+  //development/build + //system/apex/apexer); its only consumer
+  is the genrule mke2fs_conf_for_apexer (local
+  system/apex/apexer/Android.bp:54-59). (2)
+  current_android_jar is a filegroup in unsynced prebuilts/sdk
+  (current/Android.bp:313-333, read live on
+  android.googlesource.com at android-15.0.0_r32, blob
+  54af35d6: srcs ["public/android.jar"], visibility includes
+  //system/apex/apexer); its consumers are the genrule_defaults
+  apexer_test_host_tools_list (:147) + the genrule
+  apexer_test_host_tools (:151). (3) gcc.lib / gcc.lib32 /
+  gcc.lib64 / gcc.sysroot are filegroups in unsynced
+  prebuilts/gcc (linux-x86/host/x86_64-linux-glibc2.17-4.8/
+  Android.bp:1-24, read live via Android Code Search at
+  android-15.0.0_r32); their consumer is the
+  rust_toolchain_rustc_prebuilt module rustc
+  (prebuilts/rust/Android.bp:512-526, blob 76bb5041, deps
+  [":gcc.lib", ":gcc.lib32", ":gcc.lib64", ":gcc.sysroot",
+  ":stdlib_prebuilts"]); :stdlib_prebuilts resolves in-tree, so
+  the 4 gcc filegroups are rustc's only undefined deps.
+  Fix: 6 new filegroup stubs (mke2fs_conf, current_android_jar,
+  gcc.lib, gcc.lib32, gcc.lib64, gcc.sysroot), mirroring each
+  upstream type exactly, srcs ["<dummy file>"], public
+  visibility; the 6 dummy source files are created by the prune
+  step (text placeholders, plainly marked NOT REAL, except
+  android.jar, which is a valid EMPTY ZIP) and guarded with
+  test -f in the prune step + pre-build guard. No sdk_version
+  on any new stub. No prunes. No new projects (still 32). The
+  prune-step check and the pre-build guard both verify the new
+  stubs, their type, and the dummy files. Alternatives rejected
+  (recorded in the workflow comment): prune system/apex/apexer
+  whole (the apexer tool is what Soong's APEX builder expects -
+  builder.go:44 - and APEX modules ARE in the graph); prune
+  prebuilts/rust whole (rustc is the Rust toolchain); sync the
+  unsynced projects (forbidden); ALLOW_MISSING_DEPENDENCIES
+  (forbidden). WORKFLOW COMPACTION this round: the full comment
+  blocks for rounds #165/#166/#167 through #192/#193/#194
+  (~101 KB of prose) were replaced by a pointer block, per the
+  #230 prescription - the workflow was 479,097 bytes (margin
+  32,909) and a new comment block alone would have left ~17 KB.
+  Every prune/check/guard CODE line from those rounds is intact;
+  the full per-round narrative survives in the manifest doc
+  blocks + the preserved cron_body history files.
+
+  CACHE NOTE (runs #231/#232/#233/#234): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~8-12 min) and no Save step is expected to run - #234:
+  Restore 1s MISS, sync 12m12s; #231: Restore 0s MISS, sync
+  9m58s; #232: Restore 0s MISS, sync 8m15s; #233: Restore 0s
+  MISS, sync 10m54s; no "Cache saved" line in any run. The next
+  run will also restore-miss and sync ~8-12 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
