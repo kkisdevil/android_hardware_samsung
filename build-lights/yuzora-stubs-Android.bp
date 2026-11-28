@@ -6064,3 +6064,73 @@ filegroup {
         "//visibility:public",
     ],
 }
+
+// Runs #231/#232/#233/#234 fix: 6 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// All 6 are filegroups, mirroring the upstream definitions exactly.
+// mke2fs_conf is the checked-in filegroup for the mke2fs config
+//   file, defined upstream in system/extras/ext4_utils/Android.bp
+//   (UNSYNCED project system/extras), srcs mke2fs.conf, visible to
+//   development/build and system/apex/apexer. The stub mirrors it:
+//   srcs mke2fs.conf (relative to the stubs dir — the workflow
+//   creates the dummy file), public visibility.
+// current_android_jar is the checked-in filegroup for the current
+//   android.jar, defined upstream in prebuilts/sdk/current/Android.bp
+//   (UNSYNCED project prebuilts/sdk), srcs public/android.jar. The
+//   stub mirrors it: srcs android.jar (relative to the stubs dir —
+//   the workflow creates a valid empty zip), public visibility.
+// gcc.lib, gcc.lib32, gcc.lib64 and gcc.sysroot are the GCC
+//   toolchain filegroups defined upstream in
+//   prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/Android.bp
+//   (UNSYNCED project prebuilts/gcc). The stubs mirror them: one
+//   dummy source file each, public visibility. The dummy files are
+//   plainly marked NOT REAL; the lights HAL build never runs the
+//   Rust toolchain (no Rust module is in the lights service
+//   closure), so the file contents never matter — only the NAMES
+//   have to exist for Soong dep resolution. Same precedent as the
+//   avb_testkey_rsa4096 filegroup stub above (dummy source created
+//   by the workflow plus test -f guards). No sdk_version on any new
+//   stub: filegroups do not take one.
+filegroup {
+    name: "mke2fs_conf",
+    srcs: ["mke2fs.conf"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "current_android_jar",
+    srcs: ["android.jar"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "gcc.lib",
+    srcs: ["gcc.lib"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "gcc.lib32",
+    srcs: ["gcc.lib32"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "gcc.lib64",
+    srcs: ["gcc.lib64"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "gcc.sysroot",
+    srcs: ["gcc.sysroot"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
