@@ -3724,6 +3724,163 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #243 (46106693193, stubs push c028e0f), #244 (46106888505,
+  manifest push 8fe304e), #245 (46106964845, 12m37s, README push
+  9eeb403, job 140861772325) and #246 (46107176518, manual dispatch
+  ~09:51 IST on commit 9eeb403, job 140862423234). ALL FAILED at
+  Soong ninja-file generation, on the SAME fix code (head 9eeb403 -
+  the runs #239/#240/#241/#242 2-filegroup-stub fix, workflow
+  270f737). Steps (#245): Restore 1s MISS, sync 9m20s, Prune 1s
+  (passed), Build 37s FAILED (exit 1). #243/#244/#246 step
+  durations were not recorded (their run pages show only the
+  exit-code annotation).
+  THE #242 FIX HELD COMPLETELY: zero libvibrator_aidl /
+  com.android.apex.vendor.foo.with_vintf genuine errors in #245
+  and #246 - the apex_test-to-filegroup substitution is now PROVEN
+  (with_vintf stub satisfied a device_common_data: edge at ninja
+  generation). The #238 fix HELD too (zero
+  cts-dalvik-device-test-runner / py3-cmd / avbtool / fec genuine
+  errors) and the #234 fix HELD (zero mke2fs_conf /
+  current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
+  gcc.sysroot genuine errors) and the #230 fix HELD (zero
+  avb_testkey_rsa4096 genuine errors) and the #226 fix HELD (zero
+  aosp_shared_system_image / libcompiler_rt /
+  update_engine_sideload genuine errors).
+  NEW FAILURE LAYER - the filegroup-srcs / property-dep phase,
+  SEVENTH WAVE of the same phase as #230/#234/#238/#242. Job logs
+  (#245 lines 904-916; #246 same 7 lines, verified live; only
+  "error: ... depends on undefined module ..." lines counted, "#"
+  comment echoes and "Or did you mean" excluded): #245 and #246
+  match EXACTLY - no subset variation between the two confirmed
+  runs this time. UNION: 5 distinct new modules, 7 genuine lines
+  total - two are srcs: filegroup edges of a cc_library /
+  cc_library_shared, three are data: file references of cc_test
+  modules. UNION GAP (recorded honestly): #243/#244's unions could
+  NOT be read - their run pages show only "Process completed with
+  exit code 1", no job-log lines, and their job IDs were not
+  recorded. The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+  again (zero genuine errors in #245/#246), same class as
+  #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/#210/#214/
+  #218/#222/#226/#230/#234/#238/#242.
+  MECHANISM - PHASE MASKING, seventh wave: all five modules are
+  undefined-module errors at Soong ninja-file generation - the
+  same phase as #230/#234/#238/#242, resolving LATER than the
+  filesystem Deps phase.
+  Root causes, verified: (1) activity_manager_procstate_aidl is a
+  filegroup in unsynced platform/frameworks/base
+  (core/java/Android.bp, LineageOS lineage-22.2 real lines 405-411,
+  verified by git clone: srcs
+  ["android/app/ProcessStateEnum.aidl"] - a SINGLE source file).
+  Consumer: cc_library libactivitymanager_aidl
+  (frameworks/native/libs/binder/Android.bp:974, verified in a
+  fresh lineage-22.2 clone) via srcs:
+  [":activity_manager_procstate_aidl", ...]. Dep closure: the
+  filegroup is the ONLY undefined dep of libactivitymanager_aidl.
+  (2) libpowermanager_aidl is a filegroup in unsynced
+  platform/frameworks/base (core/java/Android.bp, LineageOS
+  lineage-22.2 real lines 215-233, verified by git clone: srcs 8
+  AIDL files). Consumer: cc_library_shared libpowermanager
+  (frameworks/native/services/powermanager/Android.bp:10,
+  verified in a fresh lineage-22.2 clone) via srcs:
+  [":libpowermanager_aidl", ...]. Dep closure: the filegroup is
+  the ONLY undefined dep that has surfaced; shared_libs
+  android.hardware.power@1.0-1.3 and whole_static_libs
+  android.os.hintmanager_aidl-ndk were NEVER reported in #6-#246
+  - not chased, watch only. (3)
+  com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt is
+  a prebuilt_apex in
+  system/apex/tests/testdata/sharedlibs/prebuilts/Android.bp
+  (AOSP android-15.0.0_r32, name at line 244, verified by git
+  clone of platform/system/apex at the r32 tag: arch-specific srcs
+  of prebuilt .apex files, filename
+  com.android.apex.test.sharedlibs_generated.v1.libvX.apex,
+  installable: false). The apex files are GENERATED
+  (build_artifacts.sh). The project platform/system/apex IS
+  synced, but the workflow prunes system/apex/tests whole (runs
+  #75/#76/#77 fix) - a SELF-INFLICTED prune; un-pruning is not
+  viable (the dir holds the 84-error host-test/tradefed family).
+  Consumers: cc_test ApexTestCases
+  (system/apex/apexd/Android.bp:470, AOSP r32) via data:
+  (:533-534) and cc_test ApexServiceTestCases (:583) via data:
+  (:637-638). (4)
+  com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt is
+  a prebuilt_apex in the SAME file (name at line 264): identical
+  shape, same prune, same two consumers. (5)
+  com.android.apex.vendor.foo is an apex_test in
+  system/apex/tests/testdata/vendorapex/Android.bp (AOSP
+  android-15.0.0_r32, real lines 41-48, name at 42, verified by
+  git clone). Consumer: cc_test ApexTestCases (:470) via data:
+  (:549). This module was WATCH LIST ONLY in #242; it is NOW
+  reported, so it is stubbed.
+  DEP-CLOSURE PROOF (ApexTestCases / ApexServiceTestCases): every
+  OTHER data: entry of both test modules resolves to a KEPT file
+  - verified exhaustively in the r32 tree: :apex.* +
+  :com.android.apex.compressed.* + :com.android.apex.brand.new*
+  in system/apex/apexd/apexd_testdata/Android.bp (kept since #58),
+  :com.android.apex.cts.shim.*_prebuilt in system/apex/shim/
+  Android.bp (kept), :gen_* java_genrules in
+  system/apex/apexd/Android.bp itself (kept),
+  :test.rebootless_apex* in apexd_testdata/Android.bp:437 (kept).
+  The ONLY undefined data: entries in the whole file are the 3
+  reported modules (plus with_vintf, already stubbed #242).
+  Fix: 5 new filegroup stubs
+  (activity_manager_procstate_aidl, libpowermanager_aidl,
+  com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt,
+  com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt,
+  com.android.apex.vendor.foo), mirroring the reference form,
+  srcs ["<dummy file>"], public visibility; the 5 dummy source
+  files are created by the prune step (the 3 apex dummies are
+  valid EMPTY ZIPs, same as android.jar in #234 and the cts jar in
+  #238 and the with_vintf apex in #242; the 2 aidl dummies are
+  text placeholders, plainly marked NOT REAL) and guarded with
+  test -f in the prune step + pre-build guard. No sdk_version on
+  any new stub. No prunes. No new projects (still 32). The stub
+  types for the two aidl modules MATCH the upstream types
+  (filegroup); the stub types for the three apex modules
+  deliberately do NOT mirror the upstream prebuilt_apex /
+  apex_test types. The prune-step check and the pre-build guard
+  both verify the new stubs, their type, and the dummy files.
+  DUMMY CHOICE: neither libactivitymanager_aidl nor
+  libpowermanager is in the lights service's closure (the service
+  is defined in the fork at aidl/light/Android.bp with shared_libs
+  libbase, libbinder_ndk, android.hardware.light-V2-ndk ONLY; a
+  fork-wide search finds no libactivitymanager_aidl /
+  libpowermanager reference outside stubs comments - verified
+  live 2026-11-28). The .aidl contents are compiled only if the
+  libraries are built, and they never are for this target.
+  FALLBACKS: if a future round ever builds
+  libactivitymanager_aidl, the stub srcs must become the real
+  ProcessStateEnum.aidl (177 lines, no imports). If a future
+  round ever builds libpowermanager, the stub srcs must become
+  the real 8 AIDL files PLUS the imported parcelables
+  (BatterySaverPolicyConfig, ParcelDuration, PowerSaveState,
+  WorkSource) PLUS the aidl include_dirs
+  frameworks/base/core/java/android/os must exist in the synced
+  tree. Alternatives rejected (recorded in the workflow comment):
+  prune frameworks/native/libs/binder or services/powermanager
+  whole (libbinder is core infrastructure; unknown consumer set);
+  prune ApexTestCases / ApexServiceTestCases (targeted edit of
+  synced system/apex/apexd/Android.bp); un-prune
+  system/apex/tests (re-admits the 84-error family); real-AIDL
+  stub srcs for either aidl module (rejected on the closure proof
+  - contents never compiled); real prebuilt_apex stubs for the
+  sharedlibs pair (needs 4 arch-specific .apex srcs per module
+  that do not exist in the synced tree); preemptively stub the
+  sharedlibs siblings, the other vendorapex siblings, or
+  libactivity_manager_procstate_aidl-cpp (never reported in
+  #6-#246); sync platform/frameworks/base (forbidden);
+  ALLOW_MISSING_DEPENDENCIES (forbidden).
+
+  CACHE NOTE (runs #243/#244/#245/#246): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (1s,
+  sync ~9-10 min) and no Save step is expected to run - #245:
+  Restore 1s MISS, sync 9m20s; no "Cache saved" line; Post
+  Restore step 0s with no expandable content. The next run
+  will also restore-miss and sync ~9-10 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
