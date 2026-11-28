@@ -3467,6 +3467,258 @@ jobs:
           # line in any run); the separate restore+save steps need
           # his word (see the manifest). Expect Restore to miss
           # and sync ~8-12 min on the next run too.
+          # Runs #235/#236/#237/#238 fix: 4 filegroup stubs, no prunes.
+          # Runs #235 (46092762632, 12m52s, stubs push fa627e0, job
+          # 140817223145), #236 (46093204054, 12m29s, manifest push
+          # b84929f, job 140818625730), #237 (46093324787, 12m49s,
+          # README push 652f4f9, job 140819022520) and #238
+          # (46093458977, 12m46s, manual dispatch ~07:00 IST on
+          # commit 652f4f9, job 140819437853) ALL FAILED at Soong
+          # ninja-file generation, on the SAME fix code (head
+          # 652f4f9 — the runs #231/#232/#233/#234 6-filegroup-stub
+          # fix, workflow cfe1950). Steps (#238): Restore 0s, sync
+          # 9m31s, Prune 3s (passed), Build 42s FAILED (exit 1).
+          # #235: Restore 0s, sync 10m48s, Prune 2s, Build 50s
+          # FAILED. #236: Restore 1s, sync 9m55s, Prune 1s, Build
+          # 36s FAILED. #237: Restore 1s, sync 9m05s, Prune 1s,
+          # Build 38s FAILED.
+          # THE #234 FIX HELD COMPLETELY: zero mke2fs_conf /
+          # current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
+          # gcc.sysroot genuine errors in all four runs. The #230
+          # fix HELD too (zero avb_testkey_rsa4096 / _hal genuine
+          # errors) and the #226 fix HELD (zero
+          # aosp_shared_system_image / libcompiler_rt /
+          # update_engine_sideload genuine errors).
+          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
+          # phase, FIFTH WAVE of the same phase as #230/#234. Whole
+          # raw logs (only "error: ... depends on undefined module
+          # ..." lines counted, "#" echoes and "Or did you mean"
+          # excluded): #235: 2 genuine lines, 1 module. #236: 8
+          # genuine lines, 3 modules. #237: 6 genuine lines, 1
+          # module. #238: 4 genuine lines, 1 module. UNION: 4
+          # distinct new modules, 20 genuine lines total — ALL
+          # referenced filegroup-style (data: [":<module>"]) by
+          # TEST modules.
+          #   error: build/make/ci/Android.bp:20:1:
+          #   "build_test_suites_test" depends on undefined module
+          #   "py3-cmd". (in #235 only)
+          #   error: build/make/ci/Android.bp:74:1:
+          #   "optimized_targets_test" depends on undefined module
+          #   "py3-cmd". (in #235 only)
+          #   error: system/core/fs_mgr/libfs_avb/Android.bp:103:1:
+          #   "libfs_avb_test" depends on undefined module
+          #   "avbtool". (in #236 only)
+          #   error: system/core/fs_mgr/libfs_avb/Android.bp:103:1:
+          #   "libfs_avb_test" depends on undefined module "fec".
+          #   (in #236 only)
+          #   error: system/core/fs_mgr/libfs_avb/Android.bp:125:1:
+          #   "libfs_avb_internal_test" depends on undefined module
+          #   "avbtool". (in #236 only)
+          #   error: system/core/fs_mgr/libfs_avb/Android.bp:125:1:
+          #   "libfs_avb_internal_test" depends on undefined module
+          #   "fec". (in #236 only)
+          #   error: system/tools/aidl/Android.bp:793:1:
+          #   "aidl_test_java_client_sdk29" depends on undefined
+          #   module "cts-dalvik-device-test-runner". (in
+          #   #236/#237/#238)
+          #   error: system/tools/aidl/Android.bp:805:1:
+          #   "aidl_test_java_service_sdk29" depends on undefined
+          #   module "cts-dalvik-device-test-runner". (in
+          #   #236/#237/#238)
+          #   error: system/tools/aidl/Android.bp:817:1:
+          #   "aidl_test_java_client_sdk1" depends on undefined
+          #   module "cts-dalvik-device-test-runner". (in
+          #   #236/#237/#238)
+          #   error: system/tools/aidl/Android.bp:829:1:
+          #   "aidl_test_java_service_sdk1" depends on undefined
+          #   module "cts-dalvik-device-test-runner". (in
+          #   #236/#237/#238)
+          #   error: system/tools/aidl/Android.bp:841:1:
+          #   "aidl_test_java_client_permission" depends on
+          #   undefined module "cts-dalvik-device-test-runner".
+          #   (in #237 only)
+          #   error: system/tools/aidl/Android.bp:857:1:
+          #   "aidl_test_java_service_permission" depends on
+          #   undefined module "cts-dalvik-device-test-runner".
+          #   (in #237 only)
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in all four runs (only "#"
+          # comment lines). Same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
+          # #234.
+          # MECHANISM — PHASE MASKING, fifth wave (why this layer
+          # appeared only now): all four modules are referenced via
+          # data: [":<module>"] by TEST modules (2 python_test_host,
+          # 2 cc_test_host, 8 java_test) — the same filegroup-srcs /
+          # property-dep phase as #230/#234, resolving LATER than
+          # the filesystem Deps phase. The #234 wave (apexer/gcc)
+          # and this wave never co-occur in one run's genuine set.
+          # SUBSET VARIATION, BOTH DIRECTIONS (again): #235
+          # reports py3-cmd only and zero cts-dalvik lines; #236 is
+          # the ONLY run reporting avbtool/fec; #237 and #238 are on
+          # the IDENTICAL commit 652f4f9 yet report 6 vs 4
+          # cts-dalvik lines (the two *_permission consumers appear
+          # in #237 and vanish in #238). Fix the UNION across
+          # siblings; never treat absence in the latest run as proof
+          # a module is fixed. Same lesson as #185/#202/#223/#226/
+          # #230/#234.
+          # ROOT CAUSE 1 — cts-dalvik-device-test-runner: upstream
+          # it is a java_test_helper_library in unsynced
+          # platform/cts (tests/jdwp/runner/device-side/Android.bp:
+          # 19-33, AOSP android-15.0.0_r32: srcs ["src/**/*.java"],
+          # static_libs ["junit"], installable true, no visibility).
+          # LineageOS has no lineage-22.x branch of android_cts
+          # (newest lineage-20.0), so AOSP r32 is the operative
+          # upstream. Consumers: ALL EIGHT java_test modules in
+          # system/tools/aidl/Android.bp, via data: through
+          # aidl_test_java_sdkversion_defaults (static_libs
+          # androidx.test.core + androidx.test.runner, both already
+          # stubbed as java_library). The aidl + aidl-cpp host
+          # binaries live in the same file, so the dir cannot be
+          # pruned whole. The only other consumer anywhere is
+          # CtsJdwpTestCases (same unsynced project, not in our
+          # tree). Dep closure: the module is the ONLY undefined
+          # dep of all eight java_test modules.
+          # ROOT CAUSE 2 — py3-cmd: the prebuilt python interpreter
+          # (prebuilts/build-tools/linux-x86/bin/py3-cmd); the
+          # Soong module definition was NOT located after bounded
+          # search (whole synced tree: zero definitions;
+          # prebuilts/build-tools/Android.bp at r32, read in full,
+          # defines py3-launcher* but not py3-cmd; grep.app AOSP
+          # mirrors: consumer refs only) — recorded honestly, same
+          # class as libprotoutil (#186) / libtestUtil (#202). The
+          # fix does not depend on the upstream type: the consumer
+          # reference is filegroup-style (data: [":py3-cmd"]).
+          # Consumers: python_test_host build_test_suites_test
+          # (build/make/ci/Android.bp:20) + optimized_targets_test
+          # (:74). A genrule tools: reference in
+          # build/soong/genrule/Android.bp:42,48 never errors (the
+          # bundletool class — tools: deps do not surface at ninja
+          # generation). Dep closure: #235 reported ONLY py3-cmd for
+          # both modules (pyfakefs, a libs: dep with no definition
+          # anywhere, never errors either — python libs: edges do
+          # not surface).
+          # ROOT CAUSE 3 — avbtool: upstream it is a
+          # python_binary_host in unsynced external/avb
+          # (Android.bp:274-296, AOSP android-15.0.0_r32: srcs
+          # ["avbtool.py"], main "avbtool.py", required ["fec"],
+          # py3 embedded launcher). Consumers: cc_test_host
+          # libfs_avb_test (system/core/fs_mgr/libfs_avb/Android.bp:
+          # 103) + libfs_avb_internal_test (:125), via data:
+          # [":avbtool", ":fec"], plus required: ["avbtool"] in
+          # libfs_avb_host_test_defaults (:66) and a third,
+          # not-yet-surfaced consumer, python_test_host
+          # apex_compression_test (system/apex/tools/Android.bp).
+          # Upstream avbtool itself requires fec — the two travel
+          # together, which is why #236 reports both. Dep closure:
+          # #236 reported ONLY avbtool + fec for both tests.
+          # ROOT CAUSE 4 — fec: the FEC tool binary (fec.c in
+          # external/fec); the Soong module definition was NOT
+          # located after bounded search (external/fec/Android.bp
+          # at r32 defines ONLY libfec_rs; system/extras/verity/
+          # Android.bp at r32 defines no fec; system/extras/
+          # vbmeta_tools holds only vbmake; whole synced tree: zero
+          # definitions; grep.app: zero "name: fec" hits) — same
+          # honest class as py3-cmd above. Consumers: the same two
+          # libfs_avb cc_test_host modules, via data: [":fec"].
+          # FIX — STUB all 4 as filegroups in yuzora-stubs/Android.bp,
+          # srcs ["<dummy file>"] (relative to the stubs dir),
+          # public visibility, same precedent as the #230/#234
+          # filegroup stubs. The 4 dummy source files are created by
+          # the prune step (the cts jar is a valid EMPTY ZIP, same
+          # as android.jar in #234; py3-cmd, avbtool and fec are
+          # text placeholders, plainly marked NOT REAL) and guarded
+          # with test -f in the prune step + pre-build guard. No
+          # sdk_version on any new stub: filegroups do not take one
+          # (the aidl consumers set only min_sdk_version, which does
+          # not demand an sdk variant per #159/#161). The stub type
+          # is deliberately NOT the upstream type (java_test_helper_
+          # library / python_binary_host would drag in junit and
+          # toolchain expectations for zero benefit — same class as
+          # framework-cppstream-protos, upstream gensrcs → genrule
+          # stub, #202).
+          # DEP-CLOSURE VERIFIED: all eight aidl java_test modules
+          # have no other undefined dep; both ci python_test_host
+          # modules have no other reported dep; both libfs_avb
+          # cc_test_host modules have no other reported dep. The
+          # required: ["avbtool"] edge is satisfied by the stub's
+          # existence in the graph; run #239 is the test of that
+          # assumption (flagged, not blocking).
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # prune the eight aidl java_test blocks (eight
+          # sed-deletes in a load-bearing file that also defines the
+          # aidl host binary — far more invasive than one stub, and
+          # the four non-sdk modules would need deleting too);
+          # prune system/tools/aidl whole (kills the aidl binary);
+          # prune build/make/ci whole (build-system dir; also
+          # defines build_test_suites_lib, ci_test_lib and the
+          # build_test_suites binary); prune system/core/fs_mgr/
+          # libfs_avb whole (libfs_avb is referenced by in-graph
+          # modules outside the dir — system/core/fs_mgr/Android.bp
+          # :91,:95 and system/core/init/Android.bp:370 — pruning
+          # would CREATE new errors); sed-delete the consumer data:
+          # lists (consumer-side edits drift against upstream —
+          # every round stubs the missing module instead); stub
+          # cts-dalvik as java_test_helper_library / avbtool as
+          # python_binary_host (drags in junit/toolchain chains for
+          # zero benefit). Sync platform/cts / external/avb /
+          # external/fec / system/extras (FORBIDDEN);
+          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN).
+          # WATCH ITEMS (not implemented): if a future round fails
+          # PAST Soong at compile/link and the trace shows a test
+          # tool actually running, the dummy filegroup contents may
+          # need to become real files (same form as #182/#186/#234).
+          # The required: ["avbtool"] edge against a filegroup stub
+          # is untested by any previous round — run #239 is the
+          # test. apex_compression_test (system/apex/tools) never
+          # surfaced; if it does, its other data: deps
+          # (conv_apex_manifest, apex_compression_tool, deapexer,
+          # soong_zip) may surface with it — watch list only.
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #238 — do NOT stub unless a raw log reports one):
+          # pyfakefs (a libs: dep of both ci tests, no definition
+          # anywhere, yet never reported — python libs: edges do
+          # not surface); conv_apex_manifest, apex_compression_tool,
+          # deapexer, soong_zip, com.android.example.apex (data deps
+          # of apex_compression_test, never reported);
+          # cts-dalvik-host-test-runner (only host_required by
+          # CtsJdwpTestCases, never referenced by any aidl module);
+          # bundletool (tools: list, no definition, never reported);
+          # stdlib_prebuilts (resolves in-tree),
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as
+          # cc_library_static — a different module from -main),
+          # libcharger_sysprop (phantom), android.hardware.
+          # fastboot@1.0, android.hardware.boot@1.2,
+          # libLibGuiProperties, libcom.android.sysprop.apex,
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). REMOVED from the
+          # never-reported list this round: cts-dalvik-device-test-
+          # runner + py3-cmd + avbtool + fec (reported in #235–#238,
+          # now stubbed). libjnigraphics was reported in #224–#227
+          # (via aosp_shared_system_image) but is NOT stubbed —
+          # covered by the #226 disable. android.hidl.base@1.0_hal
+          # was reported in #228 but is NOT stubbed — covered by the
+          # c2hal/test prune.
+          # FIRST-EVER reported: the first test-data wave (all four
+          # modules referenced via data: by test modules), the first
+          # python_test_host consumers, the first java_test
+          # consumers, the first upstream java_test_helper_library
+          # and python_binary_host, the first round with TWO modules
+          # whose upstream definition could not be located
+          # (py3-cmd, fec), the first required: edge pointing at a
+          # stubbed module (avbtool).
+          # CACHE NOTE (runs #235/#236/#237/#238): Restore is
+          # expected to miss (0-1s, sync ~9-11 min) and no Save
+          # step is expected — save-always still does not save
+          # (#238: Restore 0s MISS, sync 9m31s; #235: Restore 0s
+          # MISS, sync 10m48s; #236: Restore 1s MISS, sync 9m55s;
+          # #237: Restore 1s MISS, sync 9m05s; no "Cache saved"
+          # line in any run); the separate restore+save steps need
+          # his word (see the manifest). Expect Restore to miss
+          # and sync ~9-11 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4027,6 +4279,30 @@ jobs:
           NOT A REAL FILE - dummy source for the gcc.sysroot filegroup stub (runs #231/#232/#233/#234 fix).
           EOF
           test -f yuzora-stubs/gcc.sysroot || { echo "::error::stub source missing after creation: yuzora-stubs/gcc.sysroot"; exit 1; }
+          # Runs #235/#236/#237/#238 fix: dummy source files for
+          # the 4 new filegroup stubs above. All plainly marked NOT
+          # REAL — the lights HAL build never runs any of the test
+          # tools (none of the 4 stubs' consumers is in the lights
+          # service's closure); the files only have to exist for
+          # the filegroups' Srcs(). The cts-dalvik jar dummy is a
+          # valid EMPTY ZIP (a jar is a zip — cheap insurance if a
+          # test tool is ever built). Same heredoc style as the
+          # testkey_rsa4096.pem above; python3 is already used in
+          # this workflow (manifest ET.parse check).
+          python3 -c "import zipfile; zipfile.ZipFile('yuzora-stubs/cts-dalvik-device-test-runner.jar', 'w').close()" || { echo "::error::stub source creation failed: yuzora-stubs/cts-dalvik-device-test-runner.jar"; exit 1; }
+          test -f yuzora-stubs/cts-dalvik-device-test-runner.jar || { echo "::error::stub source missing after creation: yuzora-stubs/cts-dalvik-device-test-runner.jar"; exit 1; }
+          cat > yuzora-stubs/py3-cmd <<'EOF'
+          NOT A REAL FILE - dummy source for the py3-cmd filegroup stub (runs #235/#236/#237/#238 fix).
+          EOF
+          test -f yuzora-stubs/py3-cmd || { echo "::error::stub source missing after creation: yuzora-stubs/py3-cmd"; exit 1; }
+          cat > yuzora-stubs/avbtool <<'EOF'
+          NOT A REAL FILE - dummy source for the avbtool filegroup stub (runs #235/#236/#237/#238 fix).
+          EOF
+          test -f yuzora-stubs/avbtool || { echo "::error::stub source missing after creation: yuzora-stubs/avbtool"; exit 1; }
+          cat > yuzora-stubs/fec <<'EOF'
+          NOT A REAL FILE - dummy source for the fec filegroup stub (runs #235/#236/#237/#238 fix).
+          EOF
+          test -f yuzora-stubs/fec || { echo "::error::stub source missing after creation: yuzora-stubs/fec"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -4711,6 +4987,21 @@ jobs:
             { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a filegroup"; exit 1; }
           done
           echo "runs #231/#232/#233/#234 stubs created: 6 filegroup stubs (mke2fs_conf + current_android_jar + gcc.lib + gcc.lib32 + gcc.lib64 + gcc.sysroot); no prunes this round."
+          # Runs #235/#236/#237/#238 fix: verify the 4 new
+          # filegroup stubs are present in yuzora-stubs/Android.bp
+          # (same `name: "..."` grep form as the #234 loop above).
+          for stub in cts-dalvik-device-test-runner py3-cmd avbtool fec; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #235/#236/#237/#238 fix: the 4 new stubs must be
+          # filegroups (same SIGPIPE-safe wrapped form as the #234
+          # loop above — see EDIT R in the #210 round: the bare
+          # producer | consumer form fails spuriously under pipefail
+          # when the producer dies of SIGPIPE, run #208).
+          for stub in cts-dalvik-device-test-runner py3-cmd avbtool fec; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a filegroup"; exit 1; }
+          done
+          echo "runs #235/#236/#237/#238 stubs created: 4 filegroup stubs (cts-dalvik-device-test-runner + py3-cmd + avbtool + fec); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -4981,6 +5272,15 @@ jobs:
           # Runs #231/#232/#233/#234 fix: the android.jar dummy
           # must still be a valid zip at build time.
           python3 -c "import zipfile, sys; sys.exit(0 if zipfile.is_zipfile('yuzora-stubs/android.jar') else 1)" || { echo "::error::pre-build guard: stub source is not a valid zip at build time: yuzora-stubs/android.jar"; exit 1; }
+          # Runs #235/#236/#237/#238 fix: the 4 dummy source
+          # files for the new filegroup stubs must exist at build
+          # time.
+          for f in yuzora-stubs/cts-dalvik-device-test-runner.jar yuzora-stubs/py3-cmd yuzora-stubs/avbtool yuzora-stubs/fec; do
+            test -f "$f" || { echo "::error::pre-build guard: stub source missing at build time: $f"; exit 1; }
+          done
+          # Runs #235/#236/#237/#238 fix: the cts-dalvik jar dummy
+          # must still be a valid zip at build time.
+          python3 -c "import zipfile, sys; sys.exit(0 if zipfile.is_zipfile('yuzora-stubs/cts-dalvik-device-test-runner.jar') else 1)" || { echo "::error::pre-build guard: stub source is not a valid zip at build time: yuzora-stubs/cts-dalvik-device-test-runner.jar"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -5415,6 +5715,18 @@ jobs:
           # filegroups at build time (same wrapped check as the
           # prune step above).
           for stub in mke2fs_conf current_android_jar gcc.lib gcc.lib32 gcc.lib64 gcc.sysroot; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a filegroup"; exit 1; }
+          done
+          # Runs #235/#236/#237/#238 fix: the 4 new filegroup
+          # stubs must be present at build time (same `name: "..."`
+          # grep form as above).
+          for stub in cts-dalvik-device-test-runner py3-cmd avbtool fec; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #235/#236/#237/#238 fix: the 4 new stubs must be
+          # filegroups at build time (same wrapped check as the
+          # prune step above).
+          for stub in cts-dalvik-device-test-runner py3-cmd avbtool fec; do
             { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a filegroup"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
