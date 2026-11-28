@@ -6293,3 +6293,119 @@ filegroup {
         "//visibility:public",
     ],
 }
+
+// Runs #247/#248/#249/#250 fix: 6 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// sample_prebuilt_file is a prebuilt_etc upstream in the pruned
+// system/apex/tests dir, with a single src that is itself an empty
+// file. Its stub src is an empty file created by the prune step,
+// exactly matching upstream. The stub type matches the upstream
+// type: name plus src only, no installable flag, no availability
+// list, since upstream builds with exactly that shape.
+// The five CtsShim modules are android_app modules upstream in
+// unsynced platform/frameworks/base, each with a real manifest and
+// a current SDK version. Their stubs mirror the proven
+// framework-res template from runs #96/#97/#98 instead: a shared
+// empty Java source plus the dummy manifest already created by the
+// prune step, no SDK version, no system modules, no resource
+// processing. Each stub also carries the availability list copied
+// verbatim from its upstream definition, naming only apex modules
+// that exist in the synced tree plus the built-in platform target.
+// All six stubs have public visibility. The shim apexes never
+// build for the lights target, so only the names plus the module
+// types have to exist for the build graph at ninja generation.
+prebuilt_etc {
+    name: "sample_prebuilt_file",
+    srcs: ["sample_prebuilt_file"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app {
+    name: "CtsShim",
+    srcs: ["Empty.java"],
+    manifest: "AndroidManifest.xml",
+    sdk_version: "none",
+    system_modules: "none",
+    use_resource_processor: false,
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.apex.cts.shim.v1",
+        "com.android.apex.cts.shim.v2",
+        "com.android.apex.cts.shim.v2_apk_in_apex_upgrades",
+        "com.android.apex.cts.shim.v2_legacy",
+        "com.android.apex.cts.shim.v2_sdk_target_p",
+        "com.android.apex.cts.shim.v2_unsigned_payload",
+        "com.android.apex.cts.shim.v3",
+    ],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app {
+    name: "CtsShimAddApkToApex",
+    srcs: ["Empty.java"],
+    manifest: "AndroidManifest.xml",
+    sdk_version: "none",
+    system_modules: "none",
+    use_resource_processor: false,
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.apex.cts.shim.v2_add_apk_to_apex",
+    ],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app {
+    name: "CtsShimPriv",
+    srcs: ["Empty.java"],
+    manifest: "AndroidManifest.xml",
+    sdk_version: "none",
+    system_modules: "none",
+    use_resource_processor: false,
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.apex.cts.shim.v1",
+        "com.android.apex.cts.shim.v2",
+        "com.android.apex.cts.shim.v2_apk_in_apex_upgrades",
+        "com.android.apex.cts.shim.v2_legacy",
+        "com.android.apex.cts.shim.v2_sdk_target_p",
+        "com.android.apex.cts.shim.v2_unsigned_payload",
+        "com.android.apex.cts.shim.v3",
+    ],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app {
+    name: "CtsShimPrivUpgrade",
+    srcs: ["Empty.java"],
+    manifest: "AndroidManifest.xml",
+    sdk_version: "none",
+    system_modules: "none",
+    use_resource_processor: false,
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.apex.cts.shim.v2_apk_in_apex_upgrades",
+    ],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app {
+    name: "CtsShimTargetPSdk",
+    srcs: ["Empty.java"],
+    manifest: "AndroidManifest.xml",
+    sdk_version: "none",
+    system_modules: "none",
+    use_resource_processor: false,
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.apex.cts.shim.v2_apk_in_apex_sdk_target_p",
+    ],
+    visibility: [
+        "//visibility:public",
+    ],
+}
