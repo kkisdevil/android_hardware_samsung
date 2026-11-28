@@ -3607,6 +3607,250 @@ jobs:
           # Post Restore step skipped); the separate restore+save
           # steps need his word (see the manifest). Expect Restore
           # to miss and sync ~10 min on the next run too.
+          # Runs #263/#264/#265/#266 fix: 2 stubs (cc_binary_host stats-log-api-gen + aprotoc), 2 dummy files, no prunes.
+          # Runs #263 (46131364832, stubs push fa2aa8d, 13m32s, job
+          # 140937017791), #264 (46131558085, manifest push 671bfef,
+          # 13m32s, job 140937623539), #265 (46131645140, README push
+          # 7802370, 12m51s, job 140937895080) and #266 (46131717349,
+          # manual dispatch ~15:12 IST 2026-11-28 on commit 7802370,
+          # 15m02s, job 140938120772) ALL FAILED at Soong ninja-file
+          # generation, on the SAME fix code (head 7802370 — the
+          # runs #259/#260/#261/#262 1-stub fix, workflow 073f12d).
+          # Steps (#266, live run page): Restore 0s MISS, sync
+          # 11m27s, Prune passed, Build 1m00s FAILED (exit 1),
+          # Verify / Disk usage / Upload 0s (no artifact). #265:
+          # job 12m47s. #264: job 13m28s. #263: job 13m29s. #263
+          # tests the stubs commit only, with the OLD workflow
+          # (b25967b — no cxxbridge dummy creation); #264/#265
+          # test the full #262 fix code; #266 (manual dispatch)
+          # is the primary. Commit 073f12d (workflow push) got NO
+          # separate run: the runs list shows #263 = fa2aa8d
+          # immediately followed by #264 = 671bfef, consecutive
+          # run numbers leaving no slot for 073f12d; 671bfef's
+          # parent is 073f12d, so 073f12d's workflow code was first
+          # exercised by #264 (likely one push — inference, not
+          # verified from the UI). Same pattern as b25967b in the
+          # #262 round and f3ce109 in the #258 round.
+          # THE #262 FIX HELD COMPLETELY: zero cxxbridge errors
+          # in #263, #264, #265 AND #266 ("cxxbridge" 0/0 in every
+          # job) — the FIRST rust_binary_host stub for a genrule
+          # tools: edge is now PROVEN end to end. The #258 fix
+          # HELD too (zero apex_available "not a valid module
+          # name" errors) and the #254 / #250 / #246 / #242 /
+          # #238 / #234 / #230 / #226 fixes HELD too.
+          # NEW FAILURE LAYER — genrule tools: host-tool edge,
+          # TWELFTH WAVE of the same phase as
+          # #230/#234/#238/#242/#246/#250/#254/#258/#262, and the
+          # SAME FAILURE CLASS as #262 (a missing HOST TOOL, not
+          # an undefined module in the usual dep sense). Raw job
+          # logs (only lines starting "error:" counted, "#"
+          # echoes and "Or did you mean" excluded): EVERY run
+          # reports EXACTLY the same 9 lines — NO subset
+          # variation this round, the fourth round in a row with
+          # zero subset variation (after #251–#254, #255–#258
+          # and #259–#262; contrast #250: 37/26/23/5). Only the
+          # ORDER varies. UNION: 2 distinct new modules, 36
+          # genuine lines total (9 + 9 + 9 + 9).
+          #   error: frameworks/native/libs/input/Android.bp:
+          #   348:1: "statslog_libinput.h" depends on undefined
+          #   module "stats-log-api-gen".
+          #   error: frameworks/native/libs/input/Android.bp:
+          #   358:1: "statslog_libinput.cpp" depends on undefined
+          #   module "stats-log-api-gen".
+          #   error: frameworks/native/services/surfaceflinger/
+          #   Android.bp:370:1: "statslog_surfaceflinger.h"
+          #   depends on undefined module "stats-log-api-gen".
+          #   error: frameworks/native/services/surfaceflinger/
+          #   Android.bp:380:1: "statslog_surfaceflinger.cpp"
+          #   depends on undefined module "stats-log-api-gen".
+          #   error: system/core/libstats/expresslog/Android.bp:
+          #   58:1: "statslog_express.h" depends on undefined
+          #   module "stats-log-api-gen".
+          #   error: system/core/libstats/expresslog/Android.bp:
+          #   67:1: "statslog_express.cpp" depends on undefined
+          #   module "stats-log-api-gen".
+          #   error: system/apex/apexd/Android.bp:729:1:
+          #   "statslog_apex.h" depends on undefined module
+          #   "stats-log-api-gen".
+          #   error: system/apex/apexd/Android.bp:738:1:
+          #   "statslog_apex.cpp" depends on undefined module
+          #   "stats-log-api-gen".
+          #   error: build/make/backported_fixes/Android.bp:
+          #   100:1: "applied_backported_fix_binpbs" depends on
+          #   undefined module "aprotoc".
+          #   (#266 log lines 992–1008; #263 lines 979–995;
+          #   #264/#265 lines 992–1008.) GitHub log search per
+          #   job: "undefined module" 9/9, "stats-log-api-gen"
+          #   8/8, "aprotoc" 1/1, "not a valid module name" 0/0,
+          #   "cxxbridge" 0/0, in every run. The two warnings
+          #   (missing completion file for adb.bash / asuite.sh,
+          #   log lines 818–819) are minor and unrelated. The
+          #   "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          #   again: zero genuine errors in #263–#266 (only "#"
+          #   comment lines). Same class as
+          #   #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/
+          #   #210/#214/#218/#222/#226/#230/#234/#238/#242/#246/
+          #   #250/#254/#258/#262. Raw-log archive could not be
+          #   downloaded (API logs endpoint 403 rate-limit / not
+          #   accessible); the counts are from the GitHub log
+          #   viewer — but the line SET is identical across four
+          #   independent runs, so the verbatim text is solid.
+          # MECHANISM — PHASE MASKING, twelfth wave: the
+          # cxxbridge errors of wave #262 masked this check —
+          # the genrule tool-dep validation failed before (or
+          # instead of) these nine genrules being reached. With
+          # cxxbridge now defined, the next missing host tools
+          # surface. Same "new layer each round" pattern as
+          # every wave since #174.
+          # ROOT CAUSE 1 — stats-log-api-gen: upstream it is the
+          # StatsD log-API codegen host tool: a command-line
+          # binary that reads the statslog proto/atoms and emits
+          # the C++ header/source. All eight reporting modules
+          # are genrules in SYNCED projects (LineageOS
+          # lineage-22.2), each with tools: ["stats-log-api-gen"]
+          # and cmd "$(location stats-log-api-gen) --header/--cpp
+          # ..." — verified against the local upstream copies:
+          # frameworks/native/libs/input/Android.bp
+          # (statslog_libinput.h/.cpp), services/surfaceflinger/
+          # Android.bp (statslog_surfaceflinger.h/.cpp),
+          # system/core/libstats/expresslog/Android.bp
+          # (statslog_express.h/.cpp) and system/apex/apexd/
+          # Android.bp (statslog_apex.h/.cpp). The tool is
+          # defined upstream in frameworks/proto_logging/stats/
+          # stats_log_api_gen/Android.bp (android-15.0.0_r32,
+          # lines 17–80) as cc_binary_host — verified by browser
+          # fetch of the canonical Googlesource file at that tag.
+          # (NOT in packages/modules/StatsD/lib/libstats — that
+          # path does not exist at r32; the tool moved to
+          # frameworks/proto_logging. The LineageOS GitHub
+          # mirrors do not carry these trees at lineage-22.2 at
+          # all; the lineage manifest fetches them from AOSP at
+          # android-15.0.0_r32.)
+          # ROOT CAUSE 2 — aprotoc: upstream it is the host
+          # protobuf compiler. The one reporting module is a
+          # gensrcs (a genrule subclass) in SYNCED build/make:
+          # backported_fixes/Android.bp
+          # (applied_backported_fix_binpbs), with tools:
+          # ["aprotoc"] and cmd "$(location aprotoc)
+          # --encode=...". Upstream it is defined in
+          # external/protobuf/Android.bp (android-15.0.0_r32,
+          # lines 397–431) as cc_binary_host, srcs
+          # src/google/protobuf/compiler/main.cc, stl
+          # "libc++_static" — verified by browser fetch of both
+          # Googlesource and the aosp-mirror copy at that tag.
+          # Both defining projects (frameworks/proto_logging,
+          # external/protobuf) are UNSYNCED — NOT among the 32
+          # manifest projects; never sync them.
+          # TYPE REQUIREMENT — the SAME conclusion as #262, from
+          # the same method (read the Soong side first, then the
+          # upstream type): Soong build/soong/genrule/genrule.go
+          # hard-requires a tools: dep to be a host tool
+          # (toolDepsMutator, hostToolDependencyTag;
+          # generateCommonBuildActions: "X" is not a host tool
+          # provider / host tool "X" missing output file — see
+          # the #262 block above for the line numbers). A
+          # filegroup stub FAILS the first check; a cc_library
+          # stub FAILS the second (no host tool output); a
+          # device-only cc_binary is not a host module. The
+          # cc-side HostToolPath implementation was NOT fetched
+          # verbatim this round (no local Soong mirror) — but
+          # the stub type does NOT depend on that fetch: both
+          # tools ARE consumed as genrule tools upstream, and
+          # their upstream definitions ARE cc_binary_host, so a
+          # cc_binary_host stub satisfies the edge by
+          # construction. The stubs MUST be cc_binary_host —
+          # the exact upstream type of both binaries.
+          # FIX — STUB stats-log-api-gen + aprotoc in
+          # yuzora-stubs/Android.bp as cc_binary_host, srcs
+          # [stats_log_api_gen_main.cc] / [aprotoc_main.cc],
+          # aprotoc with stl "libc++_static" (mirrors upstream
+          # exactly — aprotoc pins static libc++ because the
+          # binary is copied to unbundled projects), public
+          # visibility. The prune step creates the dummy main
+          # sources (valid `int main() { return 0; }` — valid
+          # C++ if ever compiled, compile-verified locally with
+          # g++ in validation). The dummy binaries are never
+          # built or run: the nine genrules/gensrcs are NOT in
+          # the lights HAL target closure (libinput /
+          # surfaceflinger / apexd / libstatslog expresslog /
+          # backported_fixes are not deps of
+          # android.hardware.light-service.samsung), so the stubs
+          # only have to exist with a valid host-tool output path
+          # for Soong's graph validation. The prune-step check and
+          # the pre-build guard both verify the new stubs, their
+          # type, and the dummy files. No sdk_version on the stubs
+          # (binaries do not take one); no new projects (still
+          # 32); no prunes. EMPIRICAL PROOF of the inert-stub
+          # logic, from run #263: it used the OLD workflow
+          # (b25967b), which never created cxxbridge_main.rs, yet
+          # showed ZERO cxxbridge errors — Soong graph validation
+          # needs the module to exist with a valid host-tool
+          # output path; a missing src file does not fail
+          # bootstrap (the binary is never built).
+          # OPEN QUESTIONS (recorded honestly, NOT blockers): (1)
+          # log positions Android.bp:348:1 / :358:1 / :370:1 /
+          # :380:1 / :58:1 / :67:1 / :729:1 / :738:1 / :100:1 vs
+          # the local copies, which render the same genrules at
+          # displayed lines 350/360, 372/382, 60/69, 731/740 —
+          # the same fetch line-number inflation seen in #258 and
+          # #262 (and every round); module names, property
+          # (tools:) and value match exactly. (2) the cc_binary_
+          # host stub substitution for a genrule tools: edge is
+          # unproven in the narrow sense (no prior round stubbed
+          # a cc host binary) — but unlike the #246/#250 honest
+          # limits, this one is CODE-PROVEN at the check level
+          # (genrule.go requires a HostToolProvider with a valid
+          # HostToolPath, and the upstream definitions show both
+          # tools ARE cc_binary_host modules consumed exactly
+          # this way).
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # filegroup stub for either tool (fails the
+          # HostToolProvider check — "X" is not a host tool
+          # provider); cc_library stub (fails the HostToolPath
+          # check — host tool missing output file); rust_library
+          # stub (same failure); device-only cc_binary (not a
+          # host module — the tool dep resolves in the host
+          # variation); prune the five consumer dirs (the
+          # genrules are referenced by the same-file cc_library /
+          # cc_library_static modules as generated_headers /
+          # generated_sources, so pruning would leave dangling
+          # references); sync frameworks/proto_logging /
+          # external/protobuf (FORBIDDEN); ALLOW_MISSING_
+          # DEPENDENCIES (FORBIDDEN); preemptively stub other
+          # tools: names (stub ONLY what a raw log reports).
+          # WATCH ITEMS (not implemented): (1) other tools: names
+          # that may surface once their genrules are reached (same
+          # host-binary reasoning if reported — stub ONLY what a
+          # raw log reports). (2) the #262 watch items (other
+          # apex_available names — same filegroup fix if reported;
+          # the vendorapex siblings; CtsShimPrivUpgradeWrongSHA;
+          # sharedlibs siblings). (3) carried: the #258 / #254 /
+          # #250 / #246 / #242 watch items (see the #262 block
+          # above). (4) if a future round fails past Soong at
+          # compile/link with a host toolchain actually running,
+          # dummy gcc filegroup contents may need to become real
+          # libgcc/sysroot files (carried from #238).
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #266 — same list as the #262 block above, carried
+          # forward unchanged; no removals this round, since
+          # neither new tool was on that list): see the #262
+          # block above for the full list.
+          # FIRST-EVER reported: the first cc_binary_host stubs;
+          # the first gensrcs consumer (applied_backported_fix_
+          # binpbs); the first round whose fix is two stubs for a
+          # 9-line error set shared identically by four runs; the
+          # first StatsD / protobuf-tool reference in any wave.
+          # NO WORKFLOW COMPACTION THIS ROUND: the workflow is
+          # 437,937 bytes, ~74 KB under the 500 KB limit; the
+          # pointer block says the next compaction compacts
+          # #227–#230 onward the same way.
+          # CACHE NOTE (runs #263/#264/#265/#266): Restore is
+          # expected to miss (0s, sync ~10 min) and no Save step is
+          # expected — save-always still does not save (#266:
+          # Restore 0s MISS, sync 11m27s; no "Cache saved" line;
+          # Post Restore step skipped); the separate restore+save
+          # steps need his word (see the manifest). Expect Restore
+          # to miss and sync ~10 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4285,6 +4529,15 @@ jobs:
           # genrules are not in the lights target closure).
           printf 'fn main() {}\n' > yuzora-stubs/cxxbridge_main.rs || { echo "::error::stub source creation failed: yuzora-stubs/cxxbridge_main.rs"; exit 1; }
           test -f yuzora-stubs/cxxbridge_main.rs || { echo "::error::stub source missing after creation: yuzora-stubs/cxxbridge_main.rs"; exit 1; }
+          # Runs #263/#264/#265/#266 fix: dummy main sources for
+          # the two host-tool stubs above. Valid C++ entry points
+          # (int main returning 0) — valid if ever compiled,
+          # though the dummy binaries are never built or run (the
+          # nine genrules are not in the lights target closure).
+          printf 'int main() { return 0; }\n' > yuzora-stubs/stats_log_api_gen_main.cc || { echo "::error::stub source creation failed: yuzora-stubs/stats_log_api_gen_main.cc"; exit 1; }
+          test -f yuzora-stubs/stats_log_api_gen_main.cc || { echo "::error::stub source missing after creation: yuzora-stubs/stats_log_api_gen_main.cc"; exit 1; }
+          printf 'int main() { return 0; }\n' > yuzora-stubs/aprotoc_main.cc || { echo "::error::stub source creation failed: yuzora-stubs/aprotoc_main.cc"; exit 1; }
+          test -f yuzora-stubs/aprotoc_main.cc || { echo "::error::stub source missing after creation: yuzora-stubs/aprotoc_main.cc"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -5067,6 +5320,18 @@ jobs:
           # the #258 loop above — see EDIT R in the #210 round).
           { grep -A1 'rust_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "cxxbridge"' || { echo "::error::stub cxxbridge is not a rust_binary_host"; exit 1; }
           echo "runs #259/#260/#261/#262 stub created: 1 rust_binary_host stub (cxxbridge); no prunes this round."
+          # Runs #263/#264/#265/#266 fix: verify the 2 new
+          # stubs are present in yuzora-stubs/Android.bp (same
+          # `name: "..."` grep form as the #262 loop above).
+          for stub in stats-log-api-gen aprotoc; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #263/#264/#265/#266 fix: the two stubs must
+          # be host binaries (same SIGPIPE-safe wrapped form as
+          # the #262 loop above — see EDIT R in the #210 round).
+          { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "stats-log-api-gen"' || { echo "::error::stub stats-log-api-gen is not a cc_binary_host"; exit 1; }
+          { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "aprotoc"' || { echo "::error::stub aprotoc is not a cc_binary_host"; exit 1; }
+          echo "runs #263/#264/#265/#266 stubs created: 2 cc_binary_host stubs (stats-log-api-gen + aprotoc); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5382,6 +5647,10 @@ jobs:
           # Runs #259/#260/#261/#262 fix: the cxxbridge dummy
           # file must exist at build time.
           test -f yuzora-stubs/cxxbridge_main.rs || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/cxxbridge_main.rs"; exit 1; }
+          # Runs #263/#264/#265/#266 fix: the two dummy main
+          # files must exist at build time.
+          test -f yuzora-stubs/stats_log_api_gen_main.cc || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/stats_log_api_gen_main.cc"; exit 1; }
+          test -f yuzora-stubs/aprotoc_main.cc || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/aprotoc_main.cc"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -5903,6 +6172,17 @@ jobs:
           # be a host binary at build time (same wrapped check as
           # the prune step above).
           { grep -A1 'rust_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "cxxbridge"' || { echo "::error::pre-build guard: stub cxxbridge is not a rust_binary_host"; exit 1; }
+          # Runs #263/#264/#265/#266 fix: the 2 new stubs must be
+          # present at build time (same `name: "..."` grep form as
+          # above).
+          for stub in stats-log-api-gen aprotoc; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #263/#264/#265/#266 fix: the two stubs must be
+          # host binaries at build time (same wrapped check as the
+          # prune step above).
+          { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "stats-log-api-gen"' || { echo "::error::pre-build guard: stub stats-log-api-gen is not a cc_binary_host"; exit 1; }
+          { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "aprotoc"' || { echo "::error::pre-build guard: stub aprotoc is not a cc_binary_host"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
