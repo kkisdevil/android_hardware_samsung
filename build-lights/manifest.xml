@@ -4020,6 +4020,132 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #251 (46118202651, stubs push 813be43, 13m25s, job
+  140896638449), #252 (46118430819, manifest push 06e3909, 14m16s,
+  job 140897350032), #253 (46118510868, README push 31e5f5d,
+  14m47s, job 140897588941) and #254 (46118622067, manual dispatch
+  ~12:22 IST 2026-11-28 on commit 31e5f5d, 14m09s, job
+  140897936267). ALL FAILED at Soong ninja-file generation, on the
+  SAME fix code (head 31e5f5d - the runs #247/#248/#249/#250
+  6-stub fix, workflow b26b795). Steps (#254, GitHub API):
+  Restore 0s MISS, sync 10m05s, Prune 4s (passed), Build 50s
+  FAILED (exit 1), Post Restore skipped. #253: Restore 1s, sync
+  10m43s, Build 38s. #252: Restore 0s, sync 10m51s, Build 38s.
+  #251: Restore 0s, sync 9m35s, Build 39s. Commit b26b795
+  (workflow push) got NO separate run (same pattern as f0428ed in
+  the #250 round: #251 = 813be43 immediately followed by #252 =
+  06e3909; b26b795's workflow code was first exercised by #252 -
+  likely one push, inference only).
+  THE #250 FIX HELD COMPLETELY: zero sample_prebuilt_file /
+  CtsShim / CtsShimPriv / CtsShimPrivUpgrade / CtsShimAddApkToApex
+  / CtsShimTargetPSdk genuine errors in #251, #252, #253 AND #254
+  - the FIRST prebuilt_etc stub AND the first android_app stubs
+  for apex apps: edges are now PROVEN. The #246 fix HELD too
+  (zero activity_manager_procstate_aidl / libpowermanager_aidl /
+  sharedlibs_generated prebuilt / vendor.foo genuine errors) and
+  the #242 / #238 / #234 / #230 / #226 fixes HELD too.
+  NEW FAILURE LAYER - the key/certificate-dep phase, NINTH WAVE
+  of the same phase as #230/#234/#238/#242/#246/#250. Raw job
+  logs (only "error: ... depends on undefined module ..." lines
+  counted): EVERY run reports EXACTLY the same 2 lines - NO
+  subset variation this round, the first round with zero subset
+  variation (contrast #250: 37/26/23/5). UNION: 2 distinct new
+  modules, 8 genuine lines total (2 + 2 + 2 + 2):
+  system/apex/libs/libapexsupport/tests/Android.bp:5:1
+  "com.android.libapexsupport.tests" depends on undefined module
+  "com.android.apex.vendor.foo.key" (and the same line with
+  "com.android.apex.vendor.foo.certificate"; #254/#253/#252 log
+  lines 946+948; #251 lines 927+929). The "libcharger_sysprop"
+  lines are a CONFIRMED PHANTOM again (zero genuine errors in
+  #251-#254), same class as #152/#161/#174/#177/#182/#186/#194/
+  #198/#202/#206/#210/#214/#218/#222/#226/#230/#234/#238/#242/
+  #246/#250.
+  MECHANISM - PHASE MASKING, ninth wave: both modules are
+  undefined-module errors at Soong ninja-file generation - the
+  same phase as #230/#234/#238/#242/#246/#250, resolving LATER
+  than the filesystem Deps phase.
+  Root causes, verified: (1) com.android.apex.vendor.foo.key is
+  an apex_key in tests/testdata/vendorapex/Android.bp (LineageOS
+  lineage-22.2, platform/system/apex, verified by raw fetch:
+  public_key "com.android.apex.vendor.foo.avbpubkey",
+  private_key "com.android.apex.vendor.foo.pem"). (2)
+  com.android.apex.vendor.foo.certificate is an
+  android_app_certificate in the SAME file (verified by the same
+  raw fetch: certificate "com.android.apex.vendor.foo"). The
+  project platform/system/apex IS synced, but the workflow
+  prunes system/apex/tests whole (runs #75/#76/#77 fix) - a
+  SELF-INFLICTED prune, the same root-cause class as vendor.foo
+  (#246) and sample_prebuilt_file (#250); un-pruning is not
+  viable (the dir holds the 84-error host-test/tradefed family).
+  Consumer: com.android.libapexsupport.tests, an apex_test in
+  SYNCED system/apex/libs/libapexsupport/tests/Android.bp (key
+  + certificate are its ONLY undefined deps; manifest.json +
+  file_contexts exist upstream, binaries libapexsupport-tests
+  defined in the same file). TYPE REQUIREMENT - a filegroup stub
+  would NOT work here, FIRST TIME: Soong apex/key.go resolves
+  public_key/private_key via ApexKeyDir fallback then
+  PathForModuleSrc (files MUST exist) and errors unless the
+  keynames match; Soong java/app.go requires the certificate:
+  dep to BE an android_app_certificate module and resolves
+  cert+".x509.pem" + cert+".pk8" via PathForModuleSrc (both
+  files MUST exist); apex/apex.go hard-requires the key: dep to
+  be an *apexKey and the certificate: dep to be a
+  *java.AndroidAppCertificate (PropertyErrorf otherwise).
+  Fix: 2 new stubs (com.android.apex.vendor.foo.key as apex_key
+  with the exact upstream filenames; com.android.apex.vendor.foo.
+  certificate as android_app_certificate, name + certificate
+  only), public visibility; the 4 dummy files (avbpubkey + pem
+  dummy text NOT A REAL KEY, x509.pem dummy text, pk8 EMPTY via
+  ": >") are created by the prune step and guarded with test -f
+  in the prune step + pre-build guard. No prunes. No new projects
+  (still 32). The stub types for the two modules are FORCED by
+  Soong source code, not just matched to upstream. The prune-step
+  check and the pre-build guard both verify the new stubs, their
+  types, and the 4 dummy files.
+  OBSERVATION (recorded): run #251 ran on commit 813be43, which
+  predates the workflow commit b26b795, so it ran the OLD
+  workflow f0428ed - yet it reached Soong reporting ONLY the 2
+  key/certificate errors, even though that old workflow never
+  creates the sample_prebuilt_file dummy the new prebuilt_etc
+  stub references. Evidence that prebuilt_etc srcs are resolved
+  LAZILY (a missing src does not error at ninja generation).
+  This does NOT change the fix: the key / certificate files
+  resolve EAGERLY in GenerateAndroidBuildActions (code-verified
+  above), so their 4 dummy files MUST exist - the prune-step
+  creation + guards are required, not optional.
+  NO WORKFLOW COMPACTION THIS ROUND: the workflow is 379,438
+  bytes, ~133 KB under the 500 KB limit; the pointer block says
+  the next compaction compacts #227-#230 onward the same way.
+  DUMMY CHOICE: the apex_test consumer never builds for the
+  lights target; only the NAMES + the apex_key /
+  android_app_certificate types must exist for Soong's key: /
+  certificate: edges at ninja generation, plus the 4 files the
+  type implementations resolve eagerly. Contents are never
+  parsed at Soong time and never used at build time.
+  FALLBACKS: if a future round ever builds the libapexsupport
+  apex_test, the dummy key/cert contents must become real (a
+  real AVB key pair and a real x509/pk8 pair). Alternatives
+  rejected (recorded in the workflow comment): un-prune
+  system/apex/tests (re-admits the 84-error family); prune
+  system/apex/libs/libapexsupport/tests whole (the consumer dir
+  also defines libapexsupport-tests, used by KEPT modules);
+  stub the two modules as filegroups (forbidden by the code -
+  apex.go hard-requires the apex_key /
+  android_app_certificate types); preemptively stub the
+  vendorapex siblings (referenced by nothing in the synced
+  tree; never reported); sync platform/frameworks/base
+  (forbidden); ALLOW_MISSING_DEPENDENCIES (forbidden).
+
+  CACHE NOTE (runs #251/#252/#253/#254): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0s,
+  sync ~10 min) and no Save step is expected to run - #254:
+  Restore 0s MISS, sync 10m05s; no "Cache saved" line; Post
+  Restore step skipped. The next run
+  will also restore-miss and sync ~10 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
