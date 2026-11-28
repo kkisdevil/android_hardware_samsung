@@ -4408,6 +4408,184 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #263 (46131364832, stubs push fa2aa8d, 13m32s, job
+  140937017791), #264 (46131558085, manifest push 671bfef,
+  13m32s, job 140937623539), #265 (46131645140, README push
+  7802370, 12m51s, job 140937895080) and #266 (46131717349,
+  manual dispatch ~15:12 IST 2026-11-28 on commit 7802370,
+  15m02s, job 140938120772). ALL FAILED at Soong ninja-file
+  generation, on the SAME fix code (head 7802370 - the runs
+  #259/#260/#261/#262 1-stub fix, workflow 073f12d). Steps
+  (#266, live run page): Restore 0s MISS, sync 11m27s, Prune
+  passed, Build 1m00s FAILED (exit 1), Verify / Disk usage /
+  Upload 0s (no artifact). #265: job 12m47s. #264: job 13m28s.
+  #263: job 13m29s. #263 tests the stubs commit only, with the
+  OLD workflow (b25967b - no cxxbridge dummy creation); #264/
+  #265 test the full #262 fix code; #266 (manual dispatch) is
+  the primary. Commit 073f12d (workflow push) got NO separate
+  run (same pattern as b25967b in the #262 round: #263 =
+  fa2aa8d immediately followed by #264 = 671bfef; 671bfef's
+  parent is 073f12d, so 073f12d's workflow code was first
+  exercised by #264 - likely one push, inference only).
+  THE #262 FIX HELD COMPLETELY: zero cxxbridge errors in #263,
+  #264, #265 AND #266 ("cxxbridge" 0/0 in every job) - the
+  FIRST rust_binary_host stub for a genrule tools: edge is now
+  PROVEN end to end. The #258 fix HELD too (zero
+  apex_available "not a valid module name" errors) and the #254 /
+  #250 / #246 / #242 / #238 / #234 / #230 / #226 fixes HELD too.
+  NEW FAILURE LAYER - genrule tools: host-tool edge, TWELFTH
+  WAVE of the same phase as #230/#234/#238/#242/#246/#250/#254/
+  #258/#262, and the SAME FAILURE CLASS as #262 (a missing HOST
+  TOOL, not an undefined module in the usual dep sense). Raw job
+  logs (only lines starting "error:" counted): EVERY run reports
+  EXACTLY the same 9 lines - NO subset variation this round, the
+  fourth round in a row with zero subset variation (after
+  #251-#254, #255-#258 and #259-#262; only the ORDER varies).
+  UNION: 2 distinct new modules, 36 genuine lines total (9 + 9 +
+  9 + 9):
+  frameworks/native/libs/input/Android.bp:348:1
+  "statslog_libinput.h" depends on undefined module
+  "stats-log-api-gen"; :358:1 "statslog_libinput.cpp" depends on
+  undefined module "stats-log-api-gen";
+  frameworks/native/services/surfaceflinger/Android.bp:370:1
+  "statslog_surfaceflinger.h" depends on undefined module
+  "stats-log-api-gen"; :380:1 "statslog_surfaceflinger.cpp"
+  depends on undefined module "stats-log-api-gen";
+  system/core/libstats/expresslog/Android.bp:58:1
+  "statslog_express.h" depends on undefined module
+  "stats-log-api-gen"; :67:1 "statslog_express.cpp" depends on
+  undefined module "stats-log-api-gen";
+  system/apex/apexd/Android.bp:729:1 "statslog_apex.h" depends on
+  undefined module "stats-log-api-gen"; :738:1 "statslog_apex.cpp"
+  depends on undefined module "stats-log-api-gen";
+  build/make/backported_fixes/Android.bp:100:1
+  "applied_backported_fix_binpbs" depends on undefined module
+  "aprotoc" (#266 log lines 992-1008; #263 lines 979-995;
+  #264/#265 lines 992-1008). The "libcharger_sysprop" lines are a
+  CONFIRMED PHANTOM again (zero genuine errors in #263-#266),
+  same class as #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/
+  #210/#214/#218/#222/#226/#230/#234/#238/#242/#246/#250/#254/#258/
+  #262. The two warnings (missing completion file for adb.bash /
+  asuite.sh) are minor and unrelated.
+  MECHANISM - PHASE MASKING, twelfth wave: the cxxbridge errors
+  of wave #262 masked this check - the genrule tool-dep
+  validation failed before (or instead of) these nine genrules
+  being reached. With cxxbridge now defined, the next missing
+  host tools surface.
+  Root cause 1, verified: stats-log-api-gen is the StatsD
+  log-API codegen host tool (a command-line binary that reads the
+  statslog proto/atoms and emits the C++ header/source). All
+  eight reporting modules are genrules in SYNCED projects
+  (LineageOS lineage-22.2), each with tools:
+  ["stats-log-api-gen"] and cmd "$(location stats-log-api-gen)
+  in header/cpp form ..." - verified against the local upstream
+  copies: frameworks/native/libs/input/Android.bp
+  (statslog_libinput.h/.cpp), services/surfaceflinger/
+  Android.bp (statslog_surfaceflinger.h/.cpp),
+  system/core/libstats/expresslog/Android.bp
+  (statslog_express.h/.cpp) and system/apex/apexd/Android.bp
+  (statslog_apex.h/.cpp). The tool is defined upstream in
+  frameworks/proto_logging/stats/stats_log_api_gen/Android.bp
+  (android-15.0.0_r32, lines 17-80) as cc_binary_host - verified
+  by browser fetch of the canonical Googlesource file at that
+  tag. (NOT in packages/modules/StatsD/lib/libstats - that path
+  does not exist at r32; the tool moved to
+  frameworks/proto_logging. The LineageOS GitHub mirrors do not
+  carry these trees at lineage-22.2 at all; the lineage manifest
+  fetches them from AOSP at android-15.0.0_r32.)
+  Root cause 2, verified: aprotoc is the host protobuf compiler.
+  The one reporting module is a gensrcs (a genrule subclass) in
+  SYNCED build/make: backported_fixes/Android.bp
+  (applied_backported_fix_binpbs), with tools: ["aprotoc"] and
+  cmd "$(location aprotoc)" with an encode flag. Upstream it is defined
+  in external/protobuf/Android.bp (android-15.0.0_r32, lines
+  397-431) as cc_binary_host, srcs
+  src/google/protobuf/compiler/main.cc, stl "libc++_static" -
+  verified by browser fetch of both Googlesource and the
+  aosp-mirror copy at that tag. Both defining projects
+  (frameworks/proto_logging, external/protobuf) are UNSYNCED -
+  NOT among the 32 manifest projects; never sync them.
+  TYPE REQUIREMENT - the SAME conclusion as #262, from the same
+  method, and the OPPOSITE of #258: Soong
+  build/soong/genrule/genrule.go hard-requires a tools: dep to
+  be a host tool. toolDepsMutator adds every tools: entry as a
+  hostToolDependencyTag (host variation), and
+  generateCommonBuildActions resolves it: if the dep does NOT
+  provide android.HostToolProvider, Soong errors `"X" is not a
+  host tool provider`; if it provides one but HostToolPath is
+  invalid, Soong errors `host tool "X" missing output file`.
+  The cc-side HostToolPath implementation was NOT fetched
+  verbatim this round (no local Soong mirror) - but the stub
+  type does NOT depend on that fetch: both tools ARE consumed
+  as genrule tools upstream, and their upstream definitions ARE
+  cc_binary_host, so a cc_binary_host stub satisfies the edge by
+  construction. A filegroup stub FAILS the first check; a
+  cc_library stub FAILS the second; a device-only cc_binary is
+  not a host module. The stubs MUST be cc_binary_host - the
+  exact upstream type of both binaries.
+  Fix: 2 new stubs (stats-log-api-gen + aprotoc as
+  cc_binary_host, srcs [stats_log_api_gen_main.cc] /
+  [aprotoc_main.cc], aprotoc with stl "libc++_static" - mirrors
+  upstream exactly, public visibility), 2 dummy files (valid
+  `int main() { return 0; }` created by the prune step,
+  compile-verified locally with g++); the prune-step check and
+  the pre-build guard both verify the new stubs, their type,
+  and the dummy files. No prunes. No new projects (still 32). No
+  sdk_version on the stubs (binaries do not take one). The dummy
+  binaries are never built or run: the nine genrules/gensrcs are
+  NOT in the lights HAL target closure (libinput /
+  surfaceflinger / apexd / libstatslog expresslog /
+  backported_fixes are not deps of
+  android.hardware.light-service.samsung), so the stubs only
+  have to exist with a valid host-tool output path for Soong's
+  graph validation. EMPIRICAL PROOF of the inert-stub logic,
+  from run #263: it used the OLD workflow (b25967b), which never
+  created cxxbridge_main.rs, yet showed ZERO cxxbridge errors -
+  Soong graph validation needs the module to exist with a valid
+  host-tool output path; a missing src file does not fail
+  bootstrap (the binary is never built).
+  OPEN QUESTIONS (recorded, not blockers): (1) log positions
+  Android.bp:348:1 / :358:1 / :370:1 / :380:1 / :58:1 / :67:1 /
+  :729:1 / :738:1 / :100:1 vs the local copies rendering the same
+  genrules at displayed lines 350/360, 372/382, 60/69, 731/740 -
+  the same fetch line-number inflation seen in #258 and #262.
+  (2) the cc_binary_host stub substitution for a genrule tools:
+  edge is unproven in the narrow sense (no prior round stubbed
+  a cc host binary) - but unlike the #246/#250 honest limits,
+  this one is CODE-PROVEN at the check level (genrule.go
+  requires a HostToolProvider with a valid HostToolPath, and the
+  upstream definitions show both tools ARE cc_binary_host
+  modules consumed exactly this way).
+  NO WORKFLOW COMPACTION THIS ROUND: the workflow is 437,937
+  bytes, ~74 KB under the 500 KB limit; the pointer block says
+  the next compaction compacts #227-#230 onward the same way.
+  DUMMY CHOICE: the stub srcs only have to exist and be valid
+  C++ if ever compiled (int main returning 0) - the binaries
+  are never built because the nine genrules are outside the
+  lights target closure.
+  FALLBACKS: if a future round reports another tools: "<name>"
+  undefined-module line for a different tool name, stub that
+  name the same way (host binary) - stub ONLY what a raw log
+  reports. Alternatives rejected (recorded in the workflow
+  comment): filegroup stub (fails the HostToolProvider check);
+  cc_library stub (fails the HostToolPath check); rust_library
+  stub (same failure); device-only cc_binary (not a host
+  module); prune the five consumer dirs (dangling
+  generated_headers / generated_sources references); sync
+  frameworks/proto_logging / external/protobuf (forbidden);
+  ALLOW_MISSING_DEPENDENCIES (forbidden); preemptively stub
+  other tools: names.
+
+  CACHE NOTE (runs #263/#264/#265/#266): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0s,
+  sync ~10 min) and no Save step is expected to run - #266:
+  Restore 0s MISS, sync 11m27s; no "Cache saved" line; Post
+  Restore step skipped. The next run
+  will also restore-miss and sync ~10 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
