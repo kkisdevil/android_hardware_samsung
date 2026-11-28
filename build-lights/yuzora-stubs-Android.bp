@@ -6194,3 +6194,42 @@ filegroup {
         "//visibility:public",
     ],
 }
+
+// Runs #239/#240/#241/#242 fix: 2 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// Both are filegroups, mirroring the reference form: every consumer
+// references its module via a colon-prefixed file reference, so a
+// filegroup stub satisfies the reference at ninja generation,
+// whatever the upstream type is. Same precedent as the
+// avb_testkey_rsa4096 stub and the #234/#238 filegroup stubs.
+// libvibrator_aidl is upstream a filegroup in unsynced
+// platform/frameworks/base, with three AIDL sources. The stub does
+// NOT list the real AIDL files as srcs: a single dummy text file
+// suffices, because libvibrator is NOT in the lights service
+// closure, so the AIDL contents are never compiled for this target
+// (see the workflow comment block for the closure proof and the
+// real-AIDL fallback). Its srcs entry names a dummy text file,
+// created by the workflow, public visibility.
+// com.android.apex.vendor.foo.with_vintf is upstream an apex_test
+// in system/apex/tests/testdata/vendorapex, a directory our own
+// #75/#76/#77 fix prunes. The stub does NOT mirror that type: a
+// real apex stub would need a manifest, key and certificate for
+// zero benefit, since the releasetools test consumer never runs
+// for the lights target. Its srcs entry names a dummy apex file,
+// created by the workflow as a valid empty zip, public visibility.
+// No sdk_version on any new stub: filegroups do not take one.
+filegroup {
+    name: "libvibrator_aidl",
+    srcs: ["libvibrator_aidl.aidl"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "com.android.apex.vendor.foo.with_vintf",
+    srcs: ["com.android.apex.vendor.foo.with_vintf.apex"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
