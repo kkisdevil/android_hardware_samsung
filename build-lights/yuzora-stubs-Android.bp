@@ -6487,3 +6487,34 @@ rust_binary_host {
         "//visibility:public",
     ],
 }
+
+// Runs #263/#264/#265/#266 fix: 2 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// The modules are host tools, each named as the tools entry of
+// genrules in synced dirs: the StatsD log-API codegen tool (eight
+// genrules in libinput, surfaceflinger, expresslog and apexd) and
+// the host protobuf compiler (one gensrcs in backported_fixes).
+// The names have no definition in this tree because the projects
+// that define them are not synced. The stubs use the same
+// host-binary shape upstream uses for command-line tools, with
+// public visibility and dummy main sources created by the prune
+// step. The Soong check on this edge hard-requires a host tool,
+// so the plain shapes used for other edges do not work here, and
+// the dummy binaries are never built or run since the nine
+// genrules are not in the lights target closure.
+cc_binary_host {
+    name: "stats-log-api-gen",
+    srcs: ["stats_log_api_gen_main.cc"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary_host {
+    name: "aprotoc",
+    srcs: ["aprotoc_main.cc"],
+    stl: "libc++_static",
+    visibility: [
+        "//visibility:public",
+    ],
+}
