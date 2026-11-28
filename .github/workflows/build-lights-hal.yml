@@ -3161,6 +3161,274 @@ jobs:
           # Restore step skipped); the separate restore+save
           # steps need his word (see the manifest). Expect
           # Restore to miss and sync ~10 min on the next run too.
+          # Runs #274/#275/#276/#277 fix: 9 stubs (2 cc_binary_host + 6 cc_binary host_supported + 1 java_binary_host), 9 dummy files, no prunes.
+          # Runs #274 (46144142272, stubs push 7840508, 14m37s, job
+          # 140976367566), #275 (46144295672, manifest push 1253c3f,
+          # 16m04s, job 140976828476), #276 (46144548768, manual
+          # dispatch ~17:55 IST 2026-11-28 on commit 9dd6248,
+          # 16m23s, job 140977604429) and #277 (46145649355, README
+          # push 02802ca, 15m24s, job 140981001935) ALL FAILED at
+          # Soong ninja-file generation, on the SAME fix code
+          # (head 9dd6248 — the runs #271/#272/#273 2-stub fix,
+          # workflow 9b6ee3b). Steps (#276, live run page): Restore
+          # 1s MISS, Init + sync 13m21s passed, Build 58s FAILED
+          # (exit 1), Verify / Save cache 0s (did not run).
+          # #274 tests partial code (new stubs, OLD workflow — no
+          # dummy creation); #275/#276/#277 test the full fix
+          # code (stubs + workflow + manifest byte-identical;
+          # only the README differs). #276 is the primary.
+          # THE #274 FIX HELD COMPLETELY: zero mkbootimg errors
+          # and zero sefcontext_compile errors in #274, #275,
+          # #276 AND #277 — the FIRST python_binary_host stub
+          # resolves (the module exists; no undefined-module
+          # error). Its narrow-sense HostToolPath status is still
+          # open: dependency resolution still fails first, so the
+          # host-tool-provider check has not run yet in any round.
+          # The #270 fix HELD too (zero apksigner errors — 8 runs
+          # now) and the #266 fix HELD too (zero stats-log-api-gen
+          # / aprotoc errors) and the #262 / #258 / #254 / #250 /
+          # #246 / #242 / #238 / #234 / #230 / #226 fixes HELD too.
+          # NEW FAILURE LAYER — genrule tools: host-tool edge,
+          # FIFTEENTH WAVE of the same phase as
+          # #230/#234/#238/#242/#246/#250/#254/#258/#262/#266/
+          # #270/#274, and the SAME FAILURE CLASS as
+          # #262/#266/#270/#274 (a missing HOST TOOL, not an
+          # undefined module in the usual dep sense). Raw job logs
+          # (only lines starting "error:" counted, "#" echoes and
+          # "Or did you mean" excluded): the UNION is 9 distinct
+          # new modules, 36 genuine lines total (9 x 4). ZERO
+          # subset variation this round — the first
+          # zero-variation round since #263–#266: all four runs
+          # report the identical 9 lines.
+          #   error: system/apex/apexer/Android.bp:151:1:
+          #   "apexer_test_host_tools" depends on undefined
+          #   module "aapt2". (Same line for e2fsdroid, mke2fs,
+          #   resize2fs, make_f2fs, sload_f2fs, make_erofs,
+          #   blkid, bundletool — #274 log lines 1020–1036;
+          #   #275/#276/#277 log lines 1035–1051.) Each line is
+          #   followed by Or did you mean [...]? GitHub log
+          #   search per job: "undefined module" 9/9 in every
+          #   run; "not a host tool provider" 0/0 in every run;
+          #   "missing output file" 0/0; "zipalign" 0/0;
+          #   "mkbootimg" 0 genuine in every run (3 matches per
+          #   job in #275/#276/#277 are echoed workflow-script
+          #   guard text; 0 matches in #274's Build step);
+          #   "sefcontext_compile" 0 genuine in every run (same
+          #   3 echoed guard lines); "avbtool" 0 genuine in every
+          #   run (5 matches per job: 4 echoed script lines +
+          #   the Soong suggestion line); "apksigner" 0 genuine
+          #   (3 echoed script lines per job); "fec" 0 genuine
+          #   (7 echoed script lines per job). The
+          #   "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          #   again: zero genuine errors in #274–#277.
+          # MECHANISM — PHASE MASKING, fifteenth wave: the 9
+          # undefined-module errors of this wave masked the next
+          # check — the genrule tool-dep validation failed before
+          # (or instead of) the host-tool-provider check being
+          # reached. With the tools now defined, the next missing
+          # host tools surface.
+          # ROOT CAUSE — all nine are tools: entries of the ONE
+          # genrule apexer_test_host_tools in SYNCED
+          # system/apex/apexer/Android.bp (line 151 per Soong;
+          # the genrule name: is at line 152 locally). Its tools:
+          # is apexer_deps_tools + ["signapk", "bundletool"],
+          # where apexer_tools lists aapt2, avbtool,
+          # conv_apex_manifest, e2fsdroid, mke2fs, resize2fs,
+          # sefcontext_compile, zipalign, make_f2fs, sload_f2fs,
+          # make_erofs, fec, and apexer_deps_minus_go_tools adds
+          # apexer, deapexer, debugfs_static, blkid, fsck.erofs.
+          # The other entries already resolve: zipalign /
+          # signapk / merge_zips / soong_zip / deapexer /
+          # conv_apex_manifest / apexer are real in-tree
+          # definitions; sefcontext_compile is the #274 stub
+          # (held); debugfs_static + fsck.erofs are #131 stubs
+          # (held); avbtool + fec are filegroup stubs (no error
+          # — see below). Upstream types, verified against the
+          # canonical Googlesource files at android-15.0.0_r32
+          # (full quotes in research-276-modules.md):
+          # aapt2 cc_binary_host, frameworks/base/tools/aapt2/
+          # Android.bp:406; e2fsdroid cc_binary host_supported,
+          # external/e2fsprogs/contrib/android/Android.bp:126;
+          # mke2fs cc_binary host_supported, external/e2fsprogs/
+          # misc/Android.bp:172; resize2fs cc_binary
+          # host_supported, external/e2fsprogs/resize/
+          # Android.bp:70; make_f2fs cc_binary host_supported,
+          # external/f2fs-tools/Android.bp:382; sload_f2fs
+          # cc_binary host_supported, external/f2fs-tools/
+          # Android.bp:652; make_erofs cc_binary_host, external/
+          # erofs-utils/Android.bp:354; blkid cc_binary
+          # host_supported, external/e2fsprogs/misc/
+          # Android.bp:548; bundletool java_binary_host (no
+          # main:, no srcs:), prebuilts/bundletool/Android.bp:28
+          # (static_libs bundletool-all-jar, a java_import_host
+          # wrapping the prebuilt jar — NOT referenced by the
+          # stub). All 5 defining projects are UNSYNCED — NOT
+          # among the 32 manifest projects; never sync them.
+          # TYPE REQUIREMENT — the SAME conclusion as
+          # #262/#266/#270/#274, from the same method (read the
+          # Soong side first, then the upstream type): Soong
+          # build/soong/genrule/genrule.go hard-requires a tools:
+          # dep to be a host tool (toolDepsMutator,
+          # hostToolDependencyTag; generateCommonBuildActions:
+          # "X" is not a host tool provider / host tool "X"
+          # missing output file). A filegroup stub FAILS the
+          # first check; a cc_library / rust_library /
+          # java_library_host stub FAILS the second (no host tool
+          # output); a device-only cc_binary is not a host
+          # module. The stubs MUST be host binaries of the
+          # tools' upstream types. For the six plain-cc_binary
+          # tools the form is cc_binary + host_supported: true
+          # — PROVEN by Soong code + upstream self-consistency:
+          # build/soong/cc/binary.go — binaryDecorator.
+          # hostToolPath() returns binary.toolPath, which
+          # linkerInit sets for the host variant (if
+          # ctx.Os().Class == android.Host); cc.Module.
+          # HostToolPath() (cc.go) delegates to the installer,
+          # so a host-supported cc_binary provides a valid
+          # HostToolPath for its host variant, and the genrule
+          # tools: dep resolves to the host variant
+          # (hostToolDependencyTag). Upstream AOSP defines these
+          # six modules exactly that way AND lists them in this
+          # exact genrule's tools: list — a real AOSP build of
+          # apexer_test_host_tools works with that combination.
+          # CORRECTION to research-276-modules.md sections 1/8:
+          # the claim that debugfs_static + fsck.erofs "prove"
+          # the form because #276 reported zero errors for them
+          # is WRONG as stated — the undefined-module errors
+          # abort dependency resolution before
+          # generateCommonBuildActions runs the host-tool-provider
+          # check (the same phase masking that explains
+          # avbtool/fec), so their zero errors prove only that
+          # they resolve, not that they pass the provider check.
+          # The proof for the form is the Soong code + upstream
+          # self-consistency above, not the #276 log. If #278
+          # reports "X is not a host tool provider" for one of
+          # the six, the fallback is cc_binary_host for that
+          # module (recorded, not the plan). The upstream
+          # defaults / required / extra srcs all live in the
+          # unsynced projects and MUST NOT be referenced (each
+          # would itself be an undefined-module error). No
+          # static_libs on any new stub (most upstream
+          # static_libs do not resolve in-tree; the ones that do
+          # are deliberately not listed — same rule as #274). No
+          # sdk_version on any stub (host binaries do not take
+          # one); no new projects (still 32); no prunes.
+          # FIX — STUB aapt2 + make_erofs as cc_binary_host,
+          # srcs ["<name>.c"], stl "", public visibility; STUB
+          # e2fsdroid + mke2fs + resize2fs + make_f2fs +
+          # sload_f2fs + blkid as cc_binary, srcs ["<name>.c"],
+          # host_supported: true, public visibility; STUB
+          # bundletool as java_binary_host, srcs
+          # ["BundletoolMain.java"], no main:, public
+          # visibility. The prune step creates the dummy files
+          # (8x valid `int main() { return 0; }`, validated with
+          # gcc -fsyntax-only; BundletoolMain.java valid public
+          # class with empty main, file name matches the class
+          # name, validated with javac). The dummy binaries are
+          # never built or run: apexer_test_host_tools is a
+          # test-data genrule NOT in the lights HAL target
+          # closure, so the stubs only have to exist with valid
+          # host-tool output paths for Soong's graph validation.
+          # The prune-step check and the pre-build guard both
+          # verify the new stubs, their types, and the dummy files.
+          # OPEN QUESTIONS (recorded honestly, NOT blockers):
+          # (1) the six cc_binary + host_supported stubs are
+          # code-proven (binary.go hostToolPath for the host
+          # variant) + upstream-proven (AOSP builds this genrule
+          # with them) but narrow-sense unproven until a run
+          # clears Soong generation — the same status mkbootimg
+          # had before #274. If #278 reports a "not a host tool
+          # provider" line for one of the six, convert that
+          # module to cc_binary_host (the fallback is recorded,
+          # not the plan). (2) THE AVBTOOL / FEC ANOMALY — STILL
+          # NOT CONVERTED (third round): both filegroup stubs sit
+          # in this genrule's tools: list and produced ZERO "not
+          # a host tool provider" lines in all four runs. Phase
+          # masking still applies (the 9 undefined-module errors
+          # abort before the provider check), so the prediction
+          # stands untested. The standing rule is "stub ONLY
+          # what a raw log reports", no raw log has reported
+          # avbtool or fec, and the conversions are fully
+          # specified in research-276-modules.md section 6
+          # (avbtool to python_binary_host, main avbtool.py; fec
+          # to cc_binary_host, srcs fec_main.cc; both omit
+          # static_libs). If run #278 reports either, convert it
+          # then. blkid_static is NOT stubbed either: it is
+          # required: by synced deapexer but has no definition
+          # in-tree and was never reported — required: deps
+          # evidently do not error at ninja-generation time here
+          # (apexer's own required: apexer_tools lists all 9
+          # undefined modules yet produced no "apexer depends on
+          # undefined module" lines). Upstream is cc_binary +
+          # host_supported + static_executable
+          # (e2fsprogs/misc:576). (3) Soong's "Or did you mean
+          # [...]?" is edit-distance only; none is a substitute
+          # (bundletool's list names avbtool only because it is
+          # edit-close). (4) The #277 closing-line order differs
+          # from #275/#276 (ninja line before soong line) — log
+          # interleaving only, not a different failure.
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED
+          # (recorded): filegroup stub (fails the
+          # HostToolProvider check); cc_library / rust_library /
+          # java_library_host stub (fails the HostToolPath
+          # check); device-only cc_binary (not a host module);
+          # cc_binary_host for the six plain tools (satisfies the
+          # graph check but is the wrong upstream type — the
+          # fallback if #278 reports a provider error, not the
+          # plan); prune system/apex/apexer/testdata whole
+          # (the genrule lives in the apexer dir itself, not in
+          # testdata; pruning the apexer dir would remove the
+          # apexer tool the HAL build needs — same rejection
+          # class as #250); sync frameworks/base or
+          # external/e2fsprogs or external/f2fs-tools or
+          # external/erofs-utils or prebuilts/bundletool
+          # (FORBIDDEN); ALLOW_MISSING_DEPENDENCIES (FORBIDDEN);
+          # preemptively convert avbtool / fec (see (2) above —
+          # decided strict); preemptively stub blkid_static or
+          # other tools: names (stub ONLY what a raw log reports).
+          # WATCH ITEMS (not implemented): (1) avbtool / fec —
+          # see (2) above; the next run is the test. (2)
+          # blkid_static — see (2) above; watch whether it
+          # surfaces once the 9 are stubbed. (3) other tools:
+          # names that may surface once their genrules are
+          # reached (same host-binary reasoning if reported —
+          # NOTE 3 in the cron body now covers the cc_binary +
+          # host_supported case: plain cc_binary with host
+          # support is a host binary; stub ONLY what a raw log
+          # reports). (4) the other vendorapex siblings,
+          # CtsShimPrivUpgradeWrongSHA, sharedlibs siblings
+          # (carried from the #270 block). (5) if a future round
+          # fails past Soong at compile/link with a host toolchain
+          # actually running, dummy gcc filegroup contents may
+          # need to become real libgcc/sysroot files (carried
+          # from #238).
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #277 — same list as the #274 block above, carried
+          # forward unchanged, plus the three below; no removals
+          # this round, since the 9 modules were not on that
+          # list): avbtool / fec as host binaries (the filegroup
+          # stubs are kept — see (2) above; the conversions wait
+          # for a verbatim report); blkid_static (required: only,
+          # never reported — see (2) above).
+          # FIRST-EVER reported: the first cc_binary +
+          # host_supported stubs (6 of them); the first
+          # bundletool stub; the first zero-variation round since
+          # #263–#266; the first four-run union with identical
+          # lines in every run.
+          # NO WORKFLOW COMPACTION THIS ROUND: the workflow is
+          # 419,395 bytes, ~93 KB under the 500 KB limit; this
+          # block adds ~21 KB, leaving ~71 KB of margin — above
+          # the 50 KB compaction trigger. The next compaction
+          # round, when needed, compacts the #247/#248/#249/#250
+          # block onward the same way.
+          # CACHE NOTE (runs #274/#275/#276/#277): Restore is
+          # expected to miss (0-1s, sync ~10-13 min) and no Save
+          # step is expected — save-always still does not save
+          # (#276: Restore 1s MISS, sync 13m21s; no "Cache saved"
+          # line; Post Restore step skipped); the separate
+          # restore+save steps need his word (see the manifest).
+          # Expect Restore to miss and sync ~10-13 min on the
+          # next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -3869,6 +4137,20 @@ jobs:
           test -f yuzora-stubs/mkbootimg.py || { echo "::error::stub source missing after creation: yuzora-stubs/mkbootimg.py"; exit 1; }
           printf 'int main() { return 0; }\n' > yuzora-stubs/sefcontext_compile.c || { echo "::error::stub source creation failed: yuzora-stubs/sefcontext_compile.c"; exit 1; }
           test -f yuzora-stubs/sefcontext_compile.c || { echo "::error::stub source missing after creation: yuzora-stubs/sefcontext_compile.c"; exit 1; }
+          # Runs #274/#275/#276/#277 fix: dummy main sources for
+          # the 9 new host-tool stubs above. The C dummies are
+          # valid minimal mains (validated with gcc -fsyntax-only);
+          # the Java dummy is a valid public class with an empty
+          # main (validated with javac; the file name must match
+          # the class name, same rule as ApksignerMain.java).
+          # All are never built or run — the genrule is a
+          # test-data genrule outside the lights target closure.
+          for _c in aapt2 e2fsdroid mke2fs resize2fs make_f2fs sload_f2fs make_erofs blkid; do
+            printf 'int main() { return 0; }\n' > "yuzora-stubs/${_c}.c" || { echo "::error::stub source creation failed: yuzora-stubs/${_c}.c"; exit 1; }
+            test -f "yuzora-stubs/${_c}.c" || { echo "::error::stub source missing after creation: yuzora-stubs/${_c}.c"; exit 1; }
+          done
+          printf 'public class BundletoolMain { public static void main(String[] args) { } }\n' > yuzora-stubs/BundletoolMain.java || { echo "::error::stub source creation failed: yuzora-stubs/BundletoolMain.java"; exit 1; }
+          test -f yuzora-stubs/BundletoolMain.java || { echo "::error::stub source missing after creation: yuzora-stubs/BundletoolMain.java"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -4686,6 +4968,27 @@ jobs:
           { grep -A1 'python_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "mkbootimg"' || { echo "::error::stub mkbootimg is not a python_binary_host"; exit 1; }
           { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "sefcontext_compile"' || { echo "::error::stub sefcontext_compile is not a cc_binary_host"; exit 1; }
           echo "runs #271/#272/#273 stubs created: 1 python_binary_host stub (mkbootimg) + 1 cc_binary_host stub (sefcontext_compile); no prunes this round."
+          # Runs #274/#275/#276/#277 fix: verify the 9 new
+          # stubs are present in yuzora-stubs/Android.bp (same
+          # `name: "..."` grep form as the #274 loop above).
+          for stub in aapt2 e2fsdroid mke2fs resize2fs make_f2fs sload_f2fs make_erofs blkid bundletool; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #274/#275/#276/#277 fix: the stubs must
+          # be host binaries (same SIGPIPE-safe wrapped form as
+          # the #274 loop above — see EDIT R in the #210 round).
+          # The cc_binary_host check also matches the two new
+          # host-only stubs; the plain cc_binary check matches
+          # only the six host-supported stubs (the "cc_binary {"
+          # pattern does not match "cc_binary_host {").
+          for stub in aapt2 make_erofs; do
+            { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_binary_host"; exit 1; }
+          done
+          for stub in e2fsdroid mke2fs resize2fs make_f2fs sload_f2fs blkid; do
+            { grep -A1 'cc_binary {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a cc_binary"; exit 1; }
+          done
+          { grep -A1 'java_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "bundletool"' || { echo "::error::stub bundletool is not a java_binary_host"; exit 1; }
+          echo "runs #274/#275/#276/#277 stubs created: 2 cc_binary_host stubs (aapt2 + make_erofs) + 6 cc_binary host_supported stubs (e2fsdroid + mke2fs + resize2fs + make_f2fs + sload_f2fs + blkid) + 1 java_binary_host stub (bundletool); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5012,6 +5315,12 @@ jobs:
           # files must exist at build time.
           test -f yuzora-stubs/mkbootimg.py || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/mkbootimg.py"; exit 1; }
           test -f yuzora-stubs/sefcontext_compile.c || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/sefcontext_compile.c"; exit 1; }
+          # Runs #274/#275/#276/#277 fix: the dummy main
+          # files must exist at build time.
+          for _c in aapt2 e2fsdroid mke2fs resize2fs make_f2fs sload_f2fs make_erofs blkid; do
+            test -f "yuzora-stubs/${_c}.c" || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/${_c}.c"; exit 1; }
+          done
+          test -f yuzora-stubs/BundletoolMain.java || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/BundletoolMain.java"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -5565,6 +5874,22 @@ jobs:
           # prune step above).
           { grep -A1 'python_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "mkbootimg"' || { echo "::error::pre-build guard: stub mkbootimg is not a python_binary_host"; exit 1; }
           { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "sefcontext_compile"' || { echo "::error::pre-build guard: stub sefcontext_compile is not a cc_binary_host"; exit 1; }
+          # Runs #274/#275/#276/#277 fix: the 9 new stubs must be
+          # present at build time (same `name: "..."` grep form as
+          # above).
+          for stub in aapt2 e2fsdroid mke2fs resize2fs make_f2fs sload_f2fs make_erofs blkid bundletool; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #274/#275/#276/#277 fix: the stubs must be
+          # host binaries at build time (same wrapped check as the
+          # prune step above).
+          for stub in aapt2 make_erofs; do
+            { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_binary_host"; exit 1; }
+          done
+          for stub in e2fsdroid mke2fs resize2fs make_f2fs sload_f2fs blkid; do
+            { grep -A1 'cc_binary {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a cc_binary"; exit 1; }
+          done
+          { grep -A1 'java_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "bundletool"' || { echo "::error::pre-build guard: stub bundletool is not a java_binary_host"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
