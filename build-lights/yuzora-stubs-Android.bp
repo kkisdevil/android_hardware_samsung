@@ -6233,3 +6233,63 @@ filegroup {
         "//visibility:public",
     ],
 }
+
+// Runs #243/#244/#245/#246 fix: 5 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// All five are filegroups, mirroring the reference form: every
+// consumer references its module via a colon-prefixed file
+// reference, so a filegroup stub satisfies the reference at ninja
+// generation, whatever the upstream type is. Same precedent as the
+// avb_testkey_rsa4096 stub and the #234/#238/#242 filegroup stubs.
+// activity_manager_procstate_aidl and libpowermanager_aidl are
+// upstream filegroups in unsynced platform/frameworks/base, each
+// with AIDL sources. Their stub srcs are single dummy text files,
+// NOT the real AIDL: neither libactivitymanager_aidl nor
+// libpowermanager is in the lights service closure, so the AIDL
+// contents are never compiled for this target (see the workflow
+// comment block for the closure proof and the real-AIDL fallbacks).
+// The three apex modules are upstream a prebuilt_apex pair plus an
+// apex_test in system/apex/tests, a directory our own #75/#76/#77
+// fix prunes. Their stub srcs are dummy apex files, created by the
+// workflow as valid empty zips. The stub types deliberately do NOT
+// mirror the upstream prebuilt_apex / apex_test types: real
+// prebuilt_apex stubs would need arch-specific srcs for zero
+// benefit, since the ApexTestCases consumers never run for the
+// lights target. All five stubs have public visibility.
+// No sdk_version on any new stub: filegroups do not take one.
+filegroup {
+    name: "activity_manager_procstate_aidl",
+    srcs: ["activity_manager_procstate_aidl.aidl"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "libpowermanager_aidl",
+    srcs: ["libpowermanager_aidl.aidl"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt",
+    srcs: ["com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt.apex"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt",
+    srcs: ["com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt.apex"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+filegroup {
+    name: "com.android.apex.vendor.foo",
+    srcs: ["com.android.apex.vendor.foo.apex"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
