@@ -3454,6 +3454,143 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #235 (46092762632, 12m52s, stubs push fa627e0, job
+  140817223145), #236 (46093204054, 12m29s, manifest push
+  b84929f, job 140818625730), #237 (46093324787, 12m49s, README
+  push 652f4f9, job 140819022520) and #238 (46093458977, 12m46s,
+  manual dispatch ~07:00 IST on commit 652f4f9, job
+  140819437853). ALL FAILED at Soong ninja-file generation, on
+  the SAME fix code (head 652f4f9 - the runs #231/#232/#233/#234
+  6-filegroup-stub fix, workflow cfe1950). Steps (#238):
+  Restore 0s, sync 9m31s, Prune 3s (passed), Build 42s FAILED
+  (exit 1). #235: Restore 0s, sync 10m48s, Prune 2s, Build 50s
+  FAILED. #236: Restore 1s, sync 9m55s, Prune 1s, Build 36s
+  FAILED. #237: Restore 1s, sync 9m05s, Prune 1s, Build 38s
+  FAILED.
+  THE #234 FIX HELD COMPLETELY: zero mke2fs_conf /
+  current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
+  gcc.sysroot genuine errors in all four runs. The #230 fix
+  HELD too (zero avb_testkey_rsa4096 / _hal genuine errors)
+  and the #226 fix HELD (zero aosp_shared_system_image /
+  libcompiler_rt / update_engine_sideload genuine errors).
+  NEW FAILURE LAYER - the filegroup-srcs / property-dep phase,
+  FIFTH WAVE of the same phase as #230/#234. Whole raw logs
+  (only "error: ... depends on undefined module ..." lines
+  counted, "#" comment echoes and "Or did you mean"
+  excluded): #235: 2 genuine lines, 1 module -
+  build_test_suites_test + optimized_targets_test need py3-cmd
+  (build/make/ci/Android.bp:20:1, :74:1); "cts-dalvik" occurs
+  ZERO times in the whole raw log. #236: 8 genuine lines, 3
+  modules - libfs_avb_test + libfs_avb_internal_test need
+  avbtool + fec (system/core/fs_mgr/libfs_avb/Android.bp:103:1,
+  :125:1); 4 aidl java_test modules need
+  cts-dalvik-device-test-runner
+  (system/tools/aidl/Android.bp:793:1, :805:1, :817:1, :829:1).
+  #237: 6 genuine lines, ALL cts-dalvik-device-test-runner
+  (incl. the 2 *_permission consumers, :841:1, :857:1).
+  #238: 4 genuine lines, ALL cts-dalvik-device-test-runner
+  (sdk consumers only). UNION: 4 distinct new modules, 20
+  genuine lines total - ALL referenced filegroup-style
+  (data: [":<module>"]) by TEST modules. The
+  "libcharger_sysprop" lines are a CONFIRMED PHANTOM again
+  (zero genuine errors in all four runs), same class as
+  #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/#210/#214/
+  #218/#222/#226/#230/#234.
+  MECHANISM - PHASE MASKING, fifth wave: all four modules are
+  referenced via data: [":<module>"] by TEST modules (2
+  python_test_host, 2 cc_test_host, 8 java_test) - the same
+  filegroup-srcs / property-dep phase as #230/#234, resolving
+  LATER than the filesystem Deps phase. SUBSET VARIATION, BOTH
+  DIRECTIONS (again): #235 reports py3-cmd only and zero
+  cts-dalvik lines; #236 is the ONLY run reporting avbtool/fec;
+  #237 and #238 are on the IDENTICAL commit 652f4f9 yet report
+  6 vs 4 cts-dalvik lines. The union rule cuts both ways: fix
+  everything reported in ANY sibling, and never treat absence
+  in the latest run as proof a module is fixed. Same lesson as
+  #185/#202/#223/#226/#230/#234: "never reported" means "not
+  yet reached".
+  Root causes, verified: (1) cts-dalvik-device-test-runner is a
+  java_test_helper_library in unsynced platform/cts
+  (tests/jdwp/runner/device-side/Android.bp:19-33, AOSP
+  android-15.0.0_r32: srcs ["src/**/*.java"], static_libs
+  ["junit"], installable true, no visibility); LineageOS has no
+  lineage-22.x branch of android_cts (newest lineage-20.0), so
+  AOSP r32 is the operative upstream. Consumers: ALL EIGHT
+  java_test modules in system/tools/aidl/Android.bp, via data:
+  through aidl_test_java_sdkversion_defaults (static_libs
+  androidx.test.core + androidx.test.runner, both already
+  stubbed as java_library). The aidl + aidl-cpp host binaries
+  live in the same file, so the dir cannot be pruned whole.
+  Dep closure: the module is the ONLY undefined dep of all
+  eight java_test modules. (2) py3-cmd is the prebuilt python
+  interpreter (prebuilts/build-tools/linux-x86/bin/py3-cmd);
+  its Soong module definition was NOT located after bounded
+  search (whole synced tree: zero definitions;
+  prebuilts/build-tools/Android.bp at r32, read in full,
+  defines py3-launcher* but not py3-cmd; grep.app AOSP
+  mirrors: consumer refs only) - recorded honestly, same class
+  as libprotoutil (#186) / libtestUtil (#202). Consumers:
+  python_test_host build_test_suites_test
+  (build/make/ci/Android.bp:20) + optimized_targets_test
+  (:74), both via data: [":py3-cmd"]. (3) avbtool is a
+  python_binary_host in unsynced external/avb
+  (Android.bp:274-296, AOSP android-15.0.0_r32: srcs
+  ["avbtool.py"], main "avbtool.py", required ["fec"], py3
+  embedded launcher). Consumers: cc_test_host libfs_avb_test
+  (system/core/fs_mgr/libfs_avb/Android.bp:103) +
+  libfs_avb_internal_test (:125), via data: [":avbtool",
+  ":fec"], plus required: ["avbtool"] in
+  libfs_avb_host_test_defaults (:66) and a third,
+  not-yet-surfaced consumer, python_test_host
+  apex_compression_test (system/apex/tools/Android.bp).
+  Upstream avbtool itself requires fec - the two travel
+  together, which is why #236 reports both. (4) fec is the FEC
+  tool binary (fec.c in external/fec); its Soong module
+  definition was NOT located after bounded search
+  (external/fec/Android.bp at r32 defines ONLY libfec_rs;
+  system/extras/verity/Android.bp at r32 defines no fec;
+  system/extras/vbmeta_tools holds only vbmake; whole synced
+  tree: zero definitions; grep.app: zero "name: fec" hits) -
+  same honest class as py3-cmd. Consumers: the same two
+  libfs_avb cc_test_host modules, via data: [":fec"].
+  Fix: 4 new filegroup stubs (cts-dalvik-device-test-runner,
+  py3-cmd, avbtool, fec), mirroring the reference form, srcs
+  ["<dummy file>"], public visibility; the 4 dummy source
+  files are created by the prune step (the cts jar is a valid
+  EMPTY ZIP, same as android.jar in #234; py3-cmd, avbtool and
+  fec are text placeholders, plainly marked NOT REAL) and
+  guarded with test -f in the prune step + pre-build guard. No
+  sdk_version on any new stub. No prunes. No new projects
+  (still 32). The stub type is deliberately NOT the upstream
+  type (a java_test_helper_library / python_binary_host stub
+  would drag in junit and toolchain expectations for zero
+  benefit - same class as framework-cppstream-protos, upstream
+  gensrcs -> genrule stub, #202). The prune-step check and the
+  pre-build guard both verify the new stubs, their type, and
+  the dummy files. Alternatives rejected (recorded in the
+  workflow comment): prune the eight aidl java_test blocks
+  (eight sed-deletes in a load-bearing file); prune
+  system/tools/aidl whole (kills the aidl binary); prune
+  build/make/ci whole (build-system dir); prune
+  system/core/fs_mgr/libfs_avb whole (libfs_avb is referenced
+  by in-graph modules outside the dir); sed-delete the
+  consumer data: lists (consumer-side edits drift against
+  upstream); stub cts-dalvik as java_test_helper_library /
+  avbtool as python_binary_host (drags in dep chains for zero
+  benefit); sync the unsynced projects (forbidden);
+  ALLOW_MISSING_DEPENDENCIES (forbidden).
+
+  CACHE NOTE (runs #235/#236/#237/#238): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0-1s,
+  sync ~9-11 min) and no Save step is expected to run - #238:
+  Restore 0s MISS, sync 9m31s; #235: Restore 0s MISS, sync
+  10m48s; #236: Restore 1s MISS, sync 9m55s; #237: Restore 1s
+  MISS, sync 9m05s; no "Cache saved" line in any run. The next
+  run will also restore-miss and sync ~9-11 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
