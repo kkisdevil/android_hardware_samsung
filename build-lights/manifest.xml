@@ -3881,6 +3881,145 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #247 (46111439194, stubs push 5ef43a2, 15m02s, job
+  140875638384), #248 (46111675164, manifest push 963b035, 16m19s,
+  job 140876359322), #249 (46112280539, README push c3a03b0,
+  13m01s, job 140878275463) and #250 (46112549333, manual dispatch
+  ~11:02 IST on commit 2230bd6, 14m33s, job 140879093223). ALL
+  FAILED at Soong ninja-file generation, on the SAME fix code
+  (head 2230bd6 - the runs #243/#244/#245/#246 5-filegroup-stub
+  fix, workflow f0428ed). Steps (#250): Restore 1s MISS, sync
+  10m20s, Prune 3s (passed), Build 59s FAILED (exit 1).
+  #247/#248/#249 step durations were not recorded. Commit f0428ed
+  (workflow push) got NO separate run: the runs list shows #247 =
+  5ef43a2 immediately followed by #248 = 963b035, consecutive run
+  numbers leaving no slot for f0428ed; 963b035's parent is f0428ed,
+  so f0428ed's workflow code was first exercised by #248 (likely
+  one push - inference, not verified from the UI).
+  THE #246 FIX HELD COMPLETELY: zero
+  activity_manager_procstate_aidl / libpowermanager_aidl /
+  com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt /
+  v2.libvY_prebuilt / com.android.apex.vendor.foo genuine errors
+  in #247, #248, #249 AND #250 - the FIRST prebuilt_apex-to-
+  filegroup substitution is now PROVEN (no ApexTestCases /
+  ApexServiceTestCases data: errors in any of the four runs;
+  system/apex/apexd/Android.bp produces zero errors at all). The
+  #242 fix HELD too (zero libvibrator_aidl / with_vintf genuine
+  errors) and the #238 fix HELD (zero cts-dalvik-device-test-runner
+  / py3-cmd / avbtool / fec genuine errors) and the #234 fix HELD
+  (zero mke2fs_conf / current_android_jar / gcc.lib / gcc.lib32 /
+  gcc.lib64 / gcc.sysroot genuine errors) and the #230 fix HELD
+  (zero avb_testkey_rsa4096 genuine errors) and the #226 fix HELD
+  (zero aosp_shared_system_image / libcompiler_rt /
+  update_engine_sideload genuine errors).
+  NEW FAILURE LAYER - the filegroup-srcs / property-dep phase,
+  EIGHTH WAVE of the same phase as #230/#234/#238/#242/#246. Raw
+  job logs (browser raw-log reads; only "error: ... depends on
+  undefined module ..." lines counted, "#" comment echoes and "Or
+  did you mean" excluded): #250 = 5 lines, all
+  sample_prebuilt_file; #249 = 23 lines, all
+  sample_prebuilt_file; #248 = 26 lines (21
+  sample_prebuilt_file + 5 Cts*); #247 = 37 lines (23
+  sample_prebuilt_file + 14 Cts*). UNION: 6 distinct new modules,
+  91 genuine lines total - one is a prebuilts: edge of apex
+  modules, five are apps: edges of apex modules. SUBSET VARIATION
+  IS EXTREME THIS ROUND (37/26/23/5 lines on the same code):
+  #248 is missing two sample_prebuilt_file lines present in
+  #247/#249 (apex.apexd_test_v3, apex.apexd_test_erofs_no_inst_key)
+  and most Cts* lines present in #247; #250 reports only the 4
+  apexer/testdata apexes + 1 apexd_testdata apex. #250 alone would
+  have missed the Cts* family entirely - the union rule is what
+  matters. The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+  again (zero genuine errors in #247-#250), same class as
+  #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/#210/#214/
+  #218/#222/#226/#230/#234/#238/#242/#246.
+  MECHANISM - PHASE MASKING, eighth wave: all six modules are
+  undefined-module errors at Soong ninja-file generation - the
+  same phase as #230/#234/#238/#242/#246, resolving LATER than the
+  filesystem Deps phase.
+  Root causes, verified: (1) sample_prebuilt_file is a prebuilt_etc
+  in system/apex/tests/Android.bp (LineageOS lineage-22.2, real
+  lines 119-122, verified by git clone of platform/system/apex:
+  name + src "testdata/sample_prebuilt_file" only - no installable:,
+  no apex_available:). The src file itself is EMPTY (verified:
+  apexer/testdata/sample_prebuilt_file is 0 bytes). The project
+  platform/system/apex IS synced, but the workflow prunes
+  system/apex/tests whole (runs #75/#76/#77 fix) - a SELF-INFLICTED
+  prune; un-pruning is not viable (the dir holds the 84-error
+  host-test/tradefed family). Consumers: apex modules via
+  prebuilts: ["sample_prebuilt_file"] - 4 in system/apex/apexer/
+  testdata/Android.bp (com.android.example.apex :32, -legacy :43,
+  -logging_parent :54, -overridden_package_name :66) and 19 in
+  system/apex/apexd/apexd_testdata/Android.bp (:50-:425, incl.
+  apex.apexd_test_f2fs :272). The apexd_testdata dir must NOT be
+  pruned (run #58). Dep closure: the ONLY undefined dep of these
+  apex modules is sample_prebuilt_file. (2-6) CtsShim, CtsShimPriv,
+  CtsShimPrivUpgrade, CtsShimAddApkToApex, CtsShimTargetPSdk are
+  android_app modules in unsynced platform/frameworks/base
+  (packages/CtsShim/build/Android.bp, LineageOS lineage-22.2,
+  verified in the local los-base2 clone: CtsShimPrivUpgrade :30,
+  CtsShimPriv :72, CtsShimTargetPSdk :139, CtsShim :158,
+  CtsShimAddApkToApex :185; all sdk_version "current").
+  Consumers: apex modules in system/apex/shim/build/Android.bp via
+  apps: [...] (com.android.apex.cts.shim.v2 :92, .v3 :76,
+  .v2_legacy :514, .v2_unsigned_payload :133, .v2_sdk_target_p
+  :539, .v2_apk_in_apex_upgrades :603, .v2_add_apk_to_apex :652,
+  .v2_apk_in_apex_sdk_target_p :556). Exhaustive check: the 5
+  reported names are the ONLY apps: references in that file. Dep
+  closure: the ONLY undefined deps of the shim apexes are the 5
+  apps: modules.
+  Fix: 6 new stubs (sample_prebuilt_file as prebuilt_etc - type
+  MATCHES upstream exactly, name + src only; the 5 Cts* modules
+  as android_app, mirroring the PROVEN framework-res template
+  (#96/#97/#98: srcs ["Empty.java"], manifest
+  "AndroidManifest.xml" reused, sdk_version "none",
+  system_modules "none", use_resource_processor false) PLUS
+  apex_available copied verbatim from upstream for each module),
+  public visibility; the 1 dummy source file (empty
+  sample_prebuilt_file - matches upstream's own empty file) is
+  created by the prune step and guarded with test -f in the prune
+  step + pre-build guard. No prunes. No new projects (still 32).
+  The stub types for the Cts* modules deliberately do NOT mirror
+  the upstream sdk_version "current" (the proven stub form -
+  "current" would demand the SDK variant machinery for a stub that
+  never builds) and omit the privileged: flag, real manifests,
+  jni_libs / uses_libs / srcs. The prune-step check and the
+  pre-build guard both verify the new stubs, their types, and the
+  dummy file.
+  WORKFLOW COMPACTION this round: the #195-#226 comment blocks
+  (lines 1331-3079 of the pre-fix file, 108,782 bytes, pure prose,
+  zero code lines) were replaced by a pointer block, same as the
+  #234 round did for #165-#194. The #227-#246 blocks stay intact;
+  the full narrative lives in the manifest doc blocks and the
+  preserved cron_body history files.
+  DUMMY CHOICE: the shim apexes never build for the lights target;
+  only the NAMES + the android_app type must exist for Soong's
+  apps: edge at ninja generation. The apex modules consuming
+  sample_prebuilt_file never build either; the empty dummy matches
+  upstream's own empty src file.
+  FALLBACKS: if a future round ever builds a shim apex, the Cts*
+  stub srcs / manifests must become real (real manifests, jni
+  libshim_jni, the AddApkToApex java src). Alternatives rejected
+  (recorded in the workflow comment): un-prune system/apex/tests
+  (re-admits the 84-error family); prune system/apex/apexer/
+  testdata whole (fixes only 4 lines - the 19 apexd_testdata lines
+  remain); prune system/apex/shim/build whole (the file also
+  defines hash_of_dev_null + keys used by KEPT modules);
+  preemptively stub CtsShimPrivUpgradeWrongSHA (referenced by
+  nothing in the synced tree; never reported); sync
+  platform/frameworks/base (forbidden);
+  ALLOW_MISSING_DEPENDENCIES (forbidden).
+
+  CACHE NOTE (runs #247/#248/#249/#250): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (1s,
+  sync ~10 min) and no Save step is expected to run - #250:
+  Restore 1s MISS, sync 10m20s; no "Cache saved" line; Post
+  Restore step 0s with no expandable content. The next run
+  will also restore-miss and sync ~10 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
