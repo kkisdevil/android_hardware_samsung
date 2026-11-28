@@ -4146,6 +4146,122 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #255 (46122605442, stubs push 9c9ef55, 11m40s, job
+  140910170152), #256 (46122796968, manifest push 6f89051, 14m47s,
+  job 140910743733), #257 (46122878614, README push 9eb23d1,
+  15m01s, job 140910992734) and #258 (46122953196, manual dispatch
+  ~13:19 IST 2026-11-28 on commit 9eb23d1, 14m23s, job
+  140911222149). ALL FAILED at Soong ninja-file generation, on the
+  SAME fix code (head 9eb23d1 - the runs #251/#252/#253/#254
+  2-stub fix, workflow f3ce109). Steps (#258, live run page):
+  Restore 0s MISS, sync 9m27s, Prune passed, Build 50s FAILED
+  (exit 1), Verify / Disk usage / Upload skipped. #257: Build 43s.
+  #256: Build 43s. #255: Build 44s. Commit f3ce109 (workflow push)
+  got NO separate run (same pattern as b26b795 in the #254 round
+  and f0428ed in the #250 round: #255 = 9c9ef55 immediately
+  followed by #256 = 6f89051; f3ce109's workflow code was first
+  exercised by #256 - likely one push, inference only).
+  THE #254 FIX HELD COMPLETELY: zero undefined-module errors in
+  #255, #256, #257 AND #258 ("undefined module" 0/0 in every job)
+  - the FIRST apex_key stub AND the first android_app_certificate
+  stub are now PROVEN end to end. The #250 fix HELD too (zero
+  sample_prebuilt_file / Cts* genuine errors) and the #246 /
+  #242 / #238 / #234 / #230 / #226 fixes HELD too.
+  NEW FAILURE LAYER - apex_available validation, TENTH WAVE of the
+  same phase as #230/#234/#238/#242/#246/#250/#254, and a NEW
+  FAILURE CLASS (not an undefined module). Raw job logs (only lines
+  starting "error:" counted): EVERY run reports EXACTLY the same 1
+  line - NO subset variation this round, the second round in a row
+  with zero subset variation (after #251-#254; contrast #250:
+  37/26/23/5). UNION: 1 distinct new module, 4 genuine lines total
+  (1 + 1 + 1 + 1):
+  system/core/debuggerd/Android.bp:37:19 module
+  "libdebuggerd_common_headers" variant "android_arm64_armv8-a":
+  apex_available: "com.android.virt" is not a valid module name
+  (#258 log line 966 of 972; #255 line 946 of 952; #256 line 966
+  of 972; #257 line 967 of 973). The "libcharger_sysprop" lines
+  are a CONFIRMED PHANTOM again (zero genuine errors in #255-#258),
+  same class as #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/
+  #210/#214/#218/#222/#226/#230/#234/#238/#242/#246/#250/#254.
+  MECHANISM - PHASE MASKING, tenth wave: the undefined-module
+  errors of waves #230-#254 masked this check - dependency
+  resolution failed before (or instead of) the apex transition
+  mutator validating apex_available. With every module now
+  defined, the mutator runs and the first invalid apex_available
+  name surfaces.
+  Root cause, verified: com.android.virt is the Android
+  Virtualization Framework APEX, defined upstream in
+  packages/modules/Virtualization/apex/ (unsynced - NOT among the
+  32 manifest projects; never sync it). The reporting module,
+  libdebuggerd_common_headers, is a cc_library_headers in SYNCED
+  system/core/debuggerd/Android.bp (LineageOS lineage-22.2; file
+  stable since Dec 6 2024; the virt entry from Apr 5 2022, made
+  explicit Jan 2 2024). Its apex_available lists
+  com.android.runtime, com.android.virt,
+  //apex_available:platform. The module gets checked because it has
+  apex variations: it is in the dep closure of the apex_test
+  com.android.libapexsupport.tests (the apex bundle whose
+  key/certificate edges the #254 fix stubbed). TYPE REQUIREMENT -
+  the OPPOSITE conclusion from #254, from the same method: Soong
+  build/soong/android/apex.go checkApexAvailableProperty
+  (lineage-22.2, lines 839-883, verified by raw fetch) validates
+  each apex_available entry with ONE test only -
+  !mctx.OtherModuleExists(n) - i.e. the name must EXIST as a module
+  of ANY type. No apex-type requirement exists on this edge. A
+  plain filegroup stub therefore satisfies the check, exactly as
+  the #243/#246 rounds already stubbed apex names as filegroups.
+  A real apex stub would need a manifest, key, certificate and
+  file contexts for zero benefit: no apex bundle named
+  com.android.virt exists, so no apex variant is ever created for
+  it and nothing ever builds it. The check runs only for modules
+  WITH apex variations (MutateApexTransition early-returns
+  otherwise), which is why only libdebuggerd_common_headers is
+  reported although other synced files also list com.android.virt
+  (e.g. libtombstoned_client in the same debuggerd file) - the
+  stub fixes all of them at once, since the check is global name
+  existence.
+  Fix: 1 new stub (com.android.virt as a filegroup, srcs
+  ["com.android.virt.apex"] - valid empty zip created by the prune
+  step, same form as the com.android.apex.vendor.foo apex stub),
+  public visibility; the prune-step check and the pre-build guard
+  both verify the new stub, its type, and the dummy file. No
+  prunes. No new projects (still 32). No sdk_version on the stub
+  (filegroups do not take one).
+  OPEN QUESTIONS (recorded, not blockers): (1) log position
+  Android.bp:37:19 vs the branch-tip raw fetch rendering the same
+  list at displayed lines 69-77 - almost certainly fetch
+  line-number inflation by long-line wrapping. (2) why
+  com.android.runtime (listed FIRST in the same list) does NOT
+  error: a module of that name must exist in the build - its
+  defining file was NOT established from local evidence.
+  NO WORKFLOW COMPACTION THIS ROUND: the workflow is 402,318
+  bytes, ~110 KB under the 500 KB limit; the pointer block says
+  the next compaction compacts #227-#230 onward the same way.
+  DUMMY CHOICE: the filegroup's src only has to exist (same as the
+  #243/#246 apex-name filegroups, whose dummies have held through
+  12+ runs). Nothing references :com.android.virt as a file dep,
+  so the dummy zip's contents are never read.
+  FALLBACKS: if a future round reports another apex_available
+  "<name>" is not a valid module name line for a different name,
+  stub that name the same way (filegroup) - stub ONLY what a raw
+  log reports. Alternatives rejected (recorded in the workflow
+  comment): real apex stub (manifest + key + certificate + file
+  contexts for zero benefit); sed-strip the entry from
+  apex_available lists (touches synced files, per-file, misses
+  unchecked modules); sync packages/modules/Virtualization
+  (forbidden); ALLOW_MISSING_DEPENDENCIES (forbidden);
+  preemptively stub other apex_available names.
+
+  CACHE NOTE (runs #255/#256/#257/#258): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0s,
+  sync ~10 min) and no Save step is expected to run - #258:
+  Restore 0s MISS, sync 9m27s; no "Cache saved" line; Post
+  Restore step skipped. The next run
+  will also restore-miss and sync ~10 min. The
+  upstream-recommended fix is separate restore + save steps (the
+  save step with `if: always()`), which touches the cache steps
+  and needs his word - not changed in this fix round.
+
   -->
 
 <manifest>
