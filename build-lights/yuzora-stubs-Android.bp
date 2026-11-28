@@ -6463,3 +6463,27 @@ filegroup {
         "//visibility:public",
     ],
 }
+
+// Runs #259/#260/#261/#262 fix: 1 new stub (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// The module is the CXX bridge codegen host tool, named as the
+// tools entry of four genrules in the synced inputflinger and
+// libinput rust dirs. The name has no definition in this tree
+// because the crate project that defines it is not synced. The
+// stub uses the same host-binary shape upstream uses for a
+// command-line tool crate, with public visibility and a dummy
+// main source created by the prune step. The Soong check on this
+// edge hard-requires a host tool, so the plain shapes used for
+// other edges do not work here, and the dummy binary is never
+// built or run since the four genrules are not in the lights
+// target closure.
+rust_binary_host {
+    name: "cxxbridge",
+    crate_name: "cxxbridge_cmd",
+    srcs: ["cxxbridge_main.rs"],
+    edition: "2021",
+    visibility: [
+        "//visibility:public",
+    ],
+}
