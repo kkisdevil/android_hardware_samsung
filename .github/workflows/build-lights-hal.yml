@@ -2840,6 +2840,288 @@ jobs:
           # separate restore+save steps need his word (see the
           # manifest). Expect Restore to miss and sync ~10 min on
           # the next run too.
+          # Runs #251/#252/#253/#254 fix: 2 stubs (1 apex_key + 1 android_app_certificate), 4 dummy files, no prunes.
+          # Runs #251 (46118202651, stubs push 813be43, 13m25s, job
+          # 140896638449), #252 (46118430819, manifest push 06e3909,
+          # 14m16s, job 140897350032), #253 (46118510868, README push
+          # 31e5f5d, 14m47s, job 140897588941) and #254 (46118622067,
+          # manual dispatch ~12:22 IST 2026-11-28 on commit 31e5f5d,
+          # 14m09s, job 140897936267) ALL FAILED at Soong ninja-file
+          # generation, on the SAME fix code (head 31e5f5d — the
+          # runs #247/#248/#249/#250 6-stub fix, workflow b26b795).
+          # Steps (#254, GitHub API): Restore 0s MISS, sync 10m05s,
+          # Prune 4s (passed), Build 50s FAILED (exit 1), Post
+          # Restore skipped. #253: Restore 1s, sync 10m43s, Build
+          # 38s. #252: Restore 0s, sync 10m51s, Build 38s. #251:
+          # Restore 0s, sync 9m35s, Build 39s. Commit b26b795
+          # (workflow push) got NO separate run: the runs list shows
+          # #251 = 813be43 immediately followed by #252 = 06e3909,
+          # consecutive run numbers leaving no slot for b26b795;
+          # 06e3909's parent is b26b795, so b26b795's workflow code
+          # was first exercised by #252 (likely one push — inference,
+          # not verified from the UI). Same pattern as f0428ed in
+          # the #250 round.
+          # THE #250 FIX HELD COMPLETELY: zero
+          # sample_prebuilt_file / CtsShim / CtsShimPriv /
+          # CtsShimPrivUpgrade / CtsShimAddApkToApex /
+          # CtsShimTargetPSdk genuine errors in #251, #252, #253 AND
+          # #254 — the FIRST prebuilt_etc stub AND the first
+          # android_app stubs for apex apps: edges are now PROVEN.
+          # The #246 fix HELD too (zero
+          # activity_manager_procstate_aidl / libpowermanager_aidl /
+          # com.android.apex.test.sharedlibs_generated.v1.
+          # libvX_prebuilt / v2.libvY_prebuilt /
+          # com.android.apex.vendor.foo genuine errors) and the #242
+          # fix HELD (zero libvibrator_aidl / with_vintf genuine
+          # errors) and the #238 fix HELD (zero
+          # cts-dalvik-device-test-runner / py3-cmd / avbtool / fec
+          # genuine errors) and the #234 fix HELD (zero mke2fs_conf /
+          # current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
+          # gcc.sysroot genuine errors) and the #230 fix HELD (zero
+          # avb_testkey_rsa4096 genuine errors) and the #226 fix HELD
+          # (zero aosp_shared_system_image / libcompiler_rt /
+          # update_engine_sideload genuine errors).
+          # NEW FAILURE LAYER — the key/certificate-dep phase,
+          # NINTH WAVE of the same phase as
+          # #230/#234/#238/#242/#246/#250. Raw job logs (only
+          # "error: ... depends on undefined module ..." lines
+          # counted, "#" echoes and "Or did you mean" excluded):
+          # EVERY run reports EXACTLY the same 2 lines — NO subset
+          # variation this round, the first round with zero subset
+          # variation (contrast #250: 37/26/23/5). UNION: 2 distinct
+          # new modules, 8 genuine lines total (2 + 2 + 2 + 2).
+          #   error: system/apex/libs/libapexsupport/tests/
+          #   Android.bp:5:1: "com.android.libapexsupport.tests"
+          #   depends on undefined module
+          #   "com.android.apex.vendor.foo.key" (also the same line
+          #   with "com.android.apex.vendor.foo.certificate").
+          #   (#254/#253/#252 log lines 946+948; #251 lines 927+929.)
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in #251-#254 (only "#"
+          # comment lines). Same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
+          # #234/#238/#242/#246/#250.
+          # MECHANISM — PHASE MASKING, ninth wave: both modules are
+          # undefined-module errors at Soong ninja-file generation
+          # — the same phase as #230/#234/#238/#242/#246/#250,
+          # resolving LATER than the filesystem Deps phase. The
+          # #250 wave and this wave never co-occur in one run's
+          # genuine set.
+          # ROOT CAUSE 1 — com.android.apex.vendor.foo.key:
+          # upstream it is an apex_key in
+          # tests/testdata/vendorapex/Android.bp (LineageOS
+          # lineage-22.2, platform/system/apex, verified by raw
+          # fetch: public_key
+          # "com.android.apex.vendor.foo.avbpubkey", private_key
+          # "com.android.apex.vendor.foo.pem"). The project
+          # platform/system/apex IS synced, but the workflow prunes
+          # system/apex/tests whole (runs #75/#76/#77 fix) — a
+          # SELF-INFLICTED prune, the same root-cause class as
+          # vendor.foo (#246) and sample_prebuilt_file (#250);
+          # un-pruning is not viable (the dir holds the 84-error
+          # host-test/tradefed family).
+          # ROOT CAUSE 2 — com.android.apex.vendor.foo.certificate:
+          # upstream it is an android_app_certificate in the SAME
+          # file (verified by the same raw fetch: certificate
+          # "com.android.apex.vendor.foo").
+          # CONSUMER — com.android.libapexsupport.tests is an
+          # apex_test in SYNCED system/apex/libs/libapexsupport/
+          # tests/Android.bp: vendor:true, installable:false,
+          # updatable:false, manifest "manifest.json",
+          # file_contexts "file_contexts", key
+          # "com.android.apex.vendor.foo.key", certificate
+          # ":com.android.apex.vendor.foo.certificate", binaries
+          # ["libapexsupport-tests"]. Dep closure: manifest.json +
+          # file_contexts exist upstream (HTTP 200); binaries
+          # libapexsupport-tests is defined in the same file; key +
+          # certificate are the ONLY undefined deps. No other
+          # consumers of the two modules in apexer/testdata or
+          # apexd_testdata (grep 0 hits). The vendorapex file also
+          # defines apex_defaults com.android.apex.vendor.foo.
+          # defaults + many sibling apex_test modules (.bar, .foo.
+          # v2, .v2_with_service, .foo.bootstrap, test.bad1/bad2/
+          # good1 wifi, etc.) — referenced by NOTHING in the synced
+          # tree, never reported: WATCH ONLY, do not stub.
+          # TYPE REQUIREMENT — a filegroup stub would NOT work here,
+          # FIRST TIME: the stub types are FORCED by Soong source
+          # code, not just matched to upstream. Soong
+          # build/soong/apex/key.go (lineage-22.2, local copy
+          # soong_apex_key.go): apexKeyProperties declares
+          # public_key / private_key with android:"path";
+          # GenerateAndroidBuildActions resolves each via the
+          # ApexKeyDir fallback then PathForModuleSrc (the file
+          # MUST exist) and errors unless the keynames match
+          # (base-minus-extension of both must be
+          # "com.android.apex.vendor.foo" — keep the exact
+          # upstream filenames). Soong build/soong/java/app.go
+          # (lineage-22.2, local copy cert_java_app.go): the apex
+          # certificate: dep is visited with certificateTag and
+          # MUST be an android_app_certificate module
+          # (ModuleErrorf "certificate dependency %q must be an
+          # android_app_certificate module", line 1136);
+          # AndroidAppCertificate.GenerateAndroidBuildActions
+          # (lines 1776-1779) does PathForModuleSrc(ctx,
+          # cert+".x509.pem") and PathForModuleSrc(ctx,
+          # cert+".pk8") — both files MUST exist. Soong
+          # build/soong/apex/apex.go: the apex DepsMutator adds the
+          # key dep with keyTag and the certificate dep with
+          # certificateTag; the dep visitor HARD-REQUIRES the
+          # types (case keyTag: child must be *apexKey, else
+          # PropertyErrorf "%q is not an apex_key module"; case
+          # certificateTag: child must be *java.
+          # AndroidAppCertificate). Citation honesty: the
+          # lineage-22.2 apex/apex.go itself was not directly
+          # fetched (the browser text fetch of the GitLab blob
+          # returned no code body); the quoted text is from the
+          # /e/OS mirror of android_build_soong (commit 6f3937cb,
+          # same AOSP Soong file), and it agrees with the
+          # lineage-22.2 key.go / app.go already in hand, which
+          # carry the same hard type checks.
+          # FIX — STUB both in yuzora-stubs/Android.bp, public
+          # visibility, same precedent as the #230/#234/#238/#242/
+          # #246/#250 stubs. The key stub as apex_key, public_key
+          # "com.android.apex.vendor.foo.avbpubkey" + private_key
+          # "com.android.apex.vendor.foo.pem" — the exact upstream
+          # filenames, so the keyname check passes. The certificate
+          # stub as android_app_certificate, certificate
+          # "com.android.apex.vendor.foo" — name + certificate
+          # only, exactly upstream. 4 dummy files, created by the
+          # prune step: avbpubkey + pem (dummy text, marked NOT A
+          # REAL KEY — follows the existing heredoc style of the
+          # testkey_rsa4096.pem / sample_prebuilt_file dummy
+          # creations), x509.pem (dummy text), pk8 (EMPTY file via
+          # ": >", test -f NOT test -s). Contents are never parsed
+          # at Soong time (only existence + keyname match are
+          # checked) and never used at build time (the apex_test
+          # consumer never builds for the lights target; nothing
+          # signs). The prune-step check and the pre-build guard
+          # both verify the new stubs, their types, and the 4
+          # dummy files. No sdk_version on either stub (neither
+          # type takes one in this shape); no new projects (still
+          # 32); no prunes.
+          # OBSERVATION — run #251 and lazy prebuilt_etc src
+          # resolution (recorded): run #251 ran on commit 813be43,
+          # which predates the workflow commit b26b795, so it ran
+          # the OLD workflow f0428ed — yet it reached Soong
+          # reporting ONLY the 2 key/certificate errors, even
+          # though that old workflow never creates the
+          # sample_prebuilt_file dummy the new prebuilt_etc stub
+          # references. Evidence that prebuilt_etc srcs are
+          # resolved LAZILY (a missing src does not error at ninja
+          # generation). This does NOT change the fix: the key /
+          # certificate files resolve EAGERLY in
+          # GenerateAndroidBuildActions (code-verified above), so
+          # their 4 dummy files MUST exist — the prune-step
+          # creation + guards are required, not optional.
+          # Honest limit: the apex_key / android_app_certificate
+          # stub substitution is unproven in the narrow sense (no
+          # prior round stubbed either type) — but unlike the
+          # #246/#250 honest limits, this one is CODE-PROVEN at
+          # the type level: apex.go hard-requires exactly these
+          # two types, and key.go / app.go resolve exactly the
+          # files the prune step creates. This run proves the
+          # substitution end to end.
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # un-prune system/apex/tests (re-admits the 84-error
+          # host-test/tradefed family); prune system/apex/libs/
+          # libapexsupport/tests whole (the consumer dir also
+          # defines libapexsupport-tests, used by KEPT modules;
+          # breaks stub precedent for test-module consumers);
+          # stub the two modules as filegroups (FORBIDDEN BY THE
+          # CODE: apex.go hard-requires the apex_key /
+          # android_app_certificate types); preemptively stub the
+          # vendorapex siblings (referenced by nothing in the
+          # synced tree; never reported — stub only what a raw log
+          # reports); sync platform/frameworks/base (FORBIDDEN);
+          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN).
+          # WATCH ITEMS (not implemented): (1) if a future round
+          # fails PAST Soong at compile/link and the trace shows
+          # the libapexsupport apex_test actually building, the
+          # dummy key/cert contents must become real (a real AVB
+          # key pair and a real x509/pk8 pair — the dummy text is
+          # never parsed at Soong time, but a real apex build
+          # would sign with it). (2) CtsShimPrivUpgradeWrongSHA:
+          # watch only. (3) carried: the libvibrator_aidl watch
+          # items from #242 (real AIDL if libvibrator builds;
+          # <system/audio.h> include from the bare #135
+          # libaudio_system_headers stub); the libpowermanager /
+          # libactivitymanager_aidl fallbacks from #246; the
+          # sharedlibs siblings + other vendorapex siblings (watch
+          # only); the Cts* watch items from #250 (real manifests /
+          # jni libshim_jni if a shim apex ever builds). (4) if a
+          # future round fails past Soong at compile/link with the
+          # Rust toolchain actually running, dummy gcc filegroup
+          # contents may need to become real libgcc/sysroot files
+          # (carried from #238). (5) the vendorapex siblings
+          # (.bar, .foo.v2, .v2_with_service, .foo.bootstrap, wifi
+          # test.bad1/bad2/good1, apex_defaults) — watch only.
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #254 — do NOT stub unless a raw log reports one):
+          # CtsShimPrivUpgradeWrongSHA (in the same upstream CtsShim
+          # file, referenced by nothing in the synced tree);
+          # com.android.apex.test.sharedlibs_secondary_generated.v1.
+          # libvZ_prebuilt + the bar/foo/baz/pony .v1/.v2
+          # .libvX/.libvY/.libvZ_prebuilt family (referenced only by
+          # sharedlibs_host_tests in the pruned system/apex/tests);
+          # the other vendorapex siblings (apex_defaults
+          # com.android.apex.vendor.foo.defaults, .bar, .foo.v2,
+          # .foo.v2_with_requireNativeLibs, .foo.apex.all.ready,
+          # .foo.v1/v2_with_service, .foo.v2_with_wrong_vndk_version,
+          # .bar.v2_with_vintf, test.bad1/bad2/good1.com.android.
+          # hardware.wifi, .foo.bootstrap); libactivity_manager_
+          # procstate_aidl-cpp (cc_library in unsynced
+          # frameworks/base, consumes the same filegroup); pyfakefs
+          # (a libs: dep of both ci tests, no definition anywhere,
+          # yet never reported — python libs: edges do not surface);
+          # conv_apex_manifest, apex_compression_tool, deapexer,
+          # soong_zip, com.android.example.apex (data deps of
+          # apex_compression_test, never reported);
+          # cts-dalvik-host-test-runner (only host_required by
+          # CtsJdwpTestCases, never referenced by any aidl module);
+          # bundletool (tools: list, no definition, never
+          # reported); stdlib_prebuilts (resolves in-tree),
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as
+          # cc_library_static — a different module from -main),
+          # libcharger_sysprop (phantom), android.hardware.
+          # fastboot@1.0, android.hardware.boot@1.2,
+          # libLibGuiProperties, libcom.android.sysprop.apex,
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). REMOVED from the
+          # never-reported list this round:
+          # com.android.apex.vendor.foo.key +
+          # com.android.apex.vendor.foo.certificate (reported in
+          # #251–#254, now stubbed).
+          # libjnigraphics was reported in #224–#227 (via
+          # aosp_shared_system_image) but is NOT stubbed — covered
+          # by the #226 disable. android.hidl.base@1.0_hal was
+          # reported in #228 but is NOT stubbed — covered by the
+          # c2hal/test prune.
+          # FIRST-EVER reported: the first apex_key stub
+          # (com.android.apex.vendor.foo.key — the first stub whose
+          # type is FORCED by Soong source code, not just matched
+          # to upstream); the first android_app_certificate stub
+          # (com.android.apex.vendor.foo.certificate); the first
+          # round where the stub TYPE requirement was proven from
+          # Soong Go source (key.go / app.go / apex.go) before
+          # stubbing; the first round with ZERO subset variation
+          # across four sibling runs (identical 2-line sets); the
+          # first round whose fix needs 4 dummy files for 2 stubs
+          # (a key pair + a certificate pair); the first key: /
+          # certificate: apex edges in any wave.
+          # NO WORKFLOW COMPACTION THIS ROUND: the workflow is
+          # 379,438 bytes, ~133 KB under the 500 KB limit; the
+          # pointer block says the next compaction compacts
+          # #227–#230 onward the same way.
+          # CACHE NOTE (runs #251/#252/#253/#254): Restore is
+          # expected to miss (0s, sync ~10 min) and no Save step is
+          # expected — save-always still does not save (#254:
+          # Restore 0s MISS, sync 10m05s; no "Cache saved" line;
+          # Post Restore step skipped); the separate restore+save
+          # steps need his word (see the manifest). Expect Restore
+          # to miss and sync ~10 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -3475,6 +3757,33 @@ jobs:
           # AndroidManifest.xml dummies — no new files for them.
           : > yuzora-stubs/sample_prebuilt_file
           test -f yuzora-stubs/sample_prebuilt_file || { echo "::error::stub source missing after creation: yuzora-stubs/sample_prebuilt_file"; exit 1; }
+          # Runs #251/#252/#253/#254 fix: dummy key + certificate
+          # files for the two new stubs above. The public key and
+          # the private key share the upstream base name, so the
+          # Soong keyname check passes. Dummy text only, marked NOT
+          # A REAL KEY — contents are never parsed at Soong time
+          # (only existence plus the keyname match are checked) and
+          # never used at build time (the apex test consumer never
+          # builds for the lights target; nothing signs). Follows
+          # the existing heredoc style of the testkey_rsa4096.pem
+          # dummy creation.
+          cat > yuzora-stubs/com.android.apex.vendor.foo.avbpubkey <<'EOF'
+          NOT A REAL KEY - dummy source for the apex key stub (runs #251/#252/#253/#254 fix).
+          EOF
+          test -f yuzora-stubs/com.android.apex.vendor.foo.avbpubkey || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.vendor.foo.avbpubkey"; exit 1; }
+          cat > yuzora-stubs/com.android.apex.vendor.foo.pem <<'EOF'
+          NOT A REAL KEY - dummy source for the apex key stub (runs #251/#252/#253/#254 fix).
+          EOF
+          test -f yuzora-stubs/com.android.apex.vendor.foo.pem || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.vendor.foo.pem"; exit 1; }
+          cat > yuzora-stubs/com.android.apex.vendor.foo.x509.pem <<'EOF'
+          NOT A REAL CERTIFICATE - dummy source for the certificate stub (runs #251/#252/#253/#254 fix).
+          EOF
+          test -f yuzora-stubs/com.android.apex.vendor.foo.x509.pem || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.vendor.foo.x509.pem"; exit 1; }
+          # The pk8 dummy is EMPTY by design — only existence is
+          # checked at Soong time. test -f below, NOT test -s (same
+          # empty-by-design form as sample_prebuilt_file).
+          : > yuzora-stubs/com.android.apex.vendor.foo.pk8
+          test -f yuzora-stubs/com.android.apex.vendor.foo.pk8 || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.vendor.foo.pk8"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -4220,6 +4529,21 @@ jobs:
             { grep -A1 'android_app {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not an android_app"; exit 1; }
           done
           echo "runs #247/#248/#249/#250 stubs created: 1 prebuilt_etc stub (sample_prebuilt_file) + 5 android_app stubs (CtsShim + CtsShimAddApkToApex + CtsShimPriv + CtsShimPrivUpgrade + CtsShimTargetPSdk); no prunes this round."
+          # Runs #251/#252/#253/#254 fix: verify the 2 new
+          # stubs are present in yuzora-stubs/Android.bp (same
+          # `name: "..."` grep form as the #250 loop above).
+          for stub in com.android.apex.vendor.foo.key com.android.apex.vendor.foo.certificate; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #251/#252/#253/#254 fix: the key stub must be an
+          # apex_key (same SIGPIPE-safe wrapped form as the #250
+          # loop above — see EDIT R in the #210 round).
+          { grep -A1 'apex_key {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.apex.vendor.foo.key"' || { echo "::error::stub com.android.apex.vendor.foo.key is not an apex_key"; exit 1; }
+          # Runs #251/#252/#253/#254 fix: the certificate stub must
+          # be an android_app_certificate (same SIGPIPE-safe
+          # wrapped form).
+          { grep -A1 'android_app_certificate {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.apex.vendor.foo.certificate"' || { echo "::error::stub com.android.apex.vendor.foo.certificate is not an android_app_certificate"; exit 1; }
+          echo "runs #251/#252/#253/#254 stubs created: 1 apex_key stub (com.android.apex.vendor.foo.key) + 1 android_app_certificate stub (com.android.apex.vendor.foo.certificate); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -4523,6 +4847,12 @@ jobs:
           # dummy source must exist at build time (empty by design
           # — test -f, NOT test -s).
           test -f yuzora-stubs/sample_prebuilt_file || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/sample_prebuilt_file"; exit 1; }
+          # Runs #251/#252/#253/#254 fix: the 4 key + certificate
+          # dummy files must exist at build time (the pk8 dummy is
+          # empty by design — test -f, NOT test -s).
+          for f in yuzora-stubs/com.android.apex.vendor.foo.avbpubkey yuzora-stubs/com.android.apex.vendor.foo.pem yuzora-stubs/com.android.apex.vendor.foo.x509.pem yuzora-stubs/com.android.apex.vendor.foo.pk8; do
+            test -f "$f" || { echo "::error::pre-build guard: stub source missing at build time: $f"; exit 1; }
+          done
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -5010,6 +5340,20 @@ jobs:
           for stub in CtsShim CtsShimAddApkToApex CtsShimPriv CtsShimPrivUpgrade CtsShimTargetPSdk; do
             { grep -A1 'android_app {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not an android_app"; exit 1; }
           done
+          # Runs #251/#252/#253/#254 fix: the 2 new stubs must be
+          # present at build time (same `name: "..."` grep form as
+          # above).
+          for stub in com.android.apex.vendor.foo.key com.android.apex.vendor.foo.certificate; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #251/#252/#253/#254 fix: the key stub must be an
+          # apex_key at build time (same wrapped check as the prune
+          # step above).
+          { grep -A1 'apex_key {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.apex.vendor.foo.key"' || { echo "::error::pre-build guard: stub com.android.apex.vendor.foo.key is not an apex_key"; exit 1; }
+          # Runs #251/#252/#253/#254 fix: the certificate stub must
+          # be an android_app_certificate at build time (same
+          # wrapped check).
+          { grep -A1 'android_app_certificate {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.apex.vendor.foo.certificate"' || { echo "::error::pre-build guard: stub com.android.apex.vendor.foo.certificate is not an android_app_certificate"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
