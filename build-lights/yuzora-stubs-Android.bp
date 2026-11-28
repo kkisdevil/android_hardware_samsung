@@ -6518,3 +6518,24 @@ cc_binary_host {
         "//visibility:public",
     ],
 }
+
+// Runs #267/#268/#269 fix: 1 new stub (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// The module is the APK signing command-line host tool, named as
+// the tools entry of two genrules in the synced apex shim build
+// file. The name has no definition in this tree because the
+// project that defines it is not synced. The stub uses the same
+// host-binary shape upstream uses for a Java command-line tool,
+// with public visibility and a dummy main source created by the
+// prune step. The Soong check on this edge hard-requires a host
+// tool, so the plain shapes used for other edges do not work
+// here, and the dummy binary is never built or run since the two
+// genrules are not in the lights target closure.
+java_binary_host {
+    name: "apksigner",
+    srcs: ["ApksignerMain.java"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
