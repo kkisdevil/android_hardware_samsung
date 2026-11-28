@@ -4719,6 +4719,190 @@ jobs:
           # any run); the separate restore+save steps need his word
           # (see the manifest). Expect Restore to miss and sync
           # ~9-12 min on the next run too.
+          # Runs #227/#228/#229/#230 fix: 1 stub + 1 dir prune.
+          # Runs #227 (46080827852, 13m37s, stubs push 1a7075e, job
+          # 140779152425), #228 (46081201238, 14m06s, manifest push
+          # 56abfaa, job 140780333055), #229 (46081359815, 14m37s,
+          # README push 138732b, job 140780836445) and #230
+          # (46081757010, 12m54s, manual dispatch ~04:48 IST on
+          # commit 138732b, job 140782107034) ALL FAILED at Soong
+          # ninja-file generation, on the SAME fix code (head
+          # 138732b — the runs #223/#224/#225/#226 2-stub +
+          # 1-disable fix, workflow a4dd91f), except #227, which
+          # ran the PRE-fix workflow af8c423 (staged-commit
+          # artifact: the stubs push landed before the workflow
+          # push — same pattern as #195/#199/#207/#211/#223).
+          # Steps (#230): Restore 0s (MISS), sync 9m14s, Prune 1s
+          # (passed), Build 35s FAILED (exit 1). #227: Restore 1s,
+          # sync 11m07s, Prune 3s, Build 54s FAILED. #228: Restore
+          # 0s, sync 11m32s, Prune 2s, Build 52s FAILED. #229:
+          # Restore 0s, sync 11m10s, Prune 5s, Build 43s FAILED.
+          # THE #226 FIX HELD COMPLETELY: zero
+          # aosp_shared_system_image genuine errors in #228/#229/
+          # #230 (the disable works — #227 is the control: with
+          # the disable absent it errors 311 times); zero
+          # libcompiler_rt / update_engine_sideload genuine errors
+          # in all four runs (the stubs work — #226's 313 minus
+          # the 2 stubbed = #227's 311, exact); zero
+          # libjnigraphics genuine errors in #228/#229/#230
+          # (covered by the disable).
+          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
+          # phase, LATER than the filesystem Deps phase. Whole raw
+          # logs (only "error: ... depends on undefined module ..."
+          # lines counted, "#" echoes and "Or did you mean"
+          # excluded): #227: 311 genuine lines, 1 consumer —
+          # aosp_shared_system_image
+          # (generic/Android.bp:1037:1), 311 distinct modules (the
+          # full verbatim list is in research-230-modules.md and
+          # in the manifest doc block for this round). #228: 3
+          # genuine lines, 2 modules. #229/#230: 1 genuine line
+          # each. UNION: 2 distinct new modules.
+          #   error: build/make/target/product/generic/Android.bp:
+          #   147:1: "generic_system_sign_key" depends on
+          #   undefined module "avb_testkey_rsa4096". (in #228/#229/
+          #   #230)
+          #   error: system/tools/hidl/c2hal/test/Android.bp:25:1:
+          #   "c2hal_test_genc++_headers" depends on undefined
+          #   module "android.hidl.base@1.0_hal". (in #228 only)
+          #   error: system/tools/hidl/c2hal/test/Android.bp:57:1:
+          #   "c2hal_test_genc++" depends on undefined module
+          #   "android.hidl.base@1.0_hal". (in #228 only)
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in all four runs (only "#"
+          # comment lines + one "Or did you mean" suggestion in
+          # #227). Same class as #152/#161/#174/#177/#182/#186/
+          # #194/#198/#202/#206/#210/#214/#218/#222/#226.
+          # MECHANISM — PHASE MASKING, third phase (why this layer
+          # appeared only now): the filegroup-srcs / property-dep
+          # phase resolves LATER than the filesystem Deps phase.
+          # Evidence: #227 has 311 deps-list errors and ZERO
+          # avb/c2hal lines; #228/#229/#230 have zero deps-list
+          # errors and surface the avb (+ c2hal) lines. The #226
+          # body claimed the #226 raw log "reports ALL of a
+          # module's undefined deps" — that holds for the Deps
+          # list; the avb_private_key property dep (and the
+          # filegroup's own srcs dep) is a different, later phase.
+          # Same lesson as #185/#202/#223/#226: "never reported"
+          # means "not yet reached", not "exempt". After THIS fix
+          # the build reaches a still later phase (ninja generation
+          # → actual compilation); do not assume the dep-error
+          # rounds are over until `m` actually compiles.
+          # ROOT CAUSE 1 — avb_testkey_rsa4096: the consumer is the
+          # generic_system_sign_key filegroup
+          # (generic/Android.bp:147-150, srcs [":avb_testkey_
+          # rsa4096"]), the avb_private_key of system_image_
+          # defaults (generic/Android.bp:510). Upstream it is a
+          # checked-in filegroup in unsynced external/avb — proven
+          # by the fsgen unit-test fixture
+          # (filesystem_creator_test.go:50-55: external/avb/test/
+          # Android.bp holds `filegroup { name:
+          # "avb_testkey_rsa4096", srcs:
+          # ["data/testkey_rsa4096.pem"] }`) and the fsgen comment
+          # (filesystem_creator.go:524-526: "There already exists
+          # a checked-in filegroup for this commonly-used key").
+          # The product sets BOARD_AVB_BOOT_KEY_PATH :=
+          # external/avb/test/data/testkey_rsa4096.pem
+          # (build/make/target/board/BoardConfigGsiCommon.mk:51);
+          # the fsgen-generated system image takes the boot key as
+          # its avb_private_key (generateFsProps,
+          # filesystem_creator.go:785-789). Whole-tree grep: zero
+          # definitions in the synced tree. The rsa2048 sibling
+          # (BOARD_AVB_SYSTEM_KEY_PATH, :58) needs no stub: fsgen
+          # CREATES its avb_key_<hex> filegroup itself (:531-545)
+          # — and its srcs file does not exist in the tree yet
+          # produces NO error, which proves filegroup srcs files
+          # are not existence-checked at ninja-generation time.
+          # The dummy .pem is still created, per the
+          # compatibility_matrix_schema precedent.
+          # ROOT CAUSE 2 — android.hidl.base@1.0_hal: every
+          # hidl_interface auto-creates a filegroup named
+          # <fqname>_hal (hidl_interface.go:544-547 +
+          # fqName.go:91-92). The interface android.hidl.base@1.0
+          # lives in unsynced system/libhidl, so neither it nor
+          # its generated _hal filegroup exists here. Its only
+          # consumers are the two c2hal test genrules (srcs
+          # [":android.hidl.base@1.0_hal"]) in
+          # system/tools/hidl/c2hal/test/Android.bp — the dir also
+          # defines c2hal_test (cc_test_library) and nothing
+          # outside the dir references any of the three modules
+          # (whole-tree grep: zero hits).
+          # FIX, part 1 — STUB avb_testkey_rsa4096 as a filegroup
+          # in yuzora-stubs/Android.bp, mirroring the upstream
+          # definition exactly (filegroup, srcs
+          # ["testkey_rsa4096.pem"], public visibility). The dummy
+          # .pem is created by the prune step (same heredoc style
+          # as compatibility_matrix.xsd) and guarded with test -f
+          # in the prune step + pre-build guard. The .pem content
+          # is plainly marked NOT a real key; the build never signs
+          # images, so only the NAME has to exist for Soong's dep
+          # resolution. No sdk_version: filegroups do not take one.
+          # FIX, part 2 — PRUNE system/tools/hidl/c2hal/test whole
+          # (prune step rm -rf + checks + pre-build guard). The
+          # c2hal tool itself (system/tools/hidl/c2hal/) stays —
+          # only test/ goes. Test-dir prune precedent: #162/#165/
+          # #195/#210; the workflow already prunes
+          # system/tools/hidl/test + hidl2aidl/test in the #78 fix
+          # (same class, same parent dir). Alternative considered
+          # and rejected: stub android.hidl.base@1.0_hal as a
+          # filegroup (upstream type verified) — the prune is
+          # minimal for a test-only dir and removes the test lib
+          # from the graph; stubbing would leave the test genrules
+          # in the graph and need a dummy .hal src no consumer
+          # ever reads. Alternative considered and rejected for
+          # part 1: delete generic_system_sign_key + the
+          # avb_private_key line (would NOT fix the generated
+          # module's own avb_private_key dep — same stub needed
+          # anyway); sync external/avb (FORBIDDEN); ALLOW_MISSING_
+          # DEPENDENCIES (FORBIDDEN).
+          # DEP-CLOSURE VERIFIED: generic_system_sign_key's only
+          # dep is avb_testkey_rsa4096 (stubbed now); the c2hal
+          # genrules' other deps are in-dir simple.h + the c2hal /
+          # hidl-gen tools (defined in-tree). No other direct dep
+          # of either erroring consumer is undefined.
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #230 — do NOT stub unless a raw log reports one):
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as
+          # cc_library_static — a different module from -main),
+          # libcharger_sysprop (phantom), android.hardware.
+          # fastboot@1.0, android.hardware.boot@1.2,
+          # libLibGuiProperties, libcom.android.sysprop.apex,
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). REMOVED from the
+          # never-reported list this round: avb_testkey_rsa4096
+          # (reported in #228/#229/#230, now stubbed).
+          # android.hidl.base@1.0_hal was reported in #228 but is
+          # NOT stubbed — covered by the c2hal/test prune.
+          # libjnigraphics was reported in #224–#227 (via
+          # aosp_shared_system_image) but is NOT stubbed — covered
+          # by the #226 disable.
+          # FIRST-EVER reported: the first AVB / signing-key
+          # failure (a NEW layer class — the filegroup-srcs /
+          # property-dep phase), the first filegroup stub for a
+          # signing key, the first c2hal failure, the first
+          # android.hidl.base@1.0_hal (Soong-generated _hal
+          # filegroup) error, the first staged-commit control
+          # proving a fix twice over (#227: old workflow + new
+          # stubs reproduces #226's 313 minus exactly the 2
+          # stubbed modules = 311).
+          # WORKFLOW SIZE NOTE: this block is kept tight (no
+          # verbatim 311-module list in the workflow — the full
+          # list is in research-230-modules.md and in the manifest
+          # doc block). After this round the workflow is close to
+          # the 500 KB limit; the NEXT round must compact the
+          # oldest workflow comment blocks before adding a new one
+          # (see validate_fix230.py for the measured size/margin).
+          # CACHE NOTE (runs #227/#228/#229/#230): Restore is
+          # expected to miss (0-1s, sync ~9-12 min) and no Save
+          # step is expected — save-always still does not save
+          # (#230: Restore 0s MISS, sync 9m14s; #227: Restore 1s
+          # MISS, sync 11m07s; #228: Restore 0s MISS, sync 11m32s;
+          # #229: Restore 0s MISS, sync 11m10s; no "Cache saved"
+          # line in any run); the separate restore+save steps need
+          # his word (see the manifest). Expect Restore to miss
+          # and sync ~9-12 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4747,6 +4931,24 @@ jobs:
             exit 1
           fi
           echo "runs #78/#79/#80 pruned: system/tools/hidl/test + hidl2aidl/test."
+          # Runs #227/#228/#229/#230 fix: prune the c2hal test dir
+          # whole (same class as the #78 prunes above). It holds
+          # only the two genrules c2hal_test_genc++_headers +
+          # c2hal_test_genc++ and the cc_test_library c2hal_test
+          # (system/tools/hidl/c2hal/test/Android.bp); both genrules
+          # take srcs [":android.hidl.base@1.0_hal"], the
+          # Soong-generated _hal filegroup of the hidl_interface
+          # android.hidl.base@1.0, defined in unsynced
+          # system/libhidl — undefined here. Nothing outside the
+          # dir references any of the three modules (whole-tree
+          # grep: zero hits). The c2hal tool itself
+          # (system/tools/hidl/c2hal/) stays — only test/ goes.
+          rm -rf system/tools/hidl/c2hal/test
+          if [ -d system/tools/hidl/c2hal/test ]; then
+            echo "::error::prune failed — system/tools/hidl/c2hal/test present"
+            exit 1
+          fi
+          echo "runs #227/#228/#229/#230 pruned: system/tools/hidl/c2hal/test."
           # Run #84 fix (45767300168, 13m30s): five test-only dirs whose ONLY referencers are tests — prune them whole.
           # system/core/fs_mgr/tests (tradefed), frameworks/native/services/gpuservice/vts (tradefed, compatibility-host-util),
           # frameworks/native/libs/binder/tests/binder_sdk (cmake, ctest), frameworks/native/libs/binderthreadstate/1.0 (android.hidl.base@1.0_interface x5),
@@ -5217,6 +5419,17 @@ jobs:
           </xs:schema>
           EOF
           test -f yuzora-stubs/compatibility_matrix.xsd || { echo "::error::stub source missing after creation: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
+          # Runs #227/#228/#229/#230 fix: dummy key file for the
+          # avb_testkey_rsa4096 filegroup stub above. NOT a real
+          # key — the lights HAL build never signs images (the
+          # generated system image is unchecked_module and is never
+          # built for this target); the file only has to exist for
+          # the filegroup's Srcs()[0]. Same heredoc style as the
+          # compatibility_matrix.xsd skeleton above.
+          cat > yuzora-stubs/testkey_rsa4096.pem <<'EOF'
+          NOT A REAL KEY - dummy source for the avb_testkey_rsa4096 filegroup stub (runs #227/#228/#229/#230 fix).
+          EOF
+          test -f yuzora-stubs/testkey_rsa4096.pem || { echo "::error::stub source missing after creation: yuzora-stubs/testkey_rsa4096.pem"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -5875,6 +6088,17 @@ jobs:
             { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a plain cc_library"; exit 1; }
           done
           echo "runs #223/#224/#225/#226 stubs created: 2 plain cc_library stubs (libcompiler_rt + update_engine_sideload); aosp_shared_system_image disabled (enabled: false)."
+          # Runs #227/#228/#229/#230 fix: verify the new filegroup
+          # stub is present in yuzora-stubs/Android.bp (same
+          # `name: "..."` grep form as the #226 loops above).
+          grep -Fq 'name: "avb_testkey_rsa4096"' yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: avb_testkey_rsa4096"; exit 1; }
+          # Runs #227/#228/#229/#230 fix: the new stub must be a
+          # filegroup (same SIGPIPE-safe wrapped form as the #226
+          # loops above — see EDIT R in the #210 round: the bare
+          # producer | consumer form fails spuriously under pipefail
+          # when the producer dies of SIGPIPE, run #208).
+          { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "avb_testkey_rsa4096"' || { echo "::error::stub avb_testkey_rsa4096 is not a filegroup"; exit 1; }
+          echo "runs #227/#228/#229/#230 stub created: 1 filegroup stub (avb_testkey_rsa4096); system/tools/hidl/c2hal/test pruned whole."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -6132,12 +6356,22 @@ jobs:
           # Runs #78/#79/#80 fix: the new stub file and the pruned hidl
           # test dirs must still be in the expected state at build time.
           test -f yuzora-stubs/compatibility_matrix.xsd || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/compatibility_matrix.xsd"; exit 1; }
+          # Runs #227/#228/#229/#230 fix: the dummy key file for
+          # the avb_testkey_rsa4096 filegroup stub must exist at
+          # build time.
+          test -f yuzora-stubs/testkey_rsa4096.pem || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/testkey_rsa4096.pem"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
           fi
           if [ -d system/tools/hidl/hidl2aidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/hidl2aidl/test present at build time"
+            exit 1
+          fi
+          # Runs #227/#228/#229/#230 fix: the c2hal test dir must
+          # stay pruned at build time.
+          if [ -d system/tools/hidl/c2hal/test ]; then
+            echo "::error::pre-build guard: system/tools/hidl/c2hal/test present at build time"
             exit 1
           fi
           if [ -d system/core/init/test_upgrade_mte ]; then
@@ -6542,6 +6776,14 @@ jobs:
           for stub in libcompiler_rt update_engine_sideload; do
             { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a plain cc_library"; exit 1; }
           done
+          # Runs #227/#228/#229/#230 fix: the new filegroup stub
+          # must be present at build time (same `name: "..."` grep
+          # form as above).
+          grep -Fq 'name: "avb_testkey_rsa4096"' yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: avb_testkey_rsa4096"; exit 1; }
+          # Runs #227/#228/#229/#230 fix: the new stub must be a
+          # filegroup at build time (same wrapped check as the
+          # prune step above).
+          { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "avb_testkey_rsa4096"' || { echo "::error::pre-build guard: stub avb_testkey_rsa4096 is not a filegroup"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
