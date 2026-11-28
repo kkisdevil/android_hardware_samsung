@@ -6024,3 +6024,43 @@ cc_library {
         "//visibility:public",
     ],
 }
+
+// Runs #227/#228/#229/#230 fix: 1 new stub (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// 1 filegroup — avb_testkey_rsa4096, the checked-in filegroup for
+//   the AVB test key external/avb/test/data/testkey_rsa4096.pem,
+//   defined upstream in external/avb/test/Android.bp (UNSYNCED
+//   project). Proven two ways in the synced tree: the fsgen
+//   unit-test fixture (build/soong/fsgen/filesystem_creator_test.go:
+//   50-55 stages external/avb/test/Android.bp with exactly
+//   a `filegroup` named "avb_testkey_rsa4096" with srcs
+//   ["data/testkey_rsa4096.pem"]`), and the fsgen comment
+//   (build/soong/fsgen/filesystem_creator.go:524-526: "There
+//   already exists a checked-in filegroup for this commonly-used
+//   key, just use that"). The stub mirrors it: filegroup,
+//   srcs ["testkey_rsa4096.pem"] (relative to the stubs dir — the
+//   workflow creates the dummy file), public visibility. The
+//   dummy .pem is plainly marked NOT a real key; the lights HAL
+//   build never signs images (the generated system image is
+//   unchecked_module and is never built for this target — only
+//   android.hardware.light-service.samsung is built), so the file
+//   content never matters; only the NAME has to exist for Soong's
+//   dep resolution. Same precedent as the compatibility_matrix_schema
+//   filegroup stub above (dummy source created by the workflow +
+//   test -f guards). No sdk_version: filegroups do not take one,
+//   and the consumers are a filegroup (generic_system_sign_key)
+//   and a generated filesystem module.
+// android.hidl.base@1.0_hal is NOT stubbed: it is the
+//   Soong-generated _hal filegroup of the hidl_interface
+//   android.hidl.base@1.0 (system/libhidl, unsynced), and its only
+//   consumers are the two c2hal test genrules — the whole
+//   system/tools/hidl/c2hal/test dir is pruned instead (see the
+//   workflow comment).
+filegroup {
+    name: "avb_testkey_rsa4096",
+    srcs: ["testkey_rsa4096.pem"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
