@@ -3122,6 +3122,240 @@ jobs:
           # Post Restore step skipped); the separate restore+save
           # steps need his word (see the manifest). Expect Restore
           # to miss and sync ~10 min on the next run too.
+          # Runs #255/#256/#257/#258 fix: 1 stub (filegroup com.android.virt), 1 dummy file, no prunes.
+          # Runs #255 (46122605442, stubs push 9c9ef55, 11m40s, job
+          # 140910170152), #256 (46122796968, manifest push 6f89051,
+          # 14m47s, job 140910743733), #257 (46122878614, README push
+          # 9eb23d1, 15m01s, job 140910992734) and #258 (46122953196,
+          # manual dispatch ~13:19 IST 2026-11-28 on commit 9eb23d1,
+          # 14m23s, job 140911222149) ALL FAILED at Soong ninja-file
+          # generation, on the SAME fix code (head 9eb23d1 — the
+          # runs #251/#252/#253/#254 2-stub fix, workflow f3ce109).
+          # Steps (#258, live run page): Restore 0s MISS, sync
+          # 9m27s (attempt 1, "Repo sync finished successfully"),
+          # Prune passed, Build 50s FAILED (exit 1), Verify / Disk
+          # usage / Upload skipped (0s). #257: Build 43s. #256:
+          # Build 43s. #255: Build 44s. Commit f3ce109 (workflow
+          # push) got NO separate run: the runs list shows #255 =
+          # 9c9ef55 immediately followed by #256 = 6f89051,
+          # consecutive run numbers leaving no slot for f3ce109;
+          # 6f89051's parent is f3ce109, so f3ce109's workflow code
+          # was first exercised by #256 (likely one push —
+          # inference, not verified from the UI). Same pattern as
+          # b26b795 in the #254 round and f0428ed in the #250 round.
+          # THE #254 FIX HELD COMPLETELY: zero undefined-module
+          # errors in #255, #256, #257 AND #258 ("undefined module"
+          # 0/0 in every job) — the FIRST apex_key stub AND the
+          # first android_app_certificate stub are now PROVEN end
+          # to end: the key:/certificate: edges that Soong
+          # hard-requires by type now resolve. The #250 fix HELD
+          # too (zero sample_prebuilt_file / CtsShim / CtsShimPriv
+          # / CtsShimPrivUpgrade / CtsShimAddApkToApex /
+          # CtsShimTargetPSdk genuine errors) and the #246 fix HELD
+          # (zero activity_manager_procstate_aidl /
+          # libpowermanager_aidl / sharedlibs_generated prebuilt /
+          # vendor.foo genuine errors) and the #242 / #238 / #234 /
+          # #230 / #226 fixes HELD too.
+          # NEW FAILURE LAYER — apex_available validation, TENTH
+          # WAVE of the same phase as
+          # #230/#234/#238/#242/#246/#250/#254, and a NEW FAILURE
+          # CLASS (not an undefined module). Raw job logs (only
+          # lines starting "error:" counted, "#" echoes and "Or did
+          # you mean" excluded): EVERY run reports EXACTLY the same
+          # 1 line — NO subset variation this round, the second
+          # round in a row with zero subset variation (after
+          # #251–#254; contrast #250: 37/26/23/5). UNION: 1 distinct
+          # new module, 4 genuine lines total (1 + 1 + 1 + 1).
+          #   error: system/core/debuggerd/Android.bp:37:19:
+          #   module "libdebuggerd_common_headers" variant
+          #   "android_arm64_armv8-a": apex_available:
+          #   "com.android.virt" is not a valid module name
+          #   (#258 log line 966 of 972; #255 line 946 of 952;
+          #   #256 line 966 of 972; #257 line 967 of 973).
+          #   GitHub log search per job: "not a valid module name"
+          #   1/1, "undefined module" 0/0, in every run. The
+          #   "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          #   again: zero genuine errors in #255-#258 (only "#"
+          #   comment lines). Same class as #152/#161/#174/#177/#182/
+          #   #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
+          #   #234/#238/#242/#246/#250/#254. Raw-log archive could
+          #   not be downloaded (run /logs URL 404, API logs
+          #   endpoint 403 "Must have admin rights"); the counts
+          #   are from the GitHub log viewer — but the line is
+          #   identical across four independent runs, so the
+          #   verbatim text is solid.
+          # MECHANISM — PHASE MASKING, tenth wave: the
+          # undefined-module errors of waves #230–#254 masked this
+          # check — dependency resolution failed before (or instead
+          # of) the apex transition mutator validating
+          # apex_available. With every module now defined, the
+          # mutator runs and the first invalid apex_available name
+          # surfaces. Same "new layer each round" pattern as every
+          # wave since #174.
+          # ROOT CAUSE — com.android.virt: upstream it is the
+          # Android Virtualization Framework APEX, an apex module
+          # defined in packages/modules/Virtualization/apex/
+          # (unsynced — NOT among the 32 manifest projects; never
+          # sync it). No module of that name exists in this build.
+          # The reporting module, libdebuggerd_common_headers, is
+          # a cc_library_headers in SYNCED system/core/debuggerd/
+          # Android.bp (LineageOS lineage-22.2; file stable since
+          # Dec 6 2024; the virt entry comes from Apr 5 2022 "Make
+          # some debuggerd libraries available in apex
+          # com.android.virt", made explicit Jan 2 2024 "Make apex
+          # availability of libdebuggerd explicit"). Its
+          # apex_available lists com.android.runtime,
+          # com.android.virt, //apex_available:platform. The
+          # module gets checked because it has apex variations: it
+          # is in the dep closure of the apex_test
+          # com.android.libapexsupport.tests (SYNCED system/apex/
+          # libs/libapexsupport/tests/Android.bp — the apex bundle
+          # whose key/certificate edges the #254 fix stubbed).
+          # TYPE REQUIREMENT — the OPPOSITE conclusion from #254,
+          # from the same method (read the Soong source first, then
+          # choose the type): Soong build/soong/android/apex.go
+          # checkApexAvailableProperty (lineage-22.2, lines
+          # 839–883, verified by raw fetch) validates each
+          # apex_available entry with ONE test only —
+          # `!mctx.OtherModuleExists(n)` — i.e. the name must
+          # EXIST as a module of ANY type. No apex-type
+          # requirement exists on this edge, unlike the
+          # key:/certificate: edges in #254 where apex/apex.go
+          # hard-requires *apexKey / *java.AndroidAppCertificate.
+          # The check is called from MutateApexTransition (same
+          # file, line 1128), which returns early when the module
+          # has no apex variations — that is why only
+          # libdebuggerd_common_headers is reported although other
+          # synced files also list com.android.virt (e.g.
+          # libtombstoned_client in the same debuggerd file):
+          # the others have no apex variations today, so their
+          # lists were never validated. PropertyErrorf collects
+          # errors (no fail-fast), so exactly one error in all
+          # four runs means exactly one apex_available name in the
+          # checked set is missing.
+          # FIX — STUB com.android.virt in yuzora-stubs/Android.bp
+          # as a filegroup, srcs ["com.android.virt.apex"] (valid
+          # empty zip created by the prune step, same form as the
+          # com.android.apex.vendor.foo apex stub), public
+          # visibility. A real apex stub would need a manifest,
+          # key, certificate and file contexts for zero benefit:
+          # no apex bundle named com.android.virt exists, so no
+          # apex variant is ever created for it and nothing ever
+          # builds it. The stub fixes every OTHER synced file
+          # listing com.android.virt in apex_available at once,
+          # since the check is global name existence. Same
+          # precedent as the #243/#246 filegroup stubs for apex
+          # names (vendor.foo, .with_vintf, sharedlibs prebuilts).
+          # The prune-step check and the pre-build guard both
+          # verify the new stub, its type, and the dummy file. No
+          # sdk_version on the stub (filegroups do not take one);
+          # no new projects (still 32); no prunes.
+          # OPEN QUESTIONS (recorded honestly, NOT blockers): (1)
+          # log position Android.bp:37:19 vs the branch-tip raw
+          # fetch, which renders the same list at displayed lines
+          # 69–77 — almost certainly fetch line-number inflation
+          # by long-line wrapping (standing rule); module, property
+          # and value match exactly. (2) why com.android.runtime
+          # (listed FIRST in the same list) does NOT error: a
+          # module of that name must exist in the build, otherwise
+          # the check would name it first — its defining file was
+          # NOT established from local evidence (not in the fork,
+          # stubs file, or workflow; most plausibly a synced legacy
+          # Android.mk converted to a Soong module at bootstrap, or
+          # a definition in a synced project outside the fork).
+          # The fix does not depend on either answer.
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # real apex stub for com.android.virt (needs manifest +
+          # key + certificate + file contexts for zero benefit);
+          # sed-strip "com.android.virt" from apex_available lists
+          # in the prune step (touches synced files, is per-file,
+          # would miss unchecked modules whose lists surface in
+          # later rounds); sync packages/modules/Virtualization
+          # (FORBIDDEN); ALLOW_MISSING_DEPENDENCIES (FORBIDDEN);
+          # preemptively stub other apex_available names (stub
+          # ONLY what a raw log reports).
+          # WATCH ITEMS (not implemented): (1) other
+          # apex_available names that may surface once their
+          # modules gain apex variations (same filegroup fix if
+          # reported). (2) the vendorapex siblings (.bar, .foo.v2,
+          # .v2_with_service, .foo.bootstrap, wifi test.bad1/bad2/
+          # good1, apex_defaults) — watch only. (3)
+          # CtsShimPrivUpgradeWrongSHA: watch only. (4) carried:
+          # the libvibrator_aidl watch items from #242 (real AIDL
+          # if libvibrator builds; <system/audio.h> include from
+          # the bare #135 libaudio_system_headers stub); the
+          # libpowermanager / libactivitymanager_aidl fallbacks
+          # from #246; the sharedlibs siblings + other vendorapex
+          # siblings (watch only); the Cts* watch items from #250
+          # (real manifests / jni libshim_jni if a shim apex ever
+          # builds); the #254 watch items (real key/cert contents
+          # if the libapexsupport apex_test ever builds). (5) if a
+          # future round fails past Soong at compile/link with the
+          # Rust toolchain actually running, dummy gcc filegroup
+          # contents may need to become real libgcc/sysroot files
+          # (carried from #238).
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #258 — do NOT stub unless a raw log reports one):
+          # CtsShimPrivUpgradeWrongSHA (in the same upstream CtsShim
+          # file, referenced by nothing in the synced tree);
+          # com.android.apex.test.sharedlibs_secondary_generated.v1.
+          # libvZ_prebuilt + the bar/foo/baz/pony .v1/.v2
+          # .libvX/.libvY/.libvZ_prebuilt family (referenced only by
+          # sharedlibs_host_tests in the pruned system/apex/tests);
+          # the other vendorapex siblings (apex_defaults
+          # com.android.apex.vendor.foo.defaults, .bar, .foo.v2,
+          # .foo.v2_with_requireNativeLibs, .foo.apex.all.ready,
+          # .foo.v1/v2_with_service, .foo.v2_with_wrong_vndk_version,
+          # .bar.v2_with_vintf, test.bad1/bad2/good1.com.android.
+          # hardware.wifi, .foo.bootstrap); libactivity_manager_
+          # procstate_aidl-cpp (cc_library in unsynced
+          # frameworks/base, consumes the same filegroup); pyfakefs
+          # (a libs: dep of both ci tests, no definition anywhere,
+          # yet never reported — python libs: edges do not surface);
+          # conv_apex_manifest, apex_compression_tool, deapexer,
+          # soong_zip, com.android.example.apex (data deps of
+          # apex_compression_test, never reported);
+          # cts-dalvik-host-test-runner (only host_required by
+          # CtsJdwpTestCases, never referenced by any aidl module);
+          # bundletool (tools: list, no definition, never
+          # reported); stdlib_prebuilts (resolves in-tree),
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as
+          # cc_library_static — a different module from -main),
+          # libcharger_sysprop (phantom), android.hardware.
+          # fastboot@1.0, android.hardware.boot@1.2,
+          # libLibGuiProperties, libcom.android.sysprop.apex,
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). REMOVED from the
+          # never-reported list this round: com.android.virt
+          # (reported in #255–#258, now stubbed).
+          # libjnigraphics was reported in #224–#227 (via
+          # aosp_shared_system_image) but is NOT stubbed — covered
+          # by the #226 disable. android.hidl.base@1.0_hal was
+          # reported in #228 but is NOT stubbed — covered by the
+          # c2hal/test prune.
+          # FIRST-EVER reported: the first apex_available validation
+          # failure (a NEW failure class, not an undefined module);
+          # the first stub whose type is the OPPOSITE conclusion
+          # from the previous round by the same method (filegroup
+          # suffices here because the edge is existence-only, where
+          # #254's edges hard-required their types); the first
+          # round whose fix is a single stub for a single error
+          # line shared identically by four runs; the first
+          # Virtualization-apex reference in any wave.
+          # NO WORKFLOW COMPACTION THIS ROUND: the workflow is
+          # 402,318 bytes, ~110 KB under the 500 KB limit; the
+          # pointer block says the next compaction compacts
+          # #227–#230 onward the same way.
+          # CACHE NOTE (runs #255/#256/#257/#258): Restore is
+          # expected to miss (0s, sync ~10 min) and no Save step is
+          # expected — save-always still does not save (#258:
+          # Restore 0s MISS, sync 9m27s; no "Cache saved" line;
+          # Post Restore step skipped); the separate restore+save
+          # steps need his word (see the manifest). Expect Restore
+          # to miss and sync ~10 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -3784,6 +4018,15 @@ jobs:
           # empty-by-design form as sample_prebuilt_file).
           : > yuzora-stubs/com.android.apex.vendor.foo.pk8
           test -f yuzora-stubs/com.android.apex.vendor.foo.pk8 || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.vendor.foo.pk8"; exit 1; }
+          # Runs #255/#256/#257/#258 fix: dummy source file for
+          # the com.android.virt stub above. A valid EMPTY ZIP (an
+          # APEX is a zip — cheap insurance if a test tool is ever
+          # built), same form as the com.android.apex.vendor.foo
+          # apex dummy. The file only has to exist for the
+          # filegroup's Srcs(); nothing references :com.android.
+          # virt as a file dep, so the contents are never read.
+          python3 -c "import zipfile; zipfile.ZipFile('yuzora-stubs/com.android.virt.apex', 'w').close()" || { echo "::error::stub source creation failed: yuzora-stubs/com.android.virt.apex"; exit 1; }
+          test -f yuzora-stubs/com.android.virt.apex || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.virt.apex"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -4544,6 +4787,17 @@ jobs:
           # wrapped form).
           { grep -A1 'android_app_certificate {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.apex.vendor.foo.certificate"' || { echo "::error::stub com.android.apex.vendor.foo.certificate is not an android_app_certificate"; exit 1; }
           echo "runs #251/#252/#253/#254 stubs created: 1 apex_key stub (com.android.apex.vendor.foo.key) + 1 android_app_certificate stub (com.android.apex.vendor.foo.certificate); no prunes this round."
+          # Runs #255/#256/#257/#258 fix: verify the 1 new
+          # stub is present in yuzora-stubs/Android.bp (same
+          # `name: "..."` grep form as the #254 loop above).
+          for stub in com.android.virt; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #255/#256/#257/#258 fix: the virt stub must be a
+          # filegroup (same SIGPIPE-safe wrapped form as the #246
+          # loop above — see EDIT R in the #210 round).
+          { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.virt"' || { echo "::error::stub com.android.virt is not a filegroup"; exit 1; }
+          echo "runs #255/#256/#257/#258 stub created: 1 filegroup stub (com.android.virt); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -4853,6 +5107,9 @@ jobs:
           for f in yuzora-stubs/com.android.apex.vendor.foo.avbpubkey yuzora-stubs/com.android.apex.vendor.foo.pem yuzora-stubs/com.android.apex.vendor.foo.x509.pem yuzora-stubs/com.android.apex.vendor.foo.pk8; do
             test -f "$f" || { echo "::error::pre-build guard: stub source missing at build time: $f"; exit 1; }
           done
+          # Runs #255/#256/#257/#258 fix: the com.android.virt
+          # dummy file must exist at build time.
+          test -f yuzora-stubs/com.android.virt.apex || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/com.android.virt.apex"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -5354,6 +5611,16 @@ jobs:
           # be an android_app_certificate at build time (same
           # wrapped check).
           { grep -A1 'android_app_certificate {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.apex.vendor.foo.certificate"' || { echo "::error::pre-build guard: stub com.android.apex.vendor.foo.certificate is not an android_app_certificate"; exit 1; }
+          # Runs #255/#256/#257/#258 fix: the 1 new stub must be
+          # present at build time (same `name: "..."` grep form as
+          # above).
+          for stub in com.android.virt; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #255/#256/#257/#258 fix: the virt stub must be a
+          # filegroup at build time (same wrapped check as the
+          # prune step above).
+          { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "com.android.virt"' || { echo "::error::pre-build guard: stub com.android.virt is not a filegroup"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
