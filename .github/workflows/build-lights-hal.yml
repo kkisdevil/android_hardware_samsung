@@ -1352,1208 +1352,27 @@ jobs:
           # file. Keep this file under 500 KB — check with wc -c
           # before upload. The next compaction round, when needed,
           # compacts the #227/#228/#229/#230 block onward the same way.
+          # COMPACTED 2026-11-28 (runs #267/#268/#269 fix):
+          # the full comment blocks for rounds #227/#228/#229/#230
+          # through #243/#244/#245/#246 were removed from this file
+          # to stay under GitHub's 500 KB workflow limit (the file
+          # was 456,360 bytes; the removed prose was ~75 KB).
+          # NOTHING else changed: every prune/check/guard CODE line
+          # from those rounds is intact below and in the stub-check
+          # and guard sections. The full per-round narrative lives
+          # in the manifest doc blocks for those rounds and in the
+          # preserved cron_body history files. One-line pointers:
           # Runs #227/#228/#229/#230 fix: 1 stub + 1 dir prune.
-          # Runs #227 (46080827852, 13m37s, stubs push 1a7075e, job
-          # 140779152425), #228 (46081201238, 14m06s, manifest push
-          # 56abfaa, job 140780333055), #229 (46081359815, 14m37s,
-          # README push 138732b, job 140780836445) and #230
-          # (46081757010, 12m54s, manual dispatch ~04:48 IST on
-          # commit 138732b, job 140782107034) ALL FAILED at Soong
-          # ninja-file generation, on the SAME fix code (head
-          # 138732b — the runs #223/#224/#225/#226 2-stub +
-          # 1-disable fix, workflow a4dd91f), except #227, which
-          # ran the PRE-fix workflow af8c423 (staged-commit
-          # artifact: the stubs push landed before the workflow
-          # push — same pattern as #195/#199/#207/#211/#223).
-          # Steps (#230): Restore 0s (MISS), sync 9m14s, Prune 1s
-          # (passed), Build 35s FAILED (exit 1). #227: Restore 1s,
-          # sync 11m07s, Prune 3s, Build 54s FAILED. #228: Restore
-          # 0s, sync 11m32s, Prune 2s, Build 52s FAILED. #229:
-          # Restore 0s, sync 11m10s, Prune 5s, Build 43s FAILED.
-          # THE #226 FIX HELD COMPLETELY: zero
-          # aosp_shared_system_image genuine errors in #228/#229/
-          # #230 (the disable works — #227 is the control: with
-          # the disable absent it errors 311 times); zero
-          # libcompiler_rt / update_engine_sideload genuine errors
-          # in all four runs (the stubs work — #226's 313 minus
-          # the 2 stubbed = #227's 311, exact); zero
-          # libjnigraphics genuine errors in #228/#229/#230
-          # (covered by the disable).
-          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
-          # phase, LATER than the filesystem Deps phase. Whole raw
-          # logs (only "error: ... depends on undefined module ..."
-          # lines counted, "#" echoes and "Or did you mean"
-          # excluded): #227: 311 genuine lines, 1 consumer —
-          # aosp_shared_system_image
-          # (generic/Android.bp:1037:1), 311 distinct modules (the
-          # full verbatim list is in research-230-modules.md and
-          # in the manifest doc block for this round). #228: 3
-          # genuine lines, 2 modules. #229/#230: 1 genuine line
-          # each. UNION: 2 distinct new modules.
-          #   error: build/make/target/product/generic/Android.bp:
-          #   147:1: "generic_system_sign_key" depends on
-          #   undefined module "avb_testkey_rsa4096". (in #228/#229/
-          #   #230)
-          #   error: system/tools/hidl/c2hal/test/Android.bp:25:1:
-          #   "c2hal_test_genc++_headers" depends on undefined
-          #   module "android.hidl.base@1.0_hal". (in #228 only)
-          #   error: system/tools/hidl/c2hal/test/Android.bp:57:1:
-          #   "c2hal_test_genc++" depends on undefined module
-          #   "android.hidl.base@1.0_hal". (in #228 only)
-          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
-          # again: zero genuine errors in all four runs (only "#"
-          # comment lines + one "Or did you mean" suggestion in
-          # #227). Same class as #152/#161/#174/#177/#182/#186/
-          # #194/#198/#202/#206/#210/#214/#218/#222/#226.
-          # MECHANISM — PHASE MASKING, third phase (why this layer
-          # appeared only now): the filegroup-srcs / property-dep
-          # phase resolves LATER than the filesystem Deps phase.
-          # Evidence: #227 has 311 deps-list errors and ZERO
-          # avb/c2hal lines; #228/#229/#230 have zero deps-list
-          # errors and surface the avb (+ c2hal) lines. The #226
-          # body claimed the #226 raw log "reports ALL of a
-          # module's undefined deps" — that holds for the Deps
-          # list; the avb_private_key property dep (and the
-          # filegroup's own srcs dep) is a different, later phase.
-          # Same lesson as #185/#202/#223/#226: "never reported"
-          # means "not yet reached", not "exempt". After THIS fix
-          # the build reaches a still later phase (ninja generation
-          # → actual compilation); do not assume the dep-error
-          # rounds are over until `m` actually compiles.
-          # ROOT CAUSE 1 — avb_testkey_rsa4096: the consumer is the
-          # generic_system_sign_key filegroup
-          # (generic/Android.bp:147-150, srcs [":avb_testkey_
-          # rsa4096"]), the avb_private_key of system_image_
-          # defaults (generic/Android.bp:510). Upstream it is a
-          # checked-in filegroup in unsynced external/avb — proven
-          # by the fsgen unit-test fixture
-          # (filesystem_creator_test.go:50-55: external/avb/test/
-          # Android.bp holds `filegroup { name:
-          # "avb_testkey_rsa4096", srcs:
-          # ["data/testkey_rsa4096.pem"] }`) and the fsgen comment
-          # (filesystem_creator.go:524-526: "There already exists
-          # a checked-in filegroup for this commonly-used key").
-          # The product sets BOARD_AVB_BOOT_KEY_PATH :=
-          # external/avb/test/data/testkey_rsa4096.pem
-          # (build/make/target/board/BoardConfigGsiCommon.mk:51);
-          # the fsgen-generated system image takes the boot key as
-          # its avb_private_key (generateFsProps,
-          # filesystem_creator.go:785-789). Whole-tree grep: zero
-          # definitions in the synced tree. The rsa2048 sibling
-          # (BOARD_AVB_SYSTEM_KEY_PATH, :58) needs no stub: fsgen
-          # CREATES its avb_key_<hex> filegroup itself (:531-545)
-          # — and its srcs file does not exist in the tree yet
-          # produces NO error, which proves filegroup srcs files
-          # are not existence-checked at ninja-generation time.
-          # The dummy .pem is still created, per the
-          # compatibility_matrix_schema precedent.
-          # ROOT CAUSE 2 — android.hidl.base@1.0_hal: every
-          # hidl_interface auto-creates a filegroup named
-          # <fqname>_hal (hidl_interface.go:544-547 +
-          # fqName.go:91-92). The interface android.hidl.base@1.0
-          # lives in unsynced system/libhidl, so neither it nor
-          # its generated _hal filegroup exists here. Its only
-          # consumers are the two c2hal test genrules (srcs
-          # [":android.hidl.base@1.0_hal"]) in
-          # system/tools/hidl/c2hal/test/Android.bp — the dir also
-          # defines c2hal_test (cc_test_library) and nothing
-          # outside the dir references any of the three modules
-          # (whole-tree grep: zero hits).
-          # FIX, part 1 — STUB avb_testkey_rsa4096 as a filegroup
-          # in yuzora-stubs/Android.bp, mirroring the upstream
-          # definition exactly (filegroup, srcs
-          # ["testkey_rsa4096.pem"], public visibility). The dummy
-          # .pem is created by the prune step (same heredoc style
-          # as compatibility_matrix.xsd) and guarded with test -f
-          # in the prune step + pre-build guard. The .pem content
-          # is plainly marked NOT a real key; the build never signs
-          # images, so only the NAME has to exist for Soong's dep
-          # resolution. No sdk_version: filegroups do not take one.
-          # FIX, part 2 — PRUNE system/tools/hidl/c2hal/test whole
-          # (prune step rm -rf + checks + pre-build guard). The
-          # c2hal tool itself (system/tools/hidl/c2hal/) stays —
-          # only test/ goes. Test-dir prune precedent: #162/#165/
-          # #195/#210; the workflow already prunes
-          # system/tools/hidl/test + hidl2aidl/test in the #78 fix
-          # (same class, same parent dir). Alternative considered
-          # and rejected: stub android.hidl.base@1.0_hal as a
-          # filegroup (upstream type verified) — the prune is
-          # minimal for a test-only dir and removes the test lib
-          # from the graph; stubbing would leave the test genrules
-          # in the graph and need a dummy .hal src no consumer
-          # ever reads. Alternative considered and rejected for
-          # part 1: delete generic_system_sign_key + the
-          # avb_private_key line (would NOT fix the generated
-          # module's own avb_private_key dep — same stub needed
-          # anyway); sync external/avb (FORBIDDEN); ALLOW_MISSING_
-          # DEPENDENCIES (FORBIDDEN).
-          # DEP-CLOSURE VERIFIED: generic_system_sign_key's only
-          # dep is avb_testkey_rsa4096 (stubbed now); the c2hal
-          # genrules' other deps are in-dir simple.h + the c2hal /
-          # hidl-gen tools (defined in-tree). No other direct dep
-          # of either erroring consumer is undefined.
-          # NOT STUBBED (never reported in any raw log, runs #6–
-          # #230 — do NOT stub unless a raw log reports one):
-          # android.hardware.common-V2-ndk, libnativebridge,
-          # libgoogle-benchmark (ALREADY stubbed as
-          # cc_library_static — a different module from -main),
-          # libcharger_sysprop (phantom), android.hardware.
-          # fastboot@1.0, android.hardware.boot@1.2,
-          # libLibGuiProperties, libcom.android.sysprop.apex,
-          # libkeymaster_messages, libkeymaster3device,
-          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
-          # libbatterystats_aidl, libpower, avf_build_flags_cc
-          # (ALREADY stubbed as cc_defaults). REMOVED from the
-          # never-reported list this round: avb_testkey_rsa4096
-          # (reported in #228/#229/#230, now stubbed).
-          # android.hidl.base@1.0_hal was reported in #228 but is
-          # NOT stubbed — covered by the c2hal/test prune.
-          # libjnigraphics was reported in #224–#227 (via
-          # aosp_shared_system_image) but is NOT stubbed — covered
-          # by the #226 disable.
-          # FIRST-EVER reported: the first AVB / signing-key
-          # failure (a NEW layer class — the filegroup-srcs /
-          # property-dep phase), the first filegroup stub for a
-          # signing key, the first c2hal failure, the first
-          # android.hidl.base@1.0_hal (Soong-generated _hal
-          # filegroup) error, the first staged-commit control
-          # proving a fix twice over (#227: old workflow + new
-          # stubs reproduces #226's 313 minus exactly the 2
-          # stubbed modules = 311).
-          # WORKFLOW SIZE NOTE: this block is kept tight (no
-          # verbatim 311-module list in the workflow — the full
-          # list is in research-230-modules.md and in the manifest
-          # doc block). After this round the workflow is close to
-          # the 500 KB limit; the NEXT round must compact the
-          # oldest workflow comment blocks before adding a new one
-          # (see validate_fix230.py for the measured size/margin).
-          # CACHE NOTE (runs #227/#228/#229/#230): Restore is
-          # expected to miss (0-1s, sync ~9-12 min) and no Save
-          # step is expected — save-always still does not save
-          # (#230: Restore 0s MISS, sync 9m14s; #227: Restore 1s
-          # MISS, sync 11m07s; #228: Restore 0s MISS, sync 11m32s;
-          # #229: Restore 0s MISS, sync 11m10s; no "Cache saved"
-          # line in any run); the separate restore+save steps need
-          # his word (see the manifest). Expect Restore to miss
-          # and sync ~9-12 min on the next run too.
           # Runs #231/#232/#233/#234 fix: 6 filegroup stubs, no prunes.
-          # Runs #231 (46086837909, 13m21s, stubs push e62a89c, job
-          # 140798275600), #232 (46087163932, 11m28s, manifest push
-          # 95e9793, job 140799322205), #233 (46087269326, 13m24s,
-          # README push 5268b15, job 140799677042) and #234
-          # (46087777789, 15m45s, manual dispatch ~05:55 IST on
-          # commit 5268b15, job 140801316703) ALL FAILED at Soong
-          # ninja-file generation, on the SAME fix code (head
-          # 5268b15 — the runs #227/#228/#229/#230 1-stub + 1-prune
-          # fix, workflow 5001412), except #231, which ran the
-          # PRE-fix workflow a4dd91f (staged-commit artifact: the
-          # stubs push landed before the workflow push — same
-          # pattern as #195/#199/#207/#211/#223/#227).
-          # Steps (#234): Restore 1s, sync 12m12s, Prune 3s
-          # (passed), Build 53s FAILED (exit 1). #231: Restore 0s,
-          # sync 9m58s, Prune 3s, Build 36s FAILED. #232: Restore
-          # 0s, sync 8m15s, Prune 3s, Build 54s FAILED. #233:
-          # Restore 0s, sync 10m54s, Prune 2s, Build 55s FAILED.
-          # THE #230 FIX HELD COMPLETELY: zero avb_testkey_rsa4096
-          # genuine errors in all four runs (the filegroup stub
-          # works — #231 ran the old workflow, which never creates
-          # the dummy .pem, and still no error, re-proving filegroup
-          # srcs files are not existence-checked at ninja
-          # generation); zero android.hidl.base@1.0_hal genuine
-          # errors in #232/#233/#234 (the c2hal/test prune works —
-          # #231 is neutral on the prune: old workflow, and the
-          # error surfaced only in #228 anyway); zero
-          # aosp_shared_system_image / libcompiler_rt /
-          # update_engine_sideload genuine errors in all four runs.
-          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
-          # phase, FOURTH WAVE of the same phase as #230 (not a new
-          # phase: a genrule's srcs filegroup edge + a toolchain
-          # module's deps filegroup edges). Whole raw logs (only
-          # "error: ... depends on undefined module ..." lines
-          # counted, "#" echoes and "Or did you mean" excluded):
-          # #231: 6 genuine lines, 6 modules, 2 consumers. #232: 5
-          # genuine lines, 5 modules. #233/#234: 2 genuine lines
-          # each. UNION: 6 distinct new modules, ALL filegroups.
-          #   error: system/apex/apexer/Android.bp:54:1:
-          #   "mke2fs_conf_for_apexer" depends on undefined module
-          #   "mke2fs_conf". (in all four runs)
-          #   error: system/apex/apexer/Android.bp:151:1:
-          #   "apexer_test_host_tools" depends on undefined module
-          #   "current_android_jar". (in #231/#233/#234 — NOT #232)
-          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
-          #   depends on undefined module "gcc.lib". (in #231/#232)
-          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
-          #   depends on undefined module "gcc.lib32". (in #231/#232)
-          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
-          #   depends on undefined module "gcc.lib64". (in #231/#232)
-          #   error: prebuilts/rust/Android.bp:512:1: "rustc"
-          #   depends on undefined module "gcc.sysroot". (in #231/#232)
-          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
-          # again: zero genuine errors in all four runs (only "#"
-          # comment lines). Same class as #152/#161/#174/#177/#182/
-          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230.
-          # MECHANISM — PHASE MASKING, fourth wave (why this layer
-          # appeared only now): the filegroup-srcs / property-dep
-          # phase resolves LATER than the filesystem Deps phase, and
-          # Soong reports one wave per run — the #230 wave (avb/c2hal)
-          # and this wave (apexer/gcc) never co-occur in one run's
-          # genuine set. SUBSET VARIATION, BOTH DIRECTIONS (new):
-          # the gcc layer appears in #231 + #232 and VANISHES in
-          # #233 + #234, while current_android_jar appears in #231,
-          # vanishes in #232, and reappears in #233 + #234 — on
-          # effectively identical code (#232 vs #233 differ only in
-          # manifest/README doc text). A module can be reported in
-          # early siblings and absent in later ones WITHOUT any fix.
-          # The union rule cuts both ways: fix everything reported
-          # in ANY sibling, and never treat absence in the latest
-          # run as proof a module is fixed. Same lesson as
-          # #185/#202/#223/#226/#230: "never reported" means "not
-          # yet reached", not "exempt". After THIS fix the build
-          # reaches a still later phase (ninja generation → actual
-          # compilation); do not assume the dep-error rounds are
-          # over until `m` actually compiles.
-          # ROOT CAUSE 1 — mke2fs_conf: upstream it is a filegroup
-          # in unsynced system/extras (ext4_utils/Android.bp, read
-          # live from LineageOS lineage-22.2: srcs ["mke2fs.conf"],
-          # visibility //development/build + //system/apex/apexer).
-          # Consumer: the genrule mke2fs_conf_for_apexer (local
-          # system/apex/apexer/Android.bp:54-59, srcs
-          # [":mke2fs_conf"]), feeding the apexer python_binary_host.
-          # Whole-tree grep: zero definitions, zero refs outside
-          # the apexer dir.
-          # ROOT CAUSE 2 — current_android_jar: upstream it is a
-          # filegroup in unsynced prebuilts/sdk (current/Android.bp:
-          # 313-333, read live on android.googlesource.com at
-          # android-15.0.0_r32, blob 54af35d6: srcs
-          # ["public/android.jar"], visibility includes
-          # //system/apex/apexer). Not the java_import
-          # "android_current" (:292-300) in the same file.
-          # Consumers: the genrule_defaults apexer_test_host_tools_
-          # list (:147) + the genrule apexer_test_host_tools (:151),
-          # both srcs [":current_android_jar"]. Whole-tree grep:
-          # zero definitions; refs only in that file.
-          # ROOT CAUSE 3 — gcc.lib / gcc.lib32 / gcc.lib64 /
-          # gcc.sysroot: upstream they are filegroups in unsynced
-          # prebuilts/gcc (linux-x86/host/x86_64-linux-glibc2.17-4.8/
-          # Android.bp:1-24, read live via Android Code Search at
-          # android-15.0.0_r32 — the standalone-repo Gitiles URL
-          # 404s because the tag is a superproject tag, not a
-          # per-repo git tag). Consumer: the rust_toolchain_rustc_
-          # prebuilt module rustc (prebuilts/rust/Android.bp:512-526,
-          # read live on android.googlesource.com, blob 76bb5041:
-          # deps [":gcc.lib", ":gcc.lib32", ":gcc.lib64",
-          # ":gcc.sysroot", ":stdlib_prebuilts"]). The 5th dep
-          # :stdlib_prebuilts resolves in-tree (defined in
-          # prebuilts/rust/Android.bp, synced on the runner), so the
-          # 4 gcc filegroups are rustc's only undefined deps. The
-          # local tree has no prebuilts/rust dir (the 2026-11-26
-          # local sync stopped before that project's checkout), so
-          # the consumer was verified upstream, not locally.
-          # FIX — STUB all 6 as filegroups in yuzora-stubs/Android.bp,
-          # mirroring each upstream type exactly, srcs ["<dummy file>"]
-          # (relative to the stubs dir), public visibility, same
-          # precedent as the avb_testkey_rsa4096 filegroup stub
-          # (#230). The 6 dummy source files are created by the
-          # prune step (text placeholders, plainly marked NOT REAL,
-          # except android.jar, which is a valid EMPTY ZIP — a jar is
-          # a zip and the genrule zips it, so an empty zip is cheap
-          # insurance if the test tool is ever built) and guarded
-          # with test -f in the prune step + pre-build guard. No
-          # sdk_version on any new stub: filegroups do not take one.
-          # DEP-CLOSURE VERIFIED: mke2fs_conf_for_apexer has no other
-          # dep; apexer_test_host_tools(_list) tools resolve (signapk
-          # is defined in-tree, build/make/tools/signapk/Android.bp:
-          # 24; apexer_deps_tools members resolve; debugfs_static +
-          # fsck.erofs were stubbed in #131); rustc's other dep
-          # :stdlib_prebuilts resolves in-tree. No other direct dep
-          # of any erroring consumer is undefined.
-          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
-          # prune system/apex/apexer whole (would kill both apexer
-          # consumers) — REJECTED: the apexer python_binary_host is
-          # the host tool Soong's APEX builder expects
-          # (build/soong/apex/builder.go:44, HostBinToolVariable
-          # ("apexer", "apexer")), and APEX modules ARE in the graph
-          # (fsgen's hardcoded list includes
-          # com.android.apex.cts.shim.v1_prebuilt); pruning the tool
-          # would leave the builder's tool reference dangling.
-          # Prune prebuilts/rust whole (would kill rustc) — REJECTED:
-          # rustc is the Rust toolchain for the whole build, and the
-          # tree already carries rust_library stubs whose consumers
-          # assume it exists. Sync prebuilts/gcc / prebuilts/sdk /
-          # system/extras (FORBIDDEN); ALLOW_MISSING_DEPENDENCIES
-          # (FORBIDDEN).
-          # WATCH ITEM (not implemented): if a future round fails
-          # PAST Soong at compile/link and the trace shows the Rust
-          # toolchain actually running, the dummy gcc filegroup
-          # contents may need to become real libgcc/sysroot files
-          # (the toolchain copies deps files when instantiated).
-          # Today nothing in the lights service's closure compiles
-          # Rust (its shared_libs are libbase, libbinder_ndk,
-          # android.hardware.light-V2-ndk), so bare filegroup stubs
-          # suffice for THIS target. Same watch-item form as #182/#186.
-          # NOT STUBBED (never reported in any raw log, runs #6–
-          # #234 — do NOT stub unless a raw log reports one):
-          # bundletool (referenced in the SAME genrule's tools list,
-          # :160, and in build/soong/scripts/Android.bp:253, with NO
-          # definition anywhere in the synced tree, yet NEVER
-          # reported as undefined in any run — mechanism unproven,
-          # recorded honestly: genrule tools/required deps evidently
-          # do not surface at ninja generation the way srcs/deps do),
-          # stdlib_prebuilts (resolves in-tree),
-          # android.hardware.common-V2-ndk, libnativebridge,
-          # libgoogle-benchmark (ALREADY stubbed as
-          # cc_library_static — a different module from -main),
-          # libcharger_sysprop (phantom), android.hardware.
-          # fastboot@1.0, android.hardware.boot@1.2,
-          # libLibGuiProperties, libcom.android.sysprop.apex,
-          # libkeymaster_messages, libkeymaster3device,
-          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
-          # libbatterystats_aidl, libpower, avf_build_flags_cc
-          # (ALREADY stubbed as cc_defaults). REMOVED from the
-          # never-reported list this round: mke2fs_conf +
-          # current_android_jar + gcc.lib + gcc.lib32 + gcc.lib64 +
-          # gcc.sysroot (reported in #231–#234, now stubbed).
-          # libjnigraphics was reported in #224–#227 (via
-          # aosp_shared_system_image) but is NOT stubbed — covered
-          # by the #226 disable. android.hidl.base@1.0_hal was
-          # reported in #228 but is NOT stubbed — covered by the
-          # c2hal/test prune.
-          # FIRST-EVER reported: the first APEX-tool failure
-          # (apexer), the first Rust-toolchain failure (rustc/gcc
-          # filegroups), the first filegroup stubs for toolchain
-          # files, the first subset variation in BOTH directions,
-          # the first workflow comment-block compaction (rounds
-          # #165–#194 prose removed this round — see the COMPACTED
-          # pointer block above).
-          # COMPACTION NOTE: this round compacted the oldest
-          # workflow comment blocks (#165–#194, ~101 KB of prose)
-          # to a pointer block, per the #230 prescription — the
-          # workflow was 479,097 bytes (margin 32,909) and a new
-          # comment block alone would have left ~17 KB. After
-          # compaction + this block the file is far under the limit
-          # again; the next compaction round, when needed, compacts
-          # the #195/#196/#197/#198 block onward the same way.
-          # CACHE NOTE (runs #231/#232/#233/#234): Restore is
-          # expected to miss (0-1s, sync ~8-12 min) and no Save
-          # step is expected — save-always still does not save
-          # (#234: Restore 1s MISS, sync 12m12s; #231: Restore 0s
-          # MISS, sync 9m58s; #232: Restore 0s MISS, sync 8m15s;
-          # #233: Restore 0s MISS, sync 10m54s; no "Cache saved"
-          # line in any run); the separate restore+save steps need
-          # his word (see the manifest). Expect Restore to miss
-          # and sync ~8-12 min on the next run too.
           # Runs #235/#236/#237/#238 fix: 4 filegroup stubs, no prunes.
-          # Runs #235 (46092762632, 12m52s, stubs push fa627e0, job
-          # 140817223145), #236 (46093204054, 12m29s, manifest push
-          # b84929f, job 140818625730), #237 (46093324787, 12m49s,
-          # README push 652f4f9, job 140819022520) and #238
-          # (46093458977, 12m46s, manual dispatch ~07:00 IST on
-          # commit 652f4f9, job 140819437853) ALL FAILED at Soong
-          # ninja-file generation, on the SAME fix code (head
-          # 652f4f9 — the runs #231/#232/#233/#234 6-filegroup-stub
-          # fix, workflow cfe1950). Steps (#238): Restore 0s, sync
-          # 9m31s, Prune 3s (passed), Build 42s FAILED (exit 1).
-          # #235: Restore 0s, sync 10m48s, Prune 2s, Build 50s
-          # FAILED. #236: Restore 1s, sync 9m55s, Prune 1s, Build
-          # 36s FAILED. #237: Restore 1s, sync 9m05s, Prune 1s,
-          # Build 38s FAILED.
-          # THE #234 FIX HELD COMPLETELY: zero mke2fs_conf /
-          # current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
-          # gcc.sysroot genuine errors in all four runs. The #230
-          # fix HELD too (zero avb_testkey_rsa4096 / _hal genuine
-          # errors) and the #226 fix HELD (zero
-          # aosp_shared_system_image / libcompiler_rt /
-          # update_engine_sideload genuine errors).
-          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
-          # phase, FIFTH WAVE of the same phase as #230/#234. Whole
-          # raw logs (only "error: ... depends on undefined module
-          # ..." lines counted, "#" echoes and "Or did you mean"
-          # excluded): #235: 2 genuine lines, 1 module. #236: 8
-          # genuine lines, 3 modules. #237: 6 genuine lines, 1
-          # module. #238: 4 genuine lines, 1 module. UNION: 4
-          # distinct new modules, 20 genuine lines total — ALL
-          # referenced filegroup-style (data: [":<module>"]) by
-          # TEST modules.
-          #   error: build/make/ci/Android.bp:20:1:
-          #   "build_test_suites_test" depends on undefined module
-          #   "py3-cmd". (in #235 only)
-          #   error: build/make/ci/Android.bp:74:1:
-          #   "optimized_targets_test" depends on undefined module
-          #   "py3-cmd". (in #235 only)
-          #   error: system/core/fs_mgr/libfs_avb/Android.bp:103:1:
-          #   "libfs_avb_test" depends on undefined module
-          #   "avbtool". (in #236 only)
-          #   error: system/core/fs_mgr/libfs_avb/Android.bp:103:1:
-          #   "libfs_avb_test" depends on undefined module "fec".
-          #   (in #236 only)
-          #   error: system/core/fs_mgr/libfs_avb/Android.bp:125:1:
-          #   "libfs_avb_internal_test" depends on undefined module
-          #   "avbtool". (in #236 only)
-          #   error: system/core/fs_mgr/libfs_avb/Android.bp:125:1:
-          #   "libfs_avb_internal_test" depends on undefined module
-          #   "fec". (in #236 only)
-          #   error: system/tools/aidl/Android.bp:793:1:
-          #   "aidl_test_java_client_sdk29" depends on undefined
-          #   module "cts-dalvik-device-test-runner". (in
-          #   #236/#237/#238)
-          #   error: system/tools/aidl/Android.bp:805:1:
-          #   "aidl_test_java_service_sdk29" depends on undefined
-          #   module "cts-dalvik-device-test-runner". (in
-          #   #236/#237/#238)
-          #   error: system/tools/aidl/Android.bp:817:1:
-          #   "aidl_test_java_client_sdk1" depends on undefined
-          #   module "cts-dalvik-device-test-runner". (in
-          #   #236/#237/#238)
-          #   error: system/tools/aidl/Android.bp:829:1:
-          #   "aidl_test_java_service_sdk1" depends on undefined
-          #   module "cts-dalvik-device-test-runner". (in
-          #   #236/#237/#238)
-          #   error: system/tools/aidl/Android.bp:841:1:
-          #   "aidl_test_java_client_permission" depends on
-          #   undefined module "cts-dalvik-device-test-runner".
-          #   (in #237 only)
-          #   error: system/tools/aidl/Android.bp:857:1:
-          #   "aidl_test_java_service_permission" depends on
-          #   undefined module "cts-dalvik-device-test-runner".
-          #   (in #237 only)
-          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
-          # again: zero genuine errors in all four runs (only "#"
-          # comment lines). Same class as #152/#161/#174/#177/#182/
-          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
-          # #234.
-          # MECHANISM — PHASE MASKING, fifth wave (why this layer
-          # appeared only now): all four modules are referenced via
-          # data: [":<module>"] by TEST modules (2 python_test_host,
-          # 2 cc_test_host, 8 java_test) — the same filegroup-srcs /
-          # property-dep phase as #230/#234, resolving LATER than
-          # the filesystem Deps phase. The #234 wave (apexer/gcc)
-          # and this wave never co-occur in one run's genuine set.
-          # SUBSET VARIATION, BOTH DIRECTIONS (again): #235
-          # reports py3-cmd only and zero cts-dalvik lines; #236 is
-          # the ONLY run reporting avbtool/fec; #237 and #238 are on
-          # the IDENTICAL commit 652f4f9 yet report 6 vs 4
-          # cts-dalvik lines (the two *_permission consumers appear
-          # in #237 and vanish in #238). Fix the UNION across
-          # siblings; never treat absence in the latest run as proof
-          # a module is fixed. Same lesson as #185/#202/#223/#226/
-          # #230/#234.
-          # ROOT CAUSE 1 — cts-dalvik-device-test-runner: upstream
-          # it is a java_test_helper_library in unsynced
-          # platform/cts (tests/jdwp/runner/device-side/Android.bp:
-          # 19-33, AOSP android-15.0.0_r32: srcs ["src/**/*.java"],
-          # static_libs ["junit"], installable true, no visibility).
-          # LineageOS has no lineage-22.x branch of android_cts
-          # (newest lineage-20.0), so AOSP r32 is the operative
-          # upstream. Consumers: ALL EIGHT java_test modules in
-          # system/tools/aidl/Android.bp, via data: through
-          # aidl_test_java_sdkversion_defaults (static_libs
-          # androidx.test.core + androidx.test.runner, both already
-          # stubbed as java_library). The aidl + aidl-cpp host
-          # binaries live in the same file, so the dir cannot be
-          # pruned whole. The only other consumer anywhere is
-          # CtsJdwpTestCases (same unsynced project, not in our
-          # tree). Dep closure: the module is the ONLY undefined
-          # dep of all eight java_test modules.
-          # ROOT CAUSE 2 — py3-cmd: the prebuilt python interpreter
-          # (prebuilts/build-tools/linux-x86/bin/py3-cmd); the
-          # Soong module definition was NOT located after bounded
-          # search (whole synced tree: zero definitions;
-          # prebuilts/build-tools/Android.bp at r32, read in full,
-          # defines py3-launcher* but not py3-cmd; grep.app AOSP
-          # mirrors: consumer refs only) — recorded honestly, same
-          # class as libprotoutil (#186) / libtestUtil (#202). The
-          # fix does not depend on the upstream type: the consumer
-          # reference is filegroup-style (data: [":py3-cmd"]).
-          # Consumers: python_test_host build_test_suites_test
-          # (build/make/ci/Android.bp:20) + optimized_targets_test
-          # (:74). A genrule tools: reference in
-          # build/soong/genrule/Android.bp:42,48 never errors (the
-          # bundletool class — tools: deps do not surface at ninja
-          # generation). Dep closure: #235 reported ONLY py3-cmd for
-          # both modules (pyfakefs, a libs: dep with no definition
-          # anywhere, never errors either — python libs: edges do
-          # not surface).
-          # ROOT CAUSE 3 — avbtool: upstream it is a
-          # python_binary_host in unsynced external/avb
-          # (Android.bp:274-296, AOSP android-15.0.0_r32: srcs
-          # ["avbtool.py"], main "avbtool.py", required ["fec"],
-          # py3 embedded launcher). Consumers: cc_test_host
-          # libfs_avb_test (system/core/fs_mgr/libfs_avb/Android.bp:
-          # 103) + libfs_avb_internal_test (:125), via data:
-          # [":avbtool", ":fec"], plus required: ["avbtool"] in
-          # libfs_avb_host_test_defaults (:66) and a third,
-          # not-yet-surfaced consumer, python_test_host
-          # apex_compression_test (system/apex/tools/Android.bp).
-          # Upstream avbtool itself requires fec — the two travel
-          # together, which is why #236 reports both. Dep closure:
-          # #236 reported ONLY avbtool + fec for both tests.
-          # ROOT CAUSE 4 — fec: the FEC tool binary (fec.c in
-          # external/fec); the Soong module definition was NOT
-          # located after bounded search (external/fec/Android.bp
-          # at r32 defines ONLY libfec_rs; system/extras/verity/
-          # Android.bp at r32 defines no fec; system/extras/
-          # vbmeta_tools holds only vbmake; whole synced tree: zero
-          # definitions; grep.app: zero "name: fec" hits) — same
-          # honest class as py3-cmd above. Consumers: the same two
-          # libfs_avb cc_test_host modules, via data: [":fec"].
-          # FIX — STUB all 4 as filegroups in yuzora-stubs/Android.bp,
-          # srcs ["<dummy file>"] (relative to the stubs dir),
-          # public visibility, same precedent as the #230/#234
-          # filegroup stubs. The 4 dummy source files are created by
-          # the prune step (the cts jar is a valid EMPTY ZIP, same
-          # as android.jar in #234; py3-cmd, avbtool and fec are
-          # text placeholders, plainly marked NOT REAL) and guarded
-          # with test -f in the prune step + pre-build guard. No
-          # sdk_version on any new stub: filegroups do not take one
-          # (the aidl consumers set only min_sdk_version, which does
-          # not demand an sdk variant per #159/#161). The stub type
-          # is deliberately NOT the upstream type (java_test_helper_
-          # library / python_binary_host would drag in junit and
-          # toolchain expectations for zero benefit — same class as
-          # framework-cppstream-protos, upstream gensrcs → genrule
-          # stub, #202).
-          # DEP-CLOSURE VERIFIED: all eight aidl java_test modules
-          # have no other undefined dep; both ci python_test_host
-          # modules have no other reported dep; both libfs_avb
-          # cc_test_host modules have no other reported dep. The
-          # required: ["avbtool"] edge is satisfied by the stub's
-          # existence in the graph; run #239 is the test of that
-          # assumption (flagged, not blocking).
-          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
-          # prune the eight aidl java_test blocks (eight
-          # sed-deletes in a load-bearing file that also defines the
-          # aidl host binary — far more invasive than one stub, and
-          # the four non-sdk modules would need deleting too);
-          # prune system/tools/aidl whole (kills the aidl binary);
-          # prune build/make/ci whole (build-system dir; also
-          # defines build_test_suites_lib, ci_test_lib and the
-          # build_test_suites binary); prune system/core/fs_mgr/
-          # libfs_avb whole (libfs_avb is referenced by in-graph
-          # modules outside the dir — system/core/fs_mgr/Android.bp
-          # :91,:95 and system/core/init/Android.bp:370 — pruning
-          # would CREATE new errors); sed-delete the consumer data:
-          # lists (consumer-side edits drift against upstream —
-          # every round stubs the missing module instead); stub
-          # cts-dalvik as java_test_helper_library / avbtool as
-          # python_binary_host (drags in junit/toolchain chains for
-          # zero benefit). Sync platform/cts / external/avb /
-          # external/fec / system/extras (FORBIDDEN);
-          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN).
-          # WATCH ITEMS (not implemented): if a future round fails
-          # PAST Soong at compile/link and the trace shows a test
-          # tool actually running, the dummy filegroup contents may
-          # need to become real files (same form as #182/#186/#234).
-          # The required: ["avbtool"] edge against a filegroup stub
-          # is untested by any previous round — run #239 is the
-          # test. apex_compression_test (system/apex/tools) never
-          # surfaced; if it does, its other data: deps
-          # (conv_apex_manifest, apex_compression_tool, deapexer,
-          # soong_zip) may surface with it — watch list only.
-          # NOT STUBBED (never reported in any raw log, runs #6–
-          # #238 — do NOT stub unless a raw log reports one):
-          # pyfakefs (a libs: dep of both ci tests, no definition
-          # anywhere, yet never reported — python libs: edges do
-          # not surface); conv_apex_manifest, apex_compression_tool,
-          # deapexer, soong_zip, com.android.example.apex (data deps
-          # of apex_compression_test, never reported);
-          # cts-dalvik-host-test-runner (only host_required by
-          # CtsJdwpTestCases, never referenced by any aidl module);
-          # bundletool (tools: list, no definition, never reported);
-          # stdlib_prebuilts (resolves in-tree),
-          # android.hardware.common-V2-ndk, libnativebridge,
-          # libgoogle-benchmark (ALREADY stubbed as
-          # cc_library_static — a different module from -main),
-          # libcharger_sysprop (phantom), android.hardware.
-          # fastboot@1.0, android.hardware.boot@1.2,
-          # libLibGuiProperties, libcom.android.sysprop.apex,
-          # libkeymaster_messages, libkeymaster3device,
-          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
-          # libbatterystats_aidl, libpower, avf_build_flags_cc
-          # (ALREADY stubbed as cc_defaults). REMOVED from the
-          # never-reported list this round: cts-dalvik-device-test-
-          # runner + py3-cmd + avbtool + fec (reported in #235–#238,
-          # now stubbed). libjnigraphics was reported in #224–#227
-          # (via aosp_shared_system_image) but is NOT stubbed —
-          # covered by the #226 disable. android.hidl.base@1.0_hal
-          # was reported in #228 but is NOT stubbed — covered by the
-          # c2hal/test prune.
-          # FIRST-EVER reported: the first test-data wave (all four
-          # modules referenced via data: by test modules), the first
-          # python_test_host consumers, the first java_test
-          # consumers, the first upstream java_test_helper_library
-          # and python_binary_host, the first round with TWO modules
-          # whose upstream definition could not be located
-          # (py3-cmd, fec), the first required: edge pointing at a
-          # stubbed module (avbtool).
-          # CACHE NOTE (runs #235/#236/#237/#238): Restore is
-          # expected to miss (0-1s, sync ~9-11 min) and no Save
-          # step is expected — save-always still does not save
-          # (#238: Restore 0s MISS, sync 9m31s; #235: Restore 0s
-          # MISS, sync 10m48s; #236: Restore 1s MISS, sync 9m55s;
-          # #237: Restore 1s MISS, sync 9m05s; no "Cache saved"
-          # line in any run); the separate restore+save steps need
-          # his word (see the manifest). Expect Restore to miss
-          # and sync ~9-11 min on the next run too.
           # Runs #239/#240/#241/#242 fix: 2 filegroup stubs, no prunes.
-          # Runs #239 (46100843471, 14m9s, stubs push 83aa82d, job
-          # 140842680964), #240 (46101031386, 14m58s, manifest push
-          # f3af25f, job 140843268287), #241 (46101131175, 14m10s,
-          # README push de4ac91, job 140843587796) and #242
-          # (46101215685, 14m0s, manual dispatch ~08:36 IST on
-          # commit de4ac91, job 140843851818) ALL FAILED at Soong
-          # ninja-file generation, on the SAME fix code (head
-          # de4ac91 — the runs #235/#236/#237/#238 4-filegroup-stub
-          # fix, workflow a33ce28). Steps (#242): Restore 0s MISS,
-          # sync 11m7s, Prune 1s (passed), Build 37s FAILED (exit
-          # 1). #239: Restore 0s MISS, sync ~11m, Prune 6s, Build
-          # 43s FAILED. #240: Restore 0s MISS, sync ~11m, Prune
-          # 3s, Build 54s FAILED. #241: Restore 0s MISS, sync
-          # ~11m, Prune 1s, Build 36s FAILED.
-          # THE #238 FIX HELD COMPLETELY: zero
-          # cts-dalvik-device-test-runner / py3-cmd / avbtool / fec
-          # genuine errors in all four runs — INCLUDING the
-          # required: ["avbtool"] edge, the flagged untested
-          # assumption from the #238 round: #239–#242 prove a
-          # filegroup stub satisfies a required: edge at ninja
-          # generation. The #234 fix HELD too (zero mke2fs_conf /
-          # current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
-          # gcc.sysroot genuine errors) and the #230 fix HELD (zero
-          # avb_testkey_rsa4096 genuine errors) and the #226 fix
-          # HELD (zero aosp_shared_system_image / libcompiler_rt /
-          # update_engine_sideload genuine errors).
-          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
-          # phase, SIXTH WAVE of the same phase as #230/#234/#238.
-          # Whole raw logs (only "error: ... depends on undefined
-          # module ..." lines counted, "#" echoes and "Or did you
-          # mean" excluded): #239: 1 genuine line, 1 module.
-          # #240: 1 genuine line, 1 module. #241: 2 genuine lines,
-          # 2 modules. #242: 2 genuine lines, 2 modules. UNION: 2
-          # distinct new modules, 6 genuine lines total — NOT
-          # data: filegroups this time (one is a srcs: filegroup
-          # edge of a cc_library, the other a device_common_data:
-          # edge of a python_test_host), so the wave composition
-          # differs from the #238 test-data wave, but the phase is
-          # the same: Soong reports one wave per run and the waves
-          # never co-occur.
-          #   error: frameworks/native/libs/vibrator/Android.bp:49:1:
-          #   "libvibrator" depends on undefined module
-          #   "libvibrator_aidl". (in #239/#241/#242)
-          #   error: build/make/tools/releasetools/Android.bp:657:1:
-          #   "releasetools_test" depends on undefined module
-          #   "com.android.apex.vendor.foo.with_vintf". (in
-          #   #240/#241/#242)
-          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
-          # again: zero genuine errors in all four runs (only "#"
-          # comment lines). Same class as #152/#161/#174/#177/#182/
-          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
-          # #234/#238.
-          # MECHANISM — PHASE MASKING, sixth wave (why this layer
-          # appeared only now): both modules are undefined-module
-          # errors at Soong ninja-file generation — the same phase
-          # as #230/#234/#238, resolving LATER than the filesystem
-          # Deps phase. The #238 wave (test-data filegroups) and
-          # this wave never co-occur in one run's genuine set.
-          # SUBSET VARIATION, BOTH DIRECTIONS (again): #239
-          # reports libvibrator only; #240 reports releasetools
-          # only; #241 and #242 are on the IDENTICAL commit de4ac91
-          # yet report the same two errors in OPPOSITE order. Fix
-          # the UNION across siblings; never treat absence in the
-          # latest run as proof a module is fixed. Same lesson as
-          # #185/#202/#223/#226/#230/#234/#238.
-          # ROOT CAUSE 1 — libvibrator_aidl: upstream it is a
-          # filegroup in unsynced platform/frameworks/base
-          # (core/java/Android.bp, AOSP android-15.0.0_r32 lines
-          # 206-213; LineageOS lineage-22.2 lines 395-408: srcs
-          # ["android/os/IExternalVibrationController.aidl",
-          # "android/os/IExternalVibratorService.aidl",
-          # "android/os/ExternalVibrationScale.aidl"]). Consumer:
-          # cc_library libvibrator
-          # (frameworks/native/libs/vibrator/Android.bp:49) via
-          # srcs: [":libvibrator_aidl", "ExternalVibration.cpp"]
-          # — a filegroup-style colon-prefixed edge (the ":"
-          # prefix proves the upstream module is a filegroup).
-          # The consumer dir was NEVER pruned (the #242 error
-          # itself proves Soong read the file; #135/#136/#137
-          # already fixed this module's libaudio_system_headers
-          # dep by stubbing). Dep closure: libvibrator_aidl is
-          # the ONLY undefined dep of libvibrator (shared_libs
-          # libbinder/liblog/libutils in-tree;
-          # server_configurable_flags stubbed #119;
-          # android.os.vibrator.flags-aconfig-cc stubbed #128;
-          # libvibratorutils defined in the same file;
-          # libaudio_system_headers stubbed #135).
-          # DUMMY CHOICE (why the stub srcs is a dummy text file,
-          # NOT the real AIDL): libvibrator is NOT in the lights
-          # service's closure — the service is defined in the fork
-          # at aidl/light/Android.bp with shared_libs libbase,
-          # libbinder_ndk, android.hardware.light-V2-ndk ONLY, and
-          # a fork-wide search finds no libvibrator reference
-          # outside stubs comments (verified live 2026-11-28).
-          # The .aidl contents are compiled only if libvibrator is
-          # built, and it never is for this target. #239 evidence:
-          # Soong does not validate filegroup srcs existence at
-          # ninja generation (the old workflow created no dummy
-          # files, yet the only error was libvibrator_aidl).
-          # FALLBACK (not implemented): if a future round ever
-          # builds libvibrator, the stub srcs must become the real
-          # AIDL contents verbatim (the 3 upstream files PLUS
-          # ExternalVibration.aidl as a 4th src, since
-          # IExternalVibratorService.aidl imports
-          # android.os.ExternalVibration, resolved upstream via
-          # aidl include_dirs frameworks/base/core/java, which
-          # does not exist in the synced tree).
-          # ROOT CAUSE 2 — com.android.apex.vendor.foo.with_vintf:
-          # upstream it is an apex_test in
-          # system/apex/tests/testdata/vendorapex/Android.bp
-          # (AOSP android-15.0.0_r32, lines ~177-190: defaults
-          # com.android.apex.vendor.foo.defaults, manifest
-          # manifest_v2.json, binaries apex_vendor_foo, prebuilts
-          # apex_vendor_foo_v2.rc + apex_vendor_foo_v2.xml). The
-          # project platform/system/apex IS synced, but the
-          # workflow prunes system/apex/tests whole (runs
-          # #75/#76/#77 fix, rm -rf system/apex/tests) — so this
-          # is a SELF-INFLICTED prune. Un-pruning is not viable:
-          # the dir holds the 84-error host-test/tradefed family
-          # pruned in #75–#77. Consumer: python_test_host
-          # releasetools_test
-          # (build/make/tools/releasetools/Android.bp:657) via its
-          # defaults releasetools_test_defaults (:609)
-          # device_common_data:
-          # [":com.android.apex.compressed.v1",
-          # ":com.android.apex.vendor.foo.with_vintf"] — a
-          # colon-prefixed file reference, same class as the #238
-          # data: filegroups. Dep closure: with_vintf is the ONLY
-          # undefined dep of releasetools_test (srcs filegroups
-          # defined in the synced merge dir; libs releasetools_*
-          # + update_payload stubbed #131; data: testdata/**/*
-          # local; :com.android.apex.compressed.v1 DEFINED — apex
-          # in system/apex/apexd/apexd_testdata/Android.bp:71,
-          # kept since #58; required: apexd_host, deapexer
-          # defined in system/apex/tools). A second synced
-          # consumer, ApexTestCases (cc_test,
-          # system/apex/apexd/Android.bp:471), references both
-          # :com.android.apex.vendor.foo and
-          # :com.android.apex.vendor.foo.with_vintf via defaults
-          # and is fixed by the same stub. The dummy .apex is a
-          # valid EMPTY ZIP (an APEX is a zip;
-          # test_check_target_files_vintf.py:172 expects exactly
-          # that filename). Honest limit: no prior round has
-          # stubbed an apex_test module as a filegroup — what is
-          # proven is that filegroup stubs satisfy colon-prefixed
-          # file references at ninja generation; the
-          # apex_test-to-filegroup substitution itself is unproven
-          # until the run passes.
-          # FIX — STUB both as filegroups in yuzora-stubs/Android.bp,
-          # srcs ["<dummy file>"] (relative to the stubs dir),
-          # public visibility, same precedent as the #230/#234/#238
-          # filegroup stubs. The 2 dummy source files are created
-          # by the prune step (the with_vintf dummy is a valid
-          # EMPTY ZIP, same as android.jar in #234 and the cts jar
-          # in #238; libvibrator_aidl is a text placeholder,
-          # plainly marked NOT REAL) and guarded with test -f in
-          # the prune step + pre-build guard. No sdk_version on
-          # any new stub: filegroups do not take one. The stub
-          # type for libvibrator_aidl MATCHES the upstream type
-          # (filegroup); the stub type for with_vintf deliberately
-          # does NOT mirror the upstream apex_test type (a real
-          # apex stub would need a manifest, key and certificate
-          # for zero benefit — the releasetools test consumer never
-          # runs for the lights target).
-          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
-          # prune frameworks/native/libs/vibrator whole (unknown
-          # consumer set in the synced tree — libvibrator is linked
-          # by the vibrator HAL service + audioflinger paths;
-          # pruning risks CREATING new undefined-module errors from
-          # in-graph consumers; stub is additive and minimal —
-          # same rejection form as #135, which stubbed rather than
-          # pruned this dir); prune releasetools_test (targeted
-          # edit of synced build/make; the dir holds the OTA tools
-          # the build uses); un-prune system/apex/tests (re-admits
-          # the 84-error host-test/tradefed family); real-AIDL stub
-          # srcs for libvibrator_aidl (rejected on the closure proof
-          # above — contents never compiled; adds ~350 lines plus
-          # the unproven include_dirs tolerance for zero benefit;
-          # recorded as the fallback if libvibrator is ever built);
-          # sync platform/frameworks/base (FORBIDDEN);
-          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN).
-          # WATCH ITEMS (not implemented): (1) if a future round
-          # fails PAST Soong at compile/link and the trace shows
-          # libvibrator actually building, the libvibrator_aidl
-          # stub srcs must become real AIDL (3 upstream files +
-          # ExternalVibration.aidl). (2) ExternalVibration.cpp and
-          # ExternalVibration.h both include <system/audio.h> — the
-          # #135 libaudio_system_headers stub is bare (no
-          # export_include_dirs, no real headers) and system/media
-          # is unsynced — expect a compile-stage failure on that
-          # include if libvibrator ever builds. (3)
-          # com.android.apex.vendor.foo (sibling apex_test,
-          # consumer ApexTestCases in a kept synced file) — NOT
-          # stubbed, watch list only (never reported in #6–#242;
-          # stub only if a raw log reports it). (4) if a future
-          # round fails past Soong at compile/link with the Rust
-          # toolchain actually running, dummy gcc filegroup
-          # contents may need to become real libgcc/sysroot files
-          # (carried from #238).
-          # NOT STUBBED (never reported in any raw log, runs #6–
-          # #242 — do NOT stub unless a raw log reports one):
-          # com.android.apex.vendor.foo (sibling apex_test,
-          # consumer ApexTestCases in a kept synced file — watch
-          # list only); pyfakefs (a libs: dep of both ci tests, no
-          # definition anywhere, yet never reported — python libs:
-          # edges do not surface); conv_apex_manifest,
-          # apex_compression_tool, deapexer, soong_zip,
-          # com.android.example.apex (data deps of
-          # apex_compression_test, never reported);
-          # cts-dalvik-host-test-runner (only host_required by
-          # CtsJdwpTestCases, never referenced by any aidl module);
-          # bundletool (tools: list, no definition, never
-          # reported); stdlib_prebuilts (resolves in-tree),
-          # android.hardware.common-V2-ndk, libnativebridge,
-          # libgoogle-benchmark (ALREADY stubbed as
-          # cc_library_static — a different module from -main),
-          # libcharger_sysprop (phantom), android.hardware.
-          # fastboot@1.0, android.hardware.boot@1.2,
-          # libLibGuiProperties, libcom.android.sysprop.apex,
-          # libkeymaster_messages, libkeymaster3device,
-          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
-          # libbatterystats_aidl, libpower, avf_build_flags_cc
-          # (ALREADY stubbed as cc_defaults). REMOVED from the
-          # never-reported list this round: libvibrator_aidl +
-          # com.android.apex.vendor.foo.with_vintf (reported in
-          # #239–#242, now stubbed). libjnigraphics was reported in
-          # #224–#227 (via aosp_shared_system_image) but is NOT
-          # stubbed — covered by the #226 disable.
-          # android.hidl.base@1.0_hal was reported in #228 but is
-          # NOT stubbed — covered by the c2hal/test prune.
-          # FIRST-EVER reported: the first srcs: filegroup edge of
-          # a cc_library (libvibrator), the first device_common_data:
-          # edge, the first apex_test stubbed as a filegroup, the
-          # first self-inflicted-prune module (with_vintf), the
-          # first round where the fix's dummy-vs-real choice turned
-          # on a proven closure read (aidl/light/Android.bp).
-          # CACHE NOTE (runs #239/#240/#241/#242): Restore is
-          # expected to miss (0s, sync ~11 min) and no Save step is
-          # expected — save-always still does not save (#242:
-          # Restore 0s MISS, sync 11m7s; #239: Restore 0s MISS,
-          # sync ~11m; #240: Restore 0s MISS, sync ~11m; #241:
-          # Restore 0s MISS, sync ~11m; no "Cache saved" line in
-          # any run); the separate restore+save steps need his word
-          # (see the manifest). Expect Restore to miss and sync
-          # ~11 min on the next run too.
           # Runs #243/#244/#245/#246 fix: 5 filegroup stubs, no prunes.
-          # Runs #243 (46106693193, stubs push c028e0f), #244
-          # (46106888505, manifest push 8fe304e), #245 (46106964845,
-          # 12m37s, README push 9eeb403, job 140861772325) and #246
-          # (46107176518, manual dispatch ~09:51 IST on commit
-          # 9eeb403, job 140862423234) ALL FAILED at Soong
-          # ninja-file generation, on the SAME fix code (head
-          # 9eeb403 — the runs #239/#240/#241/#242 2-filegroup-stub
-          # fix, workflow 270f737). Steps (#245): Restore 1s MISS,
-          # sync 9m20s, Prune 1s (passed), Build 37s FAILED (exit
-          # 1). #243/#244/#246 step durations were not recorded
-          # (their run pages show only the exit-code annotation).
-          # THE #242 FIX HELD COMPLETELY: zero libvibrator_aidl /
-          # com.android.apex.vendor.foo.with_vintf genuine errors in
-          # #245 and #246 — the apex_test-to-filegroup substitution
-          # is now PROVEN (with_vintf stub satisfied a
-          # device_common_data: edge at ninja generation). The #238
-          # fix HELD too (zero cts-dalvik-device-test-runner /
-          # py3-cmd / avbtool / fec genuine errors) and the #234 fix
-          # HELD (zero mke2fs_conf / current_android_jar / gcc.lib /
-          # gcc.lib32 / gcc.lib64 / gcc.sysroot genuine errors) and
-          # the #230 fix HELD (zero avb_testkey_rsa4096 genuine
-          # errors) and the #226 fix HELD (zero
-          # aosp_shared_system_image / libcompiler_rt /
-          # update_engine_sideload genuine errors).
-          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
-          # phase, SEVENTH WAVE of the same phase as
-          # #230/#234/#238/#242. Job logs (#245 lines 904-916;
-          # #246 same 7 lines, verified live): only "error: ...
-          # depends on undefined module ..." lines counted, "#"
-          # echoes and "Or did you mean" excluded. #245 and #246
-          # match EXACTLY — no subset variation between the two
-          # confirmed runs this time. UNION: 5 distinct new modules,
-          # 7 genuine lines total — two are srcs: filegroup edges of
-          # a cc_library / cc_library_shared, three are data: file
-          # references of cc_test modules, so the wave composition
-          # differs from the #242 wave, but the phase is the same.
-          # UNION GAP (recorded honestly): #243/#244's unions could
-          # NOT be read — their run pages show only "Process
-          # completed with exit code 1", no job-log lines, and their
-          # job IDs were not recorded. The fix covers the #245/#246
-          # union; a later sibling surfacing an extra module is
-          # still possible (same lesson as #185/#202/#223/#226/#230/
-          # #234/#238/#242: "never reported" means "not yet reached").
-          #   error: frameworks/native/libs/binder/Android.bp:974:1:
-          #   "libactivitymanager_aidl" depends on undefined module
-          #   "activity_manager_procstate_aidl".
-          #   error: frameworks/native/services/powermanager/
-          #   Android.bp:10:1: "libpowermanager" depends on undefined
-          #   module "libpowermanager_aidl".
-          #   error: system/apex/apexd/Android.bp:470:1:
-          #   "ApexTestCases" depends on undefined module
-          #   "com.android.apex.test.sharedlibs_generated.v1.
-          #   libvX_prebuilt" (also :583 "ApexServiceTestCases").
-          #   error: system/apex/apexd/Android.bp:470:1:
-          #   "ApexTestCases" depends on undefined module
-          #   "com.android.apex.test.sharedlibs_generated.v2.
-          #   libvY_prebuilt" (also :583 "ApexServiceTestCases").
-          #   error: system/apex/apexd/Android.bp:470:1:
-          #   "ApexTestCases" depends on undefined module
-          #   "com.android.apex.vendor.foo".
-          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
-          # again: zero genuine errors in #245/#246 (only "#"
-          # comment lines). Same class as #152/#161/#174/#177/#182/
-          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
-          # #234/#238/#242.
-          # MECHANISM — PHASE MASKING, seventh wave: all five modules
-          # are undefined-module errors at Soong ninja-file
-          # generation — the same phase as #230/#234/#238/#242,
-          # resolving LATER than the filesystem Deps phase. The #242
-          # wave and this wave never co-occur in one run's genuine set.
-          # ROOT CAUSE 1 — activity_manager_procstate_aidl: upstream
-          # it is a filegroup in unsynced platform/frameworks/base
-          # (core/java/Android.bp, LineageOS lineage-22.2 real lines
-          # 405-411, verified by git clone: srcs
-          # ["android/app/ProcessStateEnum.aidl"] — a SINGLE source
-          # file). Consumer: cc_library libactivitymanager_aidl
-          # (frameworks/native/libs/binder/Android.bp:974, verified
-          # in a fresh lineage-22.2 clone — the error line matches
-          # the module-type line exactly) via srcs:
-          # [":activity_manager_procstate_aidl", ...] — a
-          # filegroup-style colon-prefixed edge. The consumer has an
-          # aidl: { export_aidl_headers: true } block and NO
-          # sdk_version. Dep closure: the filegroup is the ONLY
-          # undefined dep of libactivitymanager_aidl (shared_libs
-          # libbinder/libutils/liblog in-tree). A second synced
-          # consumer of the library (not the filegroup) is
-          # sensorservice (:69, :102) — it resolves once the
-          # filegroup exists.
-          # ROOT CAUSE 2 — libpowermanager_aidl: upstream it is a
-          # filegroup in unsynced platform/frameworks/base
-          # (core/java/Android.bp, LineageOS lineage-22.2 real lines
-          # 215-233, verified by git clone: srcs 8 AIDL files —
-          # Temperature, CoolingDevice, IThermalEventListener,
-          # IThermalHeadroomListener, IThermalStatusListener,
-          # IThermalService, IPowerManager, IWakeLockCallback).
-          # Consumer: cc_library_shared libpowermanager
-          # (frameworks/native/services/powermanager/Android.bp:10,
-          # verified in a fresh lineage-22.2 clone) via srcs:
-          # [":libpowermanager_aidl", ...]. The consumer has an aidl:
-          # block (local_include_dirs ["include"], include_dirs
-          # ["frameworks/base/core/java/android/os"],
-          # export_aidl_headers: true) and NO sdk_version. Dep
-          # closure: the filegroup is the ONLY undefined dep that
-          # has surfaced; shared_libs android.hardware.power@1.0-1.3
-          # and whole_static_libs android.os.hintmanager_aidl-ndk
-          # were NEVER reported in #6-#246 — not chased, watch only.
-          # DUMMY CHOICE (why the two aidl stub srcs are dummy text
-          # files, NOT the real AIDL): neither
-          # libactivitymanager_aidl nor libpowermanager is in the
-          # lights service's closure — the service is defined in the
-          # fork at aidl/light/Android.bp with shared_libs libbase,
-          # libbinder_ndk, android.hardware.light-V2-ndk ONLY, and a
-          # fork-wide search finds no libactivitymanager_aidl /
-          # libpowermanager reference outside stubs comments
-          # (verified live 2026-11-28). The .aidl contents are
-          # compiled only if the libraries are built, and they never
-          # are for this target. #239 evidence: Soong does not
-          # validate filegroup srcs existence at ninja generation.
-          # FALLBACKS (not implemented): if a future round ever
-          # builds libactivitymanager_aidl, the stub srcs must become
-          # the real ProcessStateEnum.aidl (177 lines, no imports —
-          # the simplest fallback of the three aidl filegroups). If a
-          # future round ever builds libpowermanager, the stub srcs
-          # must become the real 8 AIDL files PLUS the imported
-          # parcelables (BatterySaverPolicyConfig, ParcelDuration,
-          # PowerSaveState, WorkSource — IWakeLockCallback IS in the
-          # filegroup) PLUS the aidl include_dirs
-          # frameworks/base/core/java/android/os must exist in the
-          # synced tree (it does not — frameworks/base is unsynced).
-          # ROOT CAUSE 3 — com.android.apex.test.sharedlibs_generated.
-          # v1.libvX_prebuilt: upstream it is a prebuilt_apex in
-          # system/apex/tests/testdata/sharedlibs/prebuilts/
-          # Android.bp (AOSP android-15.0.0_r32, name at line 244,
-          # verified by git clone: arch-specific srcs of prebuilt
-          # .apex files, filename ...v1.libvX.apex, installable:
-          # false; the apex files are GENERATED by build_artifacts.sh
-          # from the com.android.apex.test.sharedlibs_generated apex
-          # module). The project platform/system/apex IS synced, but
-          # the workflow prunes system/apex/tests whole (runs
-          # #75/#76/#77 fix) — a SELF-INFLICTED prune; un-pruning is
-          # not viable (the dir holds the 84-error host-test/tradefed
-          # family). Consumers: cc_test ApexTestCases
-          # (system/apex/apexd/Android.bp:470, AOSP r32) via data:
-          # (:533-534) and cc_test ApexServiceTestCases (:583) via
-          # data: (:637-638) — colon-prefixed file references, same
-          # class as the #238 data: filegroups.
-          # ROOT CAUSE 4 — com.android.apex.test.sharedlibs_generated.
-          # v2.libvY_prebuilt: upstream it is a prebuilt_apex in the
-          # SAME file as root cause 3 (name at line 264, verified by
-          # git clone): identical shape (arch-specific srcs,
-          # filename ...v2.libvY.apex, installable: false). Same
-          # self-inflicted prune, same two consumers (ApexTestCases
-          # data: :535-536; ApexServiceTestCases data: :637-638).
-          # ROOT CAUSE 5 — com.android.apex.vendor.foo: upstream it
-          # is an apex_test in
-          # system/apex/tests/testdata/vendorapex/Android.bp (AOSP
-          # android-15.0.0_r32, real lines 41-48, name at 42,
-          # verified by git clone: defaults
-          # com.android.apex.vendor.foo.defaults only — the plainest
-          # of the vendorapex family). Same self-inflicted prune.
-          # Consumer: cc_test ApexTestCases (:470) via data:
-          # [":com.android.apex.vendor.foo", ...] (:549 in the r32
-          # file). ApexServiceTestCases does NOT reference vendor.foo.
-          # This module was WATCH LIST ONLY in #242 (never reported
-          # in #6-#242 — stub only what a raw log reports); it is NOW
-          # reported, so it is stubbed. The sibling with_vintf stub
-          # (#242) does not cover it — different module name.
-          # DEP-CLOSURE PROOF (ApexTestCases / ApexServiceTestCases):
-          # every OTHER data: entry of both test modules resolves to
-          # a KEPT file — verified exhaustively in the r32 tree:
-          # :apex.* + :com.android.apex.compressed.* +
-          # :com.android.apex.brand.new* in
-          # system/apex/apexd/apexd_testdata/Android.bp (kept since
-          # #58), :com.android.apex.cts.shim.*_prebuilt in
-          # system/apex/shim/Android.bp (kept), :gen_* java_genrules
-          # in system/apex/apexd/Android.bp itself (kept),
-          # :test.rebootless_apex* in apexd_testdata/Android.bp:437
-          # (kept). The ONLY undefined data: entries in the whole
-          # file are the 3 reported modules (plus with_vintf,
-          # already stubbed #242).
-          # FIX — STUB all five as filegroups in
-          # yuzora-stubs/Android.bp, srcs ["<dummy file>"] (relative
-          # to the stubs dir), public visibility, same precedent as
-          # the #230/#234/#238/#242 filegroup stubs. The 5 dummy
-          # source files are created by the prune step (the 3 apex
-          # dummies are valid EMPTY ZIPs, same as android.jar in #234
-          # and the cts jar in #238 and the with_vintf apex in #242;
-          # the 2 aidl dummies are text placeholders, plainly marked
-          # NOT REAL) and guarded with test -f in the prune step +
-          # pre-build guard. No sdk_version on any new stub:
-          # filegroups do not take one. The stub types for the two
-          # aidl modules MATCH the upstream types (filegroup); the
-          # stub types for the three apex modules deliberately do NOT
-          # mirror the upstream prebuilt_apex / apex_test types (a
-          # real prebuilt_apex stub would need arch-specific srcs for
-          # zero benefit — the ApexTestCases consumers never run for
-          # the lights target). Honest limit: the with_vintf
-          # precedent PROVED the apex_test-to-filegroup substitution
-          # in #245/#246; the prebuilt_apex-to-filegroup substitution
-          # is the same edge class (data: file reference) and is
-          # unproven only in the narrow sense that no prior round
-          # stubbed a prebuilt_apex — this run proves it.
-          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
-          # prune frameworks/native/libs/binder or
-          # services/powermanager whole (libbinder is core
-          # infrastructure with an unknown consumer set — libbinder_
-          # ndk, the lights service's own dep, lives in the same
-          # file; pruning risks CREATING new undefined-module errors
-          # — same rejection form as #135/#242); prune ApexTestCases
-          # / ApexServiceTestCases (targeted edit of synced
-          # system/apex/apexd/Android.bp — the file holds apexd
-          # itself; breaks seven rounds of stub precedent for
-          # test-module consumers); un-prune system/apex/tests
-          # (re-admits the 84-error host-test/tradefed family);
-          # real-AIDL stub srcs for either aidl module (rejected on
-          # the closure proof above — contents never compiled; the
-          # libpowermanager fallback also needs 4 imported
-          # parcelables plus a nonexistent include_dirs entry);
-          # real prebuilt_apex stubs for the sharedlibs pair (needs
-          # 4 arch-specific .apex srcs per module that do not exist
-          # in the synced tree, for zero benefit); preemptively stub
-          # the sharedlibs siblings, the other vendorapex siblings,
-          # or libactivity_manager_procstate_aidl-cpp (never
-          # reported in #6-#246; stub only what a raw log reports);
-          # sync platform/frameworks/base (FORBIDDEN);
-          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN).
-          # WATCH ITEMS (not implemented): (1) if a future round
-          # fails PAST Soong at compile/link and the trace shows
-          # libactivitymanager_aidl actually building, the
-          # activity_manager_procstate_aidl stub srcs must become
-          # the real ProcessStateEnum.aidl (177 lines, no imports).
-          # (2) if a future round fails past Soong and the trace
-          # shows libpowermanager actually building, the
-          # libpowermanager_aidl stub srcs must become the real 8
-          # AIDL files + imported parcelables + the include_dirs dir
-          # must exist (see FALLBACKS above). (3) libpowermanager's
-          # shared_libs android.hardware.power@1.0-1.3 and
-          # whole_static_libs android.os.hintmanager_aidl-ndk: never
-          # reported in #6-#246, watch only. (4) the sharedlibs
-          # sibling family + other vendorapex siblings: watch only.
-          # (5) carried: the libvibrator_aidl watch items from #242
-          # (real AIDL if libvibrator builds; <system/audio.h>
-          # include from the bare #135 libaudio_system_headers
-          # stub). (6) if a future round fails past Soong at
-          # compile/link with the Rust toolchain actually running,
-          # dummy gcc filegroup contents may need to become real
-          # libgcc/sysroot files (carried from #238).
-          # NOT STUBBED (never reported in any raw log, runs #6–
-          # #246 — do NOT stub unless a raw log reports one):
-          # com.android.apex.test.sharedlibs_secondary_generated.v1.
-          # libvZ_prebuilt + the bar/foo/baz/pony .v1/.v2
-          # .libvX/.libvY/.libvZ_prebuilt family (referenced only by
-          # sharedlibs_host_tests in the pruned system/apex/tests);
-          # the other vendorapex siblings (.bar, .foo.v2,
-          # .foo.v2_with_requireNativeLibs, .foo.apex.all.ready,
-          # .foo.v1/v2_with_service, .foo.v2_with_wrong_vndk_version,
-          # .bar.v2_with_vintf, test.bad1/bad2/good1.com.android.
-          # hardware.wifi, .foo.bootstrap); libactivity_manager_
-          # procstate_aidl-cpp (cc_library in unsynced
-          # frameworks/base, consumes the same filegroup); pyfakefs
-          # (a libs: dep of both ci tests, no definition anywhere,
-          # yet never reported — python libs: edges do not surface);
-          # conv_apex_manifest, apex_compression_tool, deapexer,
-          # soong_zip, com.android.example.apex (data deps of
-          # apex_compression_test, never reported);
-          # cts-dalvik-host-test-runner (only host_required by
-          # CtsJdwpTestCases, never referenced by any aidl module);
-          # bundletool (tools: list, no definition, never
-          # reported); stdlib_prebuilts (resolves in-tree),
-          # android.hardware.common-V2-ndk, libnativebridge,
-          # libgoogle-benchmark (ALREADY stubbed as
-          # cc_library_static — a different module from -main),
-          # libcharger_sysprop (phantom), android.hardware.
-          # fastboot@1.0, android.hardware.boot@1.2,
-          # libLibGuiProperties, libcom.android.sysprop.apex,
-          # libkeymaster_messages, libkeymaster3device,
-          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
-          # libbatterystats_aidl, libpower, avf_build_flags_cc
-          # (ALREADY stubbed as cc_defaults). REMOVED from the
-          # never-reported list this round:
-          # activity_manager_procstate_aidl + libpowermanager_aidl +
-          # com.android.apex.test.sharedlibs_generated.v1.
-          # libvX_prebuilt + com.android.apex.test.sharedlibs_
-          # generated.v2.libvY_prebuilt + com.android.apex.vendor.foo
-          # (reported in #243–#246, now stubbed).
-          # libjnigraphics was reported in #224–#227 (via
-          # aosp_shared_system_image) but is NOT stubbed — covered
-          # by the #226 disable. android.hidl.base@1.0_hal was
-          # reported in #228 but is NOT stubbed — covered by the
-          # c2hal/test prune.
-          # FIRST-EVER reported: the first prebuilt_apex modules
-          # stubbed as filegroups (the two sharedlibs_generated
-          # prebuilts); the first cc_library_shared consumer
-          # (libpowermanager) needing a filegroup stub via srcs:;
-          # the first consumer aidl: block naming an include_dirs
-          # entry in an unsynced project
-          # (frameworks/base/core/java/android/os) — recorded as
-          # fallback complexity, not fixed; the first exhaustive
-          # dep-closure proof for a test module (every other data:
-          # entry of ApexTestCases / ApexServiceTestCases traced to
-          # a kept file); the first round where upstream line numbers
-          # were confirmed by git clone after the browser raw-fetch
-          # renderer proved to double line numbers (binder /
-          # powermanager browser reads showed 1853/17; the clones
-          # show 974/10 — the error lines match the clones exactly).
-          # CACHE NOTE (runs #243/#244/#245/#246): Restore is
-          # expected to miss (1s, sync ~9-10 min) and no Save step is
-          # expected — save-always still does not save (#245:
-          # Restore 1s MISS, sync 9m20s; no "Cache saved" line; Post
-          # Restore step 0s with no expandable content); the separate
-          # restore+save steps need his word (see the manifest).
-          # Expect Restore to miss and sync ~9-10 min on the next
-          # run too.
+          # SIZE LIMIT (runs #187-#190): a workflow file over 500 KB
+          # fails EVERY run at startup; stubs live in the static
+          # file build-lights/yuzora-stubs-Android.bp, not in this
+          # file. Keep this file under 500 KB — check with wc -c
+          # before upload. The next compaction round, when needed,
+          # compacts the #247/#248/#249/#250 block onward the same way.
           # Runs #247/#248/#249/#250 fix: 6 stubs (1 prebuilt_etc + 5 android_app), no prunes.
           # Runs #247 (46111439194, stubs push 5ef43a2, 15m02s, job
           # 140875638384), #248 (46111675164, manifest push 963b035,
@@ -3851,6 +2670,243 @@ jobs:
           # Post Restore step skipped); the separate restore+save
           # steps need his word (see the manifest). Expect Restore
           # to miss and sync ~10 min on the next run too.
+          # Runs #267/#268/#269 fix: 1 stub (java_binary_host apksigner), 1 dummy file, no prunes.
+          # Runs #267 (46136504065, stubs push 91bdd61, 16m30s, job
+          # 140952883103), #268 (46136746102, manifest push 3b17b61,
+          # 12m30s, job 140953629953) and #269 (46136962348, manual
+          # dispatch ~16:15 IST 2026-11-28 on commit 10fbd21, 13m31s,
+          # job 140954298379) ALL FAILED at Soong ninja-file
+          # generation, on the SAME fix code (head 10fbd21 — the
+          # runs #263/#264/#265/#266 2-stub fix, workflow 127640b).
+          # Steps (#269, live run page): Restore 0s MISS, sync
+          # 10m37s, Prune passed, Build 1m37s FAILED (exit 1),
+          # Verify / Disk usage / Upload 0s (no artifact). #268:
+          # job 12m28s. #267: job 16m26s. #267 tests the stubs
+          # commit only, with the OLD workflow (073f12d — no
+          # new-stub dummy creation); #268 tests the full #266 fix
+          # code (its parent is 127640b, the workflow push, which
+          # got NO separate run); #269 (manual dispatch) is the
+          # primary. Commit 127640b (workflow push) got NO separate
+          # run: the runs list shows #267 = 91bdd61 immediately
+          # followed by #268 = 3b17b61, consecutive run numbers
+          # leaving no slot for 127640b; 3b17b61's parent is
+          # 127640b, so 127640b's workflow code was first exercised
+          # by #268 (likely one push — inference, not verified from
+          # the UI). Same pattern as 073f12d in the #266 round and
+          # b25967b in the #262 round.
+          # THE #266 FIX HELD COMPLETELY: zero stats-log-api-gen /
+          # aprotoc errors in #267, #268 AND #269
+          # ("stats-log-api-gen" 0/0, "aprotoc" 0/0 in every job)
+          # — the FIRST cc_binary_host stub pair for a genrule
+          # tools: edge is now PROVEN end to end. The #262 fix HELD
+          # too (zero cxxbridge errors) and the #258 / #254 / #250
+          # / #246 / #242 / #238 / #234 / #230 / #226 fixes HELD too.
+          # NEW FAILURE LAYER — genrule tools: host-tool edge,
+          # THIRTEENTH WAVE of the same phase as
+          # #230/#234/#238/#242/#246/#250/#254/#258/#262/#266, and
+          # the SAME FAILURE CLASS as #262/#266 (a missing HOST
+          # TOOL, not an undefined module in the usual dep sense).
+          # Raw job logs (only lines starting "error:" counted, "#"
+          # echoes and "Or did you mean" excluded): EVERY run
+          # reports EXACTLY the same 2 lines — NO subset
+          # variation this round, the fifth round in a row with
+          # zero subset variation (after #251–#254, #255–#258,
+          # #259–#262 and #263–#266; contrast #250: 37/26/23/5).
+          # Only the ORDER varies. UNION: 1 distinct
+          # new module, 6 genuine lines total (2 + 2 + 2).
+          #   error: system/apex/shim/build/Android.bp:
+          #   411:1: "com.android.apex.rotation.key.bob.rot.
+          #   rollback" depends on undefined module "apksigner".
+          #   error: system/apex/shim/build/Android.bp:
+          #   397:1: "com.android.apex.rotation.key.bob.rot"
+          #   depends on undefined module "apksigner".
+          #   (#269 log lines 1007–1010; #268 lines 1007–1010;
+          #   #267 lines 992–995.) Each followed by Or did you mean
+          #   ["apksig"]? GitHub log search per job: "undefined
+          #   module" 2/2, "apksigner" 2/2, "stats-log-api-gen" 0/0,
+          #   "aprotoc" 0/0, "not a valid module name" 0/0,
+          #   "cxxbridge" 0/0, in every run. The 100 "error:"
+          #   substring matches the log search reports are the
+          #   literal "::error::" strings inside the step scripts
+          #   echoed at the top of each step's log — script text,
+          #   not errors that fired. The "libcharger_sysprop" lines
+          #   are a CONFIRMED PHANTOM again: zero genuine errors
+          #   in #267–#269 (only "#" comment lines). Same class as
+          #   #152/#161/#174/#177/#182/#186/#194/#198/#202/#206/
+          #   #210/#214/#218/#222/#226/#230/#234/#238/#242/#246/
+          #   #250/#254/#258/#262/#266. Raw-log archive could not be
+          #   downloaded (API logs endpoint 403 rate-limit / not
+          #   accessible); the counts are from the GitHub log
+          #   viewer — but the line SET is identical across three
+          #   independent runs, so the verbatim text is solid.
+          # MECHANISM — PHASE MASKING, thirteenth wave: the
+          # stats-log-api-gen / aprotoc errors of wave #266 masked
+          # this check — the genrule tool-dep validation failed
+          # before (or instead of) these two genrules being
+          # reached. With both tools now defined, the next missing
+          # host tool surfaces. Same "new layer each round" pattern
+          # as every wave since #174.
+          # ROOT CAUSE — apksigner: upstream it is the APK signing
+          # and verification command-line tool (sign, verify,
+          # rotate, --lineage). Both reporting modules are genrules
+          # in SYNCED system/apex (AOSP android-15.0.0_r32, per the
+          # manifest pin), each with tools: ["apksigner"] and cmd
+          # "$(location :apksigner) ..." — verified against the
+          # canonical Googlesource file platform/system/apex/shim/
+          # build/Android.bp at android-15.0.0_r32: the .rot genrule
+          # rotates a key (old signer alice, new signer bob) and the
+          # .rot.rollback genrule is the same rotate command plus
+          # --set-rollback true. The other $(location :apksigner)
+          # consumers in the same file (the signed_bob sign
+          # genrules) resolve through the same single module, so ONE
+          # stub covers every consumer in the file. Upstream the
+          # tool is defined in platform/tools/apksig/Android.bp
+          # (android-15.0.0_r32, display lines 212–234, true lines
+          # ~106–117) as java_binary_host, with defaults
+          # apksigner-defaults, wrapper etc/apksigner and static_libs
+          # apksig — verified by browser fetch of the canonical
+          # Googlesource file at that tag. The defining project
+          # (tools/apksig) is UNSYNCED — NOT among the 32 manifest
+          # projects; never sync it. Its sibling apksig (the
+          # java_library_host Soong suggests with "Or did you mean")
+          # is in the same unsynced project — and is NOT a
+          # substitute: a java_library_host has no host-tool output.
+          # TYPE REQUIREMENT — the SAME conclusion as #262/#266,
+          # from the same method (read the Soong side first, then
+          # the upstream type), and this time with the Java side
+          # fetched verbatim: Soong build/soong/genrule/genrule.go
+          # hard-requires a tools: dep to be a host tool
+          # (toolDepsMutator, hostToolDependencyTag;
+          # generateCommonBuildActions: "X" is not a host tool
+          # provider / host tool "X" missing output file — see
+          # the #262 block above for the line numbers). A
+          # filegroup stub FAILS the first check; a
+          # java_library_host / cc_library / rust_library stub
+          # FAILS the second (no host tool output); a device-only
+          # cc_binary is not a host module; a cc_binary_host stub
+          # would satisfy the graph check but is the WRONG upstream
+          # type for a Java tool. The stub MUST be java_binary_host
+          # — the exact upstream type. CODE-PROVEN at the check
+          # level, more strongly than #266: build/soong/java/
+          # java.go at android-15.0.0_r32, fetched verbatim —
+          # func (j *Binary) HostToolPath() android.OptionalPath
+          # (display line 3698, true line ~1849) returns the binary
+          # file, so java_binary_host IS a HostToolProvider; and
+          # main_class is required ONLY for device binaries without
+          # a wrapper (display lines 3730–3744) — for host binaries
+          # without a wrapper Soong uses the default
+          # build/soong/scripts/jar-wrapper.sh (display lines
+          # 3774–3778), so a minimal stub (name + srcs + public
+          # visibility) passes GenerateAndroidBuildActions. The
+          # upstream defaults / wrapper / static_libs all live in
+          # the unsynced tools/apksig project and MUST NOT be
+          # referenced (each would itself be an undefined-module
+          # error). No sdk_version on the stub (host binaries do
+          # not take one); no new projects (still 32); no prunes.
+          # FIX — STUB apksigner in yuzora-stubs/Android.bp as
+          # java_binary_host, srcs [ApksignerMain.java], public
+          # visibility. The prune step creates the dummy main source
+          # (valid `public class ApksignerMain { public static void
+          # main(String[] args) { } }` — valid Java, parsed locally
+          # with javalang in validation; the file name MUST match
+          # the public class name, a Java rule, which is why this
+          # dummy is CamelCase while the .cc/.rs dummies are
+          # snake_case). The dummy binary is never built or run:
+          # the two genrules are NOT in the lights HAL target
+          # closure (system/apex shim test apexes are not deps of
+          # android.hardware.light-service.samsung), so the stub
+          # only has to exist with a valid host-tool output path
+          # for Soong's graph validation. The prune-step check and
+          # the pre-build guard both verify the new stub, its type,
+          # and the dummy file. EMPIRICAL PROOF of the inert-stub
+          # logic, from run #267: it used the OLD workflow
+          # (073f12d), which never created the new dummy files, yet
+          # showed ZERO stats-log-api-gen / aprotoc errors — Soong
+          # graph validation needs the module to exist with a valid
+          # host-tool output path; a missing src file does not fail
+          # bootstrap (the binary is never built).
+          # OPEN QUESTIONS (recorded honestly, NOT blockers): (1)
+          # the java_binary_host stub substitution for a genrule
+          # tools: edge is unproven in the narrow sense (no prior
+          # round stubbed a Java host binary) — but unlike the
+          # #246/#250 honest limits, this one is CODE-PROVEN at the
+          # check level, and MORE strongly than #266: the Java-side
+          # HostToolPath implementation and the host-binary wrapper
+          # default were both fetched verbatim this round. (2) No
+          # local javac exists on this VM, so the dummy .java file
+          # is validated by real Java syntax parsing (javalang, in
+          # a venv) plus a negative control, not by compilation —
+          # the dummy is never compiled in the build either
+          # (genrules outside the target closure). (3) Soong's "Or
+          # did you mean ["apksig"]?" suggestion is edit-distance
+          # only; apksig is the library in the same unsynced
+          # project and cannot satisfy a tools: edge. (4) log
+          # positions Android.bp:397:1 / :411:1 vs the fetched file
+          # rendering the same genrules at displayed lines ~795 /
+          # ~822 — RESOLVED: the browser fetch renders ~2x the true
+          # line count, so the log positions ARE the true block
+          # starts (see research-270-modules.md).
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # filegroup stub (fails the HostToolProvider check);
+          # java_library_host / cc_library / rust_library stub
+          # (fails the HostToolPath check); device-only cc_binary
+          # (not a host module); cc_binary_host stub (satisfies the
+          # graph check but is the wrong upstream type for a Java
+          # tool); prune system/apex/shim/build whole (the file
+          # also defines hash_of_dev_null + keys used by KEPT
+          # modules; breaks stub precedent for test-module
+          # consumers — same rejection as #250); sync tools/apksig
+          # (FORBIDDEN); ALLOW_MISSING_DEPENDENCIES (FORBIDDEN);
+          # preemptively stub other tools: names (stub ONLY what a
+          # raw log reports).
+          # WATCH ITEMS (not implemented): (1) other tools: names
+          # that may surface once their genrules are reached (same
+          # host-binary reasoning if reported — NOTE 3 in the cron
+          # body now covers the Java case: java_binary_host for
+          # Java tools; stub ONLY what a raw log reports). (2) the
+          # other $(location :apksigner) consumers in shim/build/
+          # Android.bp (the signed_bob genrules) resolve through
+          # the same single stub — no separate action. (3) the #266
+          # watch items (other apex_available names — same
+          # filegroup fix if reported; the vendorapex siblings;
+          # CtsShimPrivUpgradeWrongSHA; sharedlibs siblings). (4)
+          # carried: the #258 / #254 / #250 / #246 / #242 watch
+          # items (see the #266 block above). (5) if a future round
+          # fails past Soong at compile/link with a host toolchain
+          # actually running, dummy gcc filegroup contents may need
+          # to become real libgcc/sysroot files (carried from #238).
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #269 — same list as the #266 block above, carried
+          # forward unchanged, plus the two below; no removals this
+          # round, since apksigner was not on that list): apksig
+          # (java_library_host in unsynced tools/apksig — the "Or
+          # did you mean" suggestion, NOT a substitute for the
+          # apksigner CLI); apksigner-kms (java_binary_host sibling
+          # in the same file, referenced by nothing in the synced
+          # tree).
+          # FIRST-EVER reported: the first java_binary_host stub;
+          # the first Java-tool failure in any wave; the first
+          # round whose fix is a single stub for a 2-line error set
+          # shared identically by three runs; the first round where
+          # the fix round also compacts the workflow.
+          # WORKFLOW COMPACTION THIS ROUND: the workflow was
+          # 456,360 bytes, ~55 KB under the 500 KB limit, and the
+          # #270 block adds ~16 KB, which would drop the margin
+          # under 50 KB — so the #227–#230 through #243–#246
+          # comment blocks were compacted (1,202 lines, 75,275
+          # bytes of pure prose, verified zero code lines in the
+          # range), replaced by a one-line-pointer block in the same
+          # form as the #234 and #250 compactions. New boundary:
+          # the #247 block stays intact. The next compaction round,
+          # when needed, compacts the #247/#248/#249/#250 block
+          # onward the same way.
+          # CACHE NOTE (runs #267/#268/#269): Restore is
+          # expected to miss (0s, sync ~10 min) and no Save step is
+          # expected — save-always still does not save (#269:
+          # Restore 0s MISS, sync 10m37s; no "Cache saved" line;
+          # Post Restore step skipped); the separate restore+save
+          # steps need his word (see the manifest). Expect Restore
+          # to miss and sync ~10 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4538,6 +3594,16 @@ jobs:
           test -f yuzora-stubs/stats_log_api_gen_main.cc || { echo "::error::stub source missing after creation: yuzora-stubs/stats_log_api_gen_main.cc"; exit 1; }
           printf 'int main() { return 0; }\n' > yuzora-stubs/aprotoc_main.cc || { echo "::error::stub source creation failed: yuzora-stubs/aprotoc_main.cc"; exit 1; }
           test -f yuzora-stubs/aprotoc_main.cc || { echo "::error::stub source missing after creation: yuzora-stubs/aprotoc_main.cc"; exit 1; }
+          # Runs #267/#268/#269 fix: dummy main source for
+          # the host-tool stub above. Valid Java entry point
+          # (public class with a main method) — valid if ever
+          # compiled, though the dummy binary is never built or run
+          # (the two genrules are not in the lights target closure).
+          # The file name MUST match the public class name (Java
+          # rule) — hence CamelCase, unlike the snake_case .cc/.rs
+          # dummies.
+          printf 'public class ApksignerMain { public static void main(String[] args) { } }\n' > yuzora-stubs/ApksignerMain.java || { echo "::error::stub source creation failed: yuzora-stubs/ApksignerMain.java"; exit 1; }
+          test -f yuzora-stubs/ApksignerMain.java || { echo "::error::stub source missing after creation: yuzora-stubs/ApksignerMain.java"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -5332,6 +4398,17 @@ jobs:
           { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "stats-log-api-gen"' || { echo "::error::stub stats-log-api-gen is not a cc_binary_host"; exit 1; }
           { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "aprotoc"' || { echo "::error::stub aprotoc is not a cc_binary_host"; exit 1; }
           echo "runs #263/#264/#265/#266 stubs created: 2 cc_binary_host stubs (stats-log-api-gen + aprotoc); no prunes this round."
+          # Runs #267/#268/#269 fix: verify the 1 new
+          # stub is present in yuzora-stubs/Android.bp (same
+          # `name: "..."` grep form as the #266 loop above).
+          for stub in apksigner; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #267/#268/#269 fix: the stub must
+          # be a host binary (same SIGPIPE-safe wrapped form as
+          # the #266 loop above — see EDIT R in the #210 round).
+          { grep -A1 'java_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "apksigner"' || { echo "::error::stub apksigner is not a java_binary_host"; exit 1; }
+          echo "runs #267/#268/#269 stub created: 1 java_binary_host stub (apksigner); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5651,6 +4728,9 @@ jobs:
           # files must exist at build time.
           test -f yuzora-stubs/stats_log_api_gen_main.cc || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/stats_log_api_gen_main.cc"; exit 1; }
           test -f yuzora-stubs/aprotoc_main.cc || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/aprotoc_main.cc"; exit 1; }
+          # Runs #267/#268/#269 fix: the dummy main
+          # file must exist at build time.
+          test -f yuzora-stubs/ApksignerMain.java || { echo "::error::pre-build guard: stub source missing at build time: yuzora-stubs/ApksignerMain.java"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -6183,6 +5263,16 @@ jobs:
           # prune step above).
           { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "stats-log-api-gen"' || { echo "::error::pre-build guard: stub stats-log-api-gen is not a cc_binary_host"; exit 1; }
           { grep -A1 'cc_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "aprotoc"' || { echo "::error::pre-build guard: stub aprotoc is not a cc_binary_host"; exit 1; }
+          # Runs #267/#268/#269 fix: the 1 new stub must be
+          # present at build time (same `name: "..."` grep form as
+          # above).
+          for stub in apksigner; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #267/#268/#269 fix: the stub must be
+          # a host binary at build time (same wrapped check as the
+          # prune step above).
+          { grep -A1 'java_binary_host {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "apksigner"' || { echo "::error::pre-build guard: stub apksigner is not a java_binary_host"; exit 1; }
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
           # at build time (same check as the prune step above).
           { grep -A1 'cc_library {' yuzora-stubs/Android.bp || true; } | grep -Fq 'name: "libjsoncpp"' || { echo "::error::pre-build guard: libjsoncpp stub is not a plain cc_library"; exit 1; }
