@@ -6409,3 +6409,36 @@ android_app {
         "//visibility:public",
     ],
 }
+
+// Runs #251/#252/#253/#254 fix: 2 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// Both modules are defined upstream in the pruned tests dir of the
+// synced apex project, in the vendorapex testdata file. Their stub
+// types match the upstream types exactly, and the types are forced
+// by the Soong source itself, not just by matching upstream: the
+// apex dep visitor hard-requires these two types for the key and
+// certificate edges, so a plain filegroup stub would fail the type
+// check even if the name existed. Each stub carries only the
+// properties upstream carries, plus public visibility. The key
+// stub names the exact upstream key filenames, so the keyname
+// check passes, since both filenames share the same base. The
+// four dummy files are created by the prune step. Their contents
+// are never parsed at Soong time, only existence plus the keyname
+// match are checked, and never used at build time: the apex test
+// consumer never builds for the lights target and nothing signs.
+apex_key {
+    name: "com.android.apex.vendor.foo.key",
+    public_key: "com.android.apex.vendor.foo.avbpubkey",
+    private_key: "com.android.apex.vendor.foo.pem",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+android_app_certificate {
+    name: "com.android.apex.vendor.foo.certificate",
+    certificate: "com.android.apex.vendor.foo",
+    visibility: [
+        "//visibility:public",
+    ],
+}
