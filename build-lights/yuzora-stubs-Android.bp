@@ -6539,3 +6539,46 @@ java_binary_host {
         "//visibility:public",
     ],
 }
+
+// Runs #271/#272/#273 fix: 2 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// The first module is the boot-image creation command-line tool,
+// named as the tools entry of six test-data genrules in two
+// synced files. The name has no definition in this tree because
+// the project that defines it is not synced. The stub uses the
+// same host-binary shape upstream uses for a Python
+// command-line tool, with public visibility and a dummy main
+// source created by the prune step.
+// The second module is the SELinux file-contexts compiler,
+// named as the tools entry of one Java genrule in the synced
+// sepolicy file. The name has no definition in this tree because
+// the project that defines it is not synced. The stub uses the
+// same host-binary shape upstream uses for a C command-line
+// tool, with public visibility and a dummy main source created
+// by the prune step. Its two static libs resolve in-tree.
+// The Soong check on both edges hard-requires a host tool, so
+// the plain shapes used for other edges do not work here, and
+// both dummy binaries are never built or run since the seven
+// genrules are test-data genrules outside the lights target
+// closure.
+python_binary_host {
+    name: "mkbootimg",
+    main: "mkbootimg.py",
+    srcs: ["mkbootimg.py"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary_host {
+    name: "sefcontext_compile",
+    srcs: ["sefcontext_compile.c"],
+    static_libs: [
+        "libselinux",
+        "libsepol",
+    ],
+    stl: "",
+    visibility: [
+        "//visibility:public",
+    ],
+}
