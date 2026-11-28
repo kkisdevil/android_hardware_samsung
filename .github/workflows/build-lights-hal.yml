@@ -3719,6 +3719,252 @@ jobs:
           # line in any run); the separate restore+save steps need
           # his word (see the manifest). Expect Restore to miss
           # and sync ~9-11 min on the next run too.
+          # Runs #239/#240/#241/#242 fix: 2 filegroup stubs, no prunes.
+          # Runs #239 (46100843471, 14m9s, stubs push 83aa82d, job
+          # 140842680964), #240 (46101031386, 14m58s, manifest push
+          # f3af25f, job 140843268287), #241 (46101131175, 14m10s,
+          # README push de4ac91, job 140843587796) and #242
+          # (46101215685, 14m0s, manual dispatch ~08:36 IST on
+          # commit de4ac91, job 140843851818) ALL FAILED at Soong
+          # ninja-file generation, on the SAME fix code (head
+          # de4ac91 — the runs #235/#236/#237/#238 4-filegroup-stub
+          # fix, workflow a33ce28). Steps (#242): Restore 0s MISS,
+          # sync 11m7s, Prune 1s (passed), Build 37s FAILED (exit
+          # 1). #239: Restore 0s MISS, sync ~11m, Prune 6s, Build
+          # 43s FAILED. #240: Restore 0s MISS, sync ~11m, Prune
+          # 3s, Build 54s FAILED. #241: Restore 0s MISS, sync
+          # ~11m, Prune 1s, Build 36s FAILED.
+          # THE #238 FIX HELD COMPLETELY: zero
+          # cts-dalvik-device-test-runner / py3-cmd / avbtool / fec
+          # genuine errors in all four runs — INCLUDING the
+          # required: ["avbtool"] edge, the flagged untested
+          # assumption from the #238 round: #239–#242 prove a
+          # filegroup stub satisfies a required: edge at ninja
+          # generation. The #234 fix HELD too (zero mke2fs_conf /
+          # current_android_jar / gcc.lib / gcc.lib32 / gcc.lib64 /
+          # gcc.sysroot genuine errors) and the #230 fix HELD (zero
+          # avb_testkey_rsa4096 genuine errors) and the #226 fix
+          # HELD (zero aosp_shared_system_image / libcompiler_rt /
+          # update_engine_sideload genuine errors).
+          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
+          # phase, SIXTH WAVE of the same phase as #230/#234/#238.
+          # Whole raw logs (only "error: ... depends on undefined
+          # module ..." lines counted, "#" echoes and "Or did you
+          # mean" excluded): #239: 1 genuine line, 1 module.
+          # #240: 1 genuine line, 1 module. #241: 2 genuine lines,
+          # 2 modules. #242: 2 genuine lines, 2 modules. UNION: 2
+          # distinct new modules, 6 genuine lines total — NOT
+          # data: filegroups this time (one is a srcs: filegroup
+          # edge of a cc_library, the other a device_common_data:
+          # edge of a python_test_host), so the wave composition
+          # differs from the #238 test-data wave, but the phase is
+          # the same: Soong reports one wave per run and the waves
+          # never co-occur.
+          #   error: frameworks/native/libs/vibrator/Android.bp:49:1:
+          #   "libvibrator" depends on undefined module
+          #   "libvibrator_aidl". (in #239/#241/#242)
+          #   error: build/make/tools/releasetools/Android.bp:657:1:
+          #   "releasetools_test" depends on undefined module
+          #   "com.android.apex.vendor.foo.with_vintf". (in
+          #   #240/#241/#242)
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in all four runs (only "#"
+          # comment lines). Same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
+          # #234/#238.
+          # MECHANISM — PHASE MASKING, sixth wave (why this layer
+          # appeared only now): both modules are undefined-module
+          # errors at Soong ninja-file generation — the same phase
+          # as #230/#234/#238, resolving LATER than the filesystem
+          # Deps phase. The #238 wave (test-data filegroups) and
+          # this wave never co-occur in one run's genuine set.
+          # SUBSET VARIATION, BOTH DIRECTIONS (again): #239
+          # reports libvibrator only; #240 reports releasetools
+          # only; #241 and #242 are on the IDENTICAL commit de4ac91
+          # yet report the same two errors in OPPOSITE order. Fix
+          # the UNION across siblings; never treat absence in the
+          # latest run as proof a module is fixed. Same lesson as
+          # #185/#202/#223/#226/#230/#234/#238.
+          # ROOT CAUSE 1 — libvibrator_aidl: upstream it is a
+          # filegroup in unsynced platform/frameworks/base
+          # (core/java/Android.bp, AOSP android-15.0.0_r32 lines
+          # 206-213; LineageOS lineage-22.2 lines 395-408: srcs
+          # ["android/os/IExternalVibrationController.aidl",
+          # "android/os/IExternalVibratorService.aidl",
+          # "android/os/ExternalVibrationScale.aidl"]). Consumer:
+          # cc_library libvibrator
+          # (frameworks/native/libs/vibrator/Android.bp:49) via
+          # srcs: [":libvibrator_aidl", "ExternalVibration.cpp"]
+          # — a filegroup-style colon-prefixed edge (the ":"
+          # prefix proves the upstream module is a filegroup).
+          # The consumer dir was NEVER pruned (the #242 error
+          # itself proves Soong read the file; #135/#136/#137
+          # already fixed this module's libaudio_system_headers
+          # dep by stubbing). Dep closure: libvibrator_aidl is
+          # the ONLY undefined dep of libvibrator (shared_libs
+          # libbinder/liblog/libutils in-tree;
+          # server_configurable_flags stubbed #119;
+          # android.os.vibrator.flags-aconfig-cc stubbed #128;
+          # libvibratorutils defined in the same file;
+          # libaudio_system_headers stubbed #135).
+          # DUMMY CHOICE (why the stub srcs is a dummy text file,
+          # NOT the real AIDL): libvibrator is NOT in the lights
+          # service's closure — the service is defined in the fork
+          # at aidl/light/Android.bp with shared_libs libbase,
+          # libbinder_ndk, android.hardware.light-V2-ndk ONLY, and
+          # a fork-wide search finds no libvibrator reference
+          # outside stubs comments (verified live 2026-11-28).
+          # The .aidl contents are compiled only if libvibrator is
+          # built, and it never is for this target. #239 evidence:
+          # Soong does not validate filegroup srcs existence at
+          # ninja generation (the old workflow created no dummy
+          # files, yet the only error was libvibrator_aidl).
+          # FALLBACK (not implemented): if a future round ever
+          # builds libvibrator, the stub srcs must become the real
+          # AIDL contents verbatim (the 3 upstream files PLUS
+          # ExternalVibration.aidl as a 4th src, since
+          # IExternalVibratorService.aidl imports
+          # android.os.ExternalVibration, resolved upstream via
+          # aidl include_dirs frameworks/base/core/java, which
+          # does not exist in the synced tree).
+          # ROOT CAUSE 2 — com.android.apex.vendor.foo.with_vintf:
+          # upstream it is an apex_test in
+          # system/apex/tests/testdata/vendorapex/Android.bp
+          # (AOSP android-15.0.0_r32, lines ~177-190: defaults
+          # com.android.apex.vendor.foo.defaults, manifest
+          # manifest_v2.json, binaries apex_vendor_foo, prebuilts
+          # apex_vendor_foo_v2.rc + apex_vendor_foo_v2.xml). The
+          # project platform/system/apex IS synced, but the
+          # workflow prunes system/apex/tests whole (runs
+          # #75/#76/#77 fix, rm -rf system/apex/tests) — so this
+          # is a SELF-INFLICTED prune. Un-pruning is not viable:
+          # the dir holds the 84-error host-test/tradefed family
+          # pruned in #75–#77. Consumer: python_test_host
+          # releasetools_test
+          # (build/make/tools/releasetools/Android.bp:657) via its
+          # defaults releasetools_test_defaults (:609)
+          # device_common_data:
+          # [":com.android.apex.compressed.v1",
+          # ":com.android.apex.vendor.foo.with_vintf"] — a
+          # colon-prefixed file reference, same class as the #238
+          # data: filegroups. Dep closure: with_vintf is the ONLY
+          # undefined dep of releasetools_test (srcs filegroups
+          # defined in the synced merge dir; libs releasetools_*
+          # + update_payload stubbed #131; data: testdata/**/*
+          # local; :com.android.apex.compressed.v1 DEFINED — apex
+          # in system/apex/apexd/apexd_testdata/Android.bp:71,
+          # kept since #58; required: apexd_host, deapexer
+          # defined in system/apex/tools). A second synced
+          # consumer, ApexTestCases (cc_test,
+          # system/apex/apexd/Android.bp:471), references both
+          # :com.android.apex.vendor.foo and
+          # :com.android.apex.vendor.foo.with_vintf via defaults
+          # and is fixed by the same stub. The dummy .apex is a
+          # valid EMPTY ZIP (an APEX is a zip;
+          # test_check_target_files_vintf.py:172 expects exactly
+          # that filename). Honest limit: no prior round has
+          # stubbed an apex_test module as a filegroup — what is
+          # proven is that filegroup stubs satisfy colon-prefixed
+          # file references at ninja generation; the
+          # apex_test-to-filegroup substitution itself is unproven
+          # until the run passes.
+          # FIX — STUB both as filegroups in yuzora-stubs/Android.bp,
+          # srcs ["<dummy file>"] (relative to the stubs dir),
+          # public visibility, same precedent as the #230/#234/#238
+          # filegroup stubs. The 2 dummy source files are created
+          # by the prune step (the with_vintf dummy is a valid
+          # EMPTY ZIP, same as android.jar in #234 and the cts jar
+          # in #238; libvibrator_aidl is a text placeholder,
+          # plainly marked NOT REAL) and guarded with test -f in
+          # the prune step + pre-build guard. No sdk_version on
+          # any new stub: filegroups do not take one. The stub
+          # type for libvibrator_aidl MATCHES the upstream type
+          # (filegroup); the stub type for with_vintf deliberately
+          # does NOT mirror the upstream apex_test type (a real
+          # apex stub would need a manifest, key and certificate
+          # for zero benefit — the releasetools test consumer never
+          # runs for the lights target).
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # prune frameworks/native/libs/vibrator whole (unknown
+          # consumer set in the synced tree — libvibrator is linked
+          # by the vibrator HAL service + audioflinger paths;
+          # pruning risks CREATING new undefined-module errors from
+          # in-graph consumers; stub is additive and minimal —
+          # same rejection form as #135, which stubbed rather than
+          # pruned this dir); prune releasetools_test (targeted
+          # edit of synced build/make; the dir holds the OTA tools
+          # the build uses); un-prune system/apex/tests (re-admits
+          # the 84-error host-test/tradefed family); real-AIDL stub
+          # srcs for libvibrator_aidl (rejected on the closure proof
+          # above — contents never compiled; adds ~350 lines plus
+          # the unproven include_dirs tolerance for zero benefit;
+          # recorded as the fallback if libvibrator is ever built);
+          # sync platform/frameworks/base (FORBIDDEN);
+          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN).
+          # WATCH ITEMS (not implemented): (1) if a future round
+          # fails PAST Soong at compile/link and the trace shows
+          # libvibrator actually building, the libvibrator_aidl
+          # stub srcs must become real AIDL (3 upstream files +
+          # ExternalVibration.aidl). (2) ExternalVibration.cpp and
+          # ExternalVibration.h both include <system/audio.h> — the
+          # #135 libaudio_system_headers stub is bare (no
+          # export_include_dirs, no real headers) and system/media
+          # is unsynced — expect a compile-stage failure on that
+          # include if libvibrator ever builds. (3)
+          # com.android.apex.vendor.foo (sibling apex_test,
+          # consumer ApexTestCases in a kept synced file) — NOT
+          # stubbed, watch list only (never reported in #6–#242;
+          # stub only if a raw log reports it). (4) if a future
+          # round fails past Soong at compile/link with the Rust
+          # toolchain actually running, dummy gcc filegroup
+          # contents may need to become real libgcc/sysroot files
+          # (carried from #238).
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #242 — do NOT stub unless a raw log reports one):
+          # com.android.apex.vendor.foo (sibling apex_test,
+          # consumer ApexTestCases in a kept synced file — watch
+          # list only); pyfakefs (a libs: dep of both ci tests, no
+          # definition anywhere, yet never reported — python libs:
+          # edges do not surface); conv_apex_manifest,
+          # apex_compression_tool, deapexer, soong_zip,
+          # com.android.example.apex (data deps of
+          # apex_compression_test, never reported);
+          # cts-dalvik-host-test-runner (only host_required by
+          # CtsJdwpTestCases, never referenced by any aidl module);
+          # bundletool (tools: list, no definition, never
+          # reported); stdlib_prebuilts (resolves in-tree),
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as
+          # cc_library_static — a different module from -main),
+          # libcharger_sysprop (phantom), android.hardware.
+          # fastboot@1.0, android.hardware.boot@1.2,
+          # libLibGuiProperties, libcom.android.sysprop.apex,
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). REMOVED from the
+          # never-reported list this round: libvibrator_aidl +
+          # com.android.apex.vendor.foo.with_vintf (reported in
+          # #239–#242, now stubbed). libjnigraphics was reported in
+          # #224–#227 (via aosp_shared_system_image) but is NOT
+          # stubbed — covered by the #226 disable.
+          # android.hidl.base@1.0_hal was reported in #228 but is
+          # NOT stubbed — covered by the c2hal/test prune.
+          # FIRST-EVER reported: the first srcs: filegroup edge of
+          # a cc_library (libvibrator), the first device_common_data:
+          # edge, the first apex_test stubbed as a filegroup, the
+          # first self-inflicted-prune module (with_vintf), the
+          # first round where the fix's dummy-vs-real choice turned
+          # on a proven closure read (aidl/light/Android.bp).
+          # CACHE NOTE (runs #239/#240/#241/#242): Restore is
+          # expected to miss (0s, sync ~11 min) and no Save step is
+          # expected — save-always still does not save (#242:
+          # Restore 0s MISS, sync 11m7s; #239: Restore 0s MISS,
+          # sync ~11m; #240: Restore 0s MISS, sync ~11m; #241:
+          # Restore 0s MISS, sync ~11m; no "Cache saved" line in
+          # any run); the separate restore+save steps need his word
+          # (see the manifest). Expect Restore to miss and sync
+          # ~11 min on the next run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4303,6 +4549,22 @@ jobs:
           NOT A REAL FILE - dummy source for the fec filegroup stub (runs #235/#236/#237/#238 fix).
           EOF
           test -f yuzora-stubs/fec || { echo "::error::stub source missing after creation: yuzora-stubs/fec"; exit 1; }
+          # Runs #239/#240/#241/#242 fix: dummy source files for
+          # the 2 new filegroup stubs above. Both plainly marked NOT
+          # REAL — the lights HAL build never builds libvibrator and
+          # never runs the releasetools test (neither stub's consumer
+          # is in the lights service's closure); the files only have
+          # to exist for the filegroups' Srcs(). The with_vintf apex
+          # dummy is a valid EMPTY ZIP (an APEX is a zip — cheap
+          # insurance if a test tool is ever built). Same heredoc
+          # style as the testkey_rsa4096.pem above; python3 is
+          # already used in this workflow (manifest ET.parse check).
+          python3 -c "import zipfile; zipfile.ZipFile('yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex', 'w').close()" || { echo "::error::stub source creation failed: yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex"; exit 1; }
+          test -f yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex"; exit 1; }
+          cat > yuzora-stubs/libvibrator_aidl.aidl <<'EOF'
+          NOT A REAL FILE - dummy source for the libvibrator_aidl filegroup stub (runs #239/#240/#241/#242 fix).
+          EOF
+          test -f yuzora-stubs/libvibrator_aidl.aidl || { echo "::error::stub source missing after creation: yuzora-stubs/libvibrator_aidl.aidl"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -5002,6 +5264,21 @@ jobs:
             { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a filegroup"; exit 1; }
           done
           echo "runs #235/#236/#237/#238 stubs created: 4 filegroup stubs (cts-dalvik-device-test-runner + py3-cmd + avbtool + fec); no prunes this round."
+          # Runs #239/#240/#241/#242 fix: verify the 2 new
+          # filegroup stubs are present in yuzora-stubs/Android.bp
+          # (same `name: "..."` grep form as the #238 loop above).
+          for stub in libvibrator_aidl com.android.apex.vendor.foo.with_vintf; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #239/#240/#241/#242 fix: the 2 new stubs must be
+          # filegroups (same SIGPIPE-safe wrapped form as the #238
+          # loop above — see EDIT R in the #210 round: the bare
+          # producer | consumer form fails spuriously under pipefail
+          # when the producer dies of SIGPIPE, run #208).
+          for stub in libvibrator_aidl com.android.apex.vendor.foo.with_vintf; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a filegroup"; exit 1; }
+          done
+          echo "runs #239/#240/#241/#242 stubs created: 2 filegroup stubs (libvibrator_aidl + com.android.apex.vendor.foo.with_vintf); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5281,6 +5558,15 @@ jobs:
           # Runs #235/#236/#237/#238 fix: the cts-dalvik jar dummy
           # must still be a valid zip at build time.
           python3 -c "import zipfile, sys; sys.exit(0 if zipfile.is_zipfile('yuzora-stubs/cts-dalvik-device-test-runner.jar') else 1)" || { echo "::error::pre-build guard: stub source is not a valid zip at build time: yuzora-stubs/cts-dalvik-device-test-runner.jar"; exit 1; }
+          # Runs #239/#240/#241/#242 fix: the 2 dummy source
+          # files for the new filegroup stubs must exist at build
+          # time.
+          for f in yuzora-stubs/libvibrator_aidl.aidl yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex; do
+            test -f "$f" || { echo "::error::pre-build guard: stub source missing at build time: $f"; exit 1; }
+          done
+          # Runs #239/#240/#241/#242 fix: the with_vintf apex dummy
+          # must still be a valid zip at build time.
+          python3 -c "import zipfile, sys; sys.exit(0 if zipfile.is_zipfile('yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex') else 1)" || { echo "::error::pre-build guard: stub source is not a valid zip at build time: yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex"; exit 1; }
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -5727,6 +6013,18 @@ jobs:
           # filegroups at build time (same wrapped check as the
           # prune step above).
           for stub in cts-dalvik-device-test-runner py3-cmd avbtool fec; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a filegroup"; exit 1; }
+          done
+          # Runs #239/#240/#241/#242 fix: the 2 new filegroup
+          # stubs must be present at build time (same `name: "..."`
+          # grep form as above).
+          for stub in libvibrator_aidl com.android.apex.vendor.foo.with_vintf; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #239/#240/#241/#242 fix: the 2 new stubs must be
+          # filegroups at build time (same wrapped check as the
+          # prune step above).
+          for stub in libvibrator_aidl com.android.apex.vendor.foo.with_vintf; do
             { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a filegroup"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
