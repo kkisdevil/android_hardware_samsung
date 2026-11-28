@@ -3965,6 +3965,320 @@ jobs:
           # any run); the separate restore+save steps need his word
           # (see the manifest). Expect Restore to miss and sync
           # ~11 min on the next run too.
+          # Runs #243/#244/#245/#246 fix: 5 filegroup stubs, no prunes.
+          # Runs #243 (46106693193, stubs push c028e0f), #244
+          # (46106888505, manifest push 8fe304e), #245 (46106964845,
+          # 12m37s, README push 9eeb403, job 140861772325) and #246
+          # (46107176518, manual dispatch ~09:51 IST on commit
+          # 9eeb403, job 140862423234) ALL FAILED at Soong
+          # ninja-file generation, on the SAME fix code (head
+          # 9eeb403 — the runs #239/#240/#241/#242 2-filegroup-stub
+          # fix, workflow 270f737). Steps (#245): Restore 1s MISS,
+          # sync 9m20s, Prune 1s (passed), Build 37s FAILED (exit
+          # 1). #243/#244/#246 step durations were not recorded
+          # (their run pages show only the exit-code annotation).
+          # THE #242 FIX HELD COMPLETELY: zero libvibrator_aidl /
+          # com.android.apex.vendor.foo.with_vintf genuine errors in
+          # #245 and #246 — the apex_test-to-filegroup substitution
+          # is now PROVEN (with_vintf stub satisfied a
+          # device_common_data: edge at ninja generation). The #238
+          # fix HELD too (zero cts-dalvik-device-test-runner /
+          # py3-cmd / avbtool / fec genuine errors) and the #234 fix
+          # HELD (zero mke2fs_conf / current_android_jar / gcc.lib /
+          # gcc.lib32 / gcc.lib64 / gcc.sysroot genuine errors) and
+          # the #230 fix HELD (zero avb_testkey_rsa4096 genuine
+          # errors) and the #226 fix HELD (zero
+          # aosp_shared_system_image / libcompiler_rt /
+          # update_engine_sideload genuine errors).
+          # NEW FAILURE LAYER — the filegroup-srcs / property-dep
+          # phase, SEVENTH WAVE of the same phase as
+          # #230/#234/#238/#242. Job logs (#245 lines 904-916;
+          # #246 same 7 lines, verified live): only "error: ...
+          # depends on undefined module ..." lines counted, "#"
+          # echoes and "Or did you mean" excluded. #245 and #246
+          # match EXACTLY — no subset variation between the two
+          # confirmed runs this time. UNION: 5 distinct new modules,
+          # 7 genuine lines total — two are srcs: filegroup edges of
+          # a cc_library / cc_library_shared, three are data: file
+          # references of cc_test modules, so the wave composition
+          # differs from the #242 wave, but the phase is the same.
+          # UNION GAP (recorded honestly): #243/#244's unions could
+          # NOT be read — their run pages show only "Process
+          # completed with exit code 1", no job-log lines, and their
+          # job IDs were not recorded. The fix covers the #245/#246
+          # union; a later sibling surfacing an extra module is
+          # still possible (same lesson as #185/#202/#223/#226/#230/
+          # #234/#238/#242: "never reported" means "not yet reached").
+          #   error: frameworks/native/libs/binder/Android.bp:974:1:
+          #   "libactivitymanager_aidl" depends on undefined module
+          #   "activity_manager_procstate_aidl".
+          #   error: frameworks/native/services/powermanager/
+          #   Android.bp:10:1: "libpowermanager" depends on undefined
+          #   module "libpowermanager_aidl".
+          #   error: system/apex/apexd/Android.bp:470:1:
+          #   "ApexTestCases" depends on undefined module
+          #   "com.android.apex.test.sharedlibs_generated.v1.
+          #   libvX_prebuilt" (also :583 "ApexServiceTestCases").
+          #   error: system/apex/apexd/Android.bp:470:1:
+          #   "ApexTestCases" depends on undefined module
+          #   "com.android.apex.test.sharedlibs_generated.v2.
+          #   libvY_prebuilt" (also :583 "ApexServiceTestCases").
+          #   error: system/apex/apexd/Android.bp:470:1:
+          #   "ApexTestCases" depends on undefined module
+          #   "com.android.apex.vendor.foo".
+          # The "libcharger_sysprop" lines are a CONFIRMED PHANTOM
+          # again: zero genuine errors in #245/#246 (only "#"
+          # comment lines). Same class as #152/#161/#174/#177/#182/
+          # #186/#194/#198/#202/#206/#210/#214/#218/#222/#226/#230/
+          # #234/#238/#242.
+          # MECHANISM — PHASE MASKING, seventh wave: all five modules
+          # are undefined-module errors at Soong ninja-file
+          # generation — the same phase as #230/#234/#238/#242,
+          # resolving LATER than the filesystem Deps phase. The #242
+          # wave and this wave never co-occur in one run's genuine set.
+          # ROOT CAUSE 1 — activity_manager_procstate_aidl: upstream
+          # it is a filegroup in unsynced platform/frameworks/base
+          # (core/java/Android.bp, LineageOS lineage-22.2 real lines
+          # 405-411, verified by git clone: srcs
+          # ["android/app/ProcessStateEnum.aidl"] — a SINGLE source
+          # file). Consumer: cc_library libactivitymanager_aidl
+          # (frameworks/native/libs/binder/Android.bp:974, verified
+          # in a fresh lineage-22.2 clone — the error line matches
+          # the module-type line exactly) via srcs:
+          # [":activity_manager_procstate_aidl", ...] — a
+          # filegroup-style colon-prefixed edge. The consumer has an
+          # aidl: { export_aidl_headers: true } block and NO
+          # sdk_version. Dep closure: the filegroup is the ONLY
+          # undefined dep of libactivitymanager_aidl (shared_libs
+          # libbinder/libutils/liblog in-tree). A second synced
+          # consumer of the library (not the filegroup) is
+          # sensorservice (:69, :102) — it resolves once the
+          # filegroup exists.
+          # ROOT CAUSE 2 — libpowermanager_aidl: upstream it is a
+          # filegroup in unsynced platform/frameworks/base
+          # (core/java/Android.bp, LineageOS lineage-22.2 real lines
+          # 215-233, verified by git clone: srcs 8 AIDL files —
+          # Temperature, CoolingDevice, IThermalEventListener,
+          # IThermalHeadroomListener, IThermalStatusListener,
+          # IThermalService, IPowerManager, IWakeLockCallback).
+          # Consumer: cc_library_shared libpowermanager
+          # (frameworks/native/services/powermanager/Android.bp:10,
+          # verified in a fresh lineage-22.2 clone) via srcs:
+          # [":libpowermanager_aidl", ...]. The consumer has an aidl:
+          # block (local_include_dirs ["include"], include_dirs
+          # ["frameworks/base/core/java/android/os"],
+          # export_aidl_headers: true) and NO sdk_version. Dep
+          # closure: the filegroup is the ONLY undefined dep that
+          # has surfaced; shared_libs android.hardware.power@1.0-1.3
+          # and whole_static_libs android.os.hintmanager_aidl-ndk
+          # were NEVER reported in #6-#246 — not chased, watch only.
+          # DUMMY CHOICE (why the two aidl stub srcs are dummy text
+          # files, NOT the real AIDL): neither
+          # libactivitymanager_aidl nor libpowermanager is in the
+          # lights service's closure — the service is defined in the
+          # fork at aidl/light/Android.bp with shared_libs libbase,
+          # libbinder_ndk, android.hardware.light-V2-ndk ONLY, and a
+          # fork-wide search finds no libactivitymanager_aidl /
+          # libpowermanager reference outside stubs comments
+          # (verified live 2026-11-28). The .aidl contents are
+          # compiled only if the libraries are built, and they never
+          # are for this target. #239 evidence: Soong does not
+          # validate filegroup srcs existence at ninja generation.
+          # FALLBACKS (not implemented): if a future round ever
+          # builds libactivitymanager_aidl, the stub srcs must become
+          # the real ProcessStateEnum.aidl (177 lines, no imports —
+          # the simplest fallback of the three aidl filegroups). If a
+          # future round ever builds libpowermanager, the stub srcs
+          # must become the real 8 AIDL files PLUS the imported
+          # parcelables (BatterySaverPolicyConfig, ParcelDuration,
+          # PowerSaveState, WorkSource — IWakeLockCallback IS in the
+          # filegroup) PLUS the aidl include_dirs
+          # frameworks/base/core/java/android/os must exist in the
+          # synced tree (it does not — frameworks/base is unsynced).
+          # ROOT CAUSE 3 — com.android.apex.test.sharedlibs_generated.
+          # v1.libvX_prebuilt: upstream it is a prebuilt_apex in
+          # system/apex/tests/testdata/sharedlibs/prebuilts/
+          # Android.bp (AOSP android-15.0.0_r32, name at line 244,
+          # verified by git clone: arch-specific srcs of prebuilt
+          # .apex files, filename ...v1.libvX.apex, installable:
+          # false; the apex files are GENERATED by build_artifacts.sh
+          # from the com.android.apex.test.sharedlibs_generated apex
+          # module). The project platform/system/apex IS synced, but
+          # the workflow prunes system/apex/tests whole (runs
+          # #75/#76/#77 fix) — a SELF-INFLICTED prune; un-pruning is
+          # not viable (the dir holds the 84-error host-test/tradefed
+          # family). Consumers: cc_test ApexTestCases
+          # (system/apex/apexd/Android.bp:470, AOSP r32) via data:
+          # (:533-534) and cc_test ApexServiceTestCases (:583) via
+          # data: (:637-638) — colon-prefixed file references, same
+          # class as the #238 data: filegroups.
+          # ROOT CAUSE 4 — com.android.apex.test.sharedlibs_generated.
+          # v2.libvY_prebuilt: upstream it is a prebuilt_apex in the
+          # SAME file as root cause 3 (name at line 264, verified by
+          # git clone): identical shape (arch-specific srcs,
+          # filename ...v2.libvY.apex, installable: false). Same
+          # self-inflicted prune, same two consumers (ApexTestCases
+          # data: :535-536; ApexServiceTestCases data: :637-638).
+          # ROOT CAUSE 5 — com.android.apex.vendor.foo: upstream it
+          # is an apex_test in
+          # system/apex/tests/testdata/vendorapex/Android.bp (AOSP
+          # android-15.0.0_r32, real lines 41-48, name at 42,
+          # verified by git clone: defaults
+          # com.android.apex.vendor.foo.defaults only — the plainest
+          # of the vendorapex family). Same self-inflicted prune.
+          # Consumer: cc_test ApexTestCases (:470) via data:
+          # [":com.android.apex.vendor.foo", ...] (:549 in the r32
+          # file). ApexServiceTestCases does NOT reference vendor.foo.
+          # This module was WATCH LIST ONLY in #242 (never reported
+          # in #6-#242 — stub only what a raw log reports); it is NOW
+          # reported, so it is stubbed. The sibling with_vintf stub
+          # (#242) does not cover it — different module name.
+          # DEP-CLOSURE PROOF (ApexTestCases / ApexServiceTestCases):
+          # every OTHER data: entry of both test modules resolves to
+          # a KEPT file — verified exhaustively in the r32 tree:
+          # :apex.* + :com.android.apex.compressed.* +
+          # :com.android.apex.brand.new* in
+          # system/apex/apexd/apexd_testdata/Android.bp (kept since
+          # #58), :com.android.apex.cts.shim.*_prebuilt in
+          # system/apex/shim/Android.bp (kept), :gen_* java_genrules
+          # in system/apex/apexd/Android.bp itself (kept),
+          # :test.rebootless_apex* in apexd_testdata/Android.bp:437
+          # (kept). The ONLY undefined data: entries in the whole
+          # file are the 3 reported modules (plus with_vintf,
+          # already stubbed #242).
+          # FIX — STUB all five as filegroups in
+          # yuzora-stubs/Android.bp, srcs ["<dummy file>"] (relative
+          # to the stubs dir), public visibility, same precedent as
+          # the #230/#234/#238/#242 filegroup stubs. The 5 dummy
+          # source files are created by the prune step (the 3 apex
+          # dummies are valid EMPTY ZIPs, same as android.jar in #234
+          # and the cts jar in #238 and the with_vintf apex in #242;
+          # the 2 aidl dummies are text placeholders, plainly marked
+          # NOT REAL) and guarded with test -f in the prune step +
+          # pre-build guard. No sdk_version on any new stub:
+          # filegroups do not take one. The stub types for the two
+          # aidl modules MATCH the upstream types (filegroup); the
+          # stub types for the three apex modules deliberately do NOT
+          # mirror the upstream prebuilt_apex / apex_test types (a
+          # real prebuilt_apex stub would need arch-specific srcs for
+          # zero benefit — the ApexTestCases consumers never run for
+          # the lights target). Honest limit: the with_vintf
+          # precedent PROVED the apex_test-to-filegroup substitution
+          # in #245/#246; the prebuilt_apex-to-filegroup substitution
+          # is the same edge class (data: file reference) and is
+          # unproven only in the narrow sense that no prior round
+          # stubbed a prebuilt_apex — this run proves it.
+          # PRUNE ALTERNATIVES CONSIDERED AND REJECTED (recorded):
+          # prune frameworks/native/libs/binder or
+          # services/powermanager whole (libbinder is core
+          # infrastructure with an unknown consumer set — libbinder_
+          # ndk, the lights service's own dep, lives in the same
+          # file; pruning risks CREATING new undefined-module errors
+          # — same rejection form as #135/#242); prune ApexTestCases
+          # / ApexServiceTestCases (targeted edit of synced
+          # system/apex/apexd/Android.bp — the file holds apexd
+          # itself; breaks seven rounds of stub precedent for
+          # test-module consumers); un-prune system/apex/tests
+          # (re-admits the 84-error host-test/tradefed family);
+          # real-AIDL stub srcs for either aidl module (rejected on
+          # the closure proof above — contents never compiled; the
+          # libpowermanager fallback also needs 4 imported
+          # parcelables plus a nonexistent include_dirs entry);
+          # real prebuilt_apex stubs for the sharedlibs pair (needs
+          # 4 arch-specific .apex srcs per module that do not exist
+          # in the synced tree, for zero benefit); preemptively stub
+          # the sharedlibs siblings, the other vendorapex siblings,
+          # or libactivity_manager_procstate_aidl-cpp (never
+          # reported in #6-#246; stub only what a raw log reports);
+          # sync platform/frameworks/base (FORBIDDEN);
+          # ALLOW_MISSING_DEPENDENCIES (FORBIDDEN).
+          # WATCH ITEMS (not implemented): (1) if a future round
+          # fails PAST Soong at compile/link and the trace shows
+          # libactivitymanager_aidl actually building, the
+          # activity_manager_procstate_aidl stub srcs must become
+          # the real ProcessStateEnum.aidl (177 lines, no imports).
+          # (2) if a future round fails past Soong and the trace
+          # shows libpowermanager actually building, the
+          # libpowermanager_aidl stub srcs must become the real 8
+          # AIDL files + imported parcelables + the include_dirs dir
+          # must exist (see FALLBACKS above). (3) libpowermanager's
+          # shared_libs android.hardware.power@1.0-1.3 and
+          # whole_static_libs android.os.hintmanager_aidl-ndk: never
+          # reported in #6-#246, watch only. (4) the sharedlibs
+          # sibling family + other vendorapex siblings: watch only.
+          # (5) carried: the libvibrator_aidl watch items from #242
+          # (real AIDL if libvibrator builds; <system/audio.h>
+          # include from the bare #135 libaudio_system_headers
+          # stub). (6) if a future round fails past Soong at
+          # compile/link with the Rust toolchain actually running,
+          # dummy gcc filegroup contents may need to become real
+          # libgcc/sysroot files (carried from #238).
+          # NOT STUBBED (never reported in any raw log, runs #6–
+          # #246 — do NOT stub unless a raw log reports one):
+          # com.android.apex.test.sharedlibs_secondary_generated.v1.
+          # libvZ_prebuilt + the bar/foo/baz/pony .v1/.v2
+          # .libvX/.libvY/.libvZ_prebuilt family (referenced only by
+          # sharedlibs_host_tests in the pruned system/apex/tests);
+          # the other vendorapex siblings (.bar, .foo.v2,
+          # .foo.v2_with_requireNativeLibs, .foo.apex.all.ready,
+          # .foo.v1/v2_with_service, .foo.v2_with_wrong_vndk_version,
+          # .bar.v2_with_vintf, test.bad1/bad2/good1.com.android.
+          # hardware.wifi, .foo.bootstrap); libactivity_manager_
+          # procstate_aidl-cpp (cc_library in unsynced
+          # frameworks/base, consumes the same filegroup); pyfakefs
+          # (a libs: dep of both ci tests, no definition anywhere,
+          # yet never reported — python libs: edges do not surface);
+          # conv_apex_manifest, apex_compression_tool, deapexer,
+          # soong_zip, com.android.example.apex (data deps of
+          # apex_compression_test, never reported);
+          # cts-dalvik-host-test-runner (only host_required by
+          # CtsJdwpTestCases, never referenced by any aidl module);
+          # bundletool (tools: list, no definition, never
+          # reported); stdlib_prebuilts (resolves in-tree),
+          # android.hardware.common-V2-ndk, libnativebridge,
+          # libgoogle-benchmark (ALREADY stubbed as
+          # cc_library_static — a different module from -main),
+          # libcharger_sysprop (phantom), android.hardware.
+          # fastboot@1.0, android.hardware.boot@1.2,
+          # libLibGuiProperties, libcom.android.sysprop.apex,
+          # libkeymaster_messages, libkeymaster3device,
+          # android.hardware.keymaster@3.0, libactivitymanager_aidl,
+          # libbatterystats_aidl, libpower, avf_build_flags_cc
+          # (ALREADY stubbed as cc_defaults). REMOVED from the
+          # never-reported list this round:
+          # activity_manager_procstate_aidl + libpowermanager_aidl +
+          # com.android.apex.test.sharedlibs_generated.v1.
+          # libvX_prebuilt + com.android.apex.test.sharedlibs_
+          # generated.v2.libvY_prebuilt + com.android.apex.vendor.foo
+          # (reported in #243–#246, now stubbed).
+          # libjnigraphics was reported in #224–#227 (via
+          # aosp_shared_system_image) but is NOT stubbed — covered
+          # by the #226 disable. android.hidl.base@1.0_hal was
+          # reported in #228 but is NOT stubbed — covered by the
+          # c2hal/test prune.
+          # FIRST-EVER reported: the first prebuilt_apex modules
+          # stubbed as filegroups (the two sharedlibs_generated
+          # prebuilts); the first cc_library_shared consumer
+          # (libpowermanager) needing a filegroup stub via srcs:;
+          # the first consumer aidl: block naming an include_dirs
+          # entry in an unsynced project
+          # (frameworks/base/core/java/android/os) — recorded as
+          # fallback complexity, not fixed; the first exhaustive
+          # dep-closure proof for a test module (every other data:
+          # entry of ApexTestCases / ApexServiceTestCases traced to
+          # a kept file); the first round where upstream line numbers
+          # were confirmed by git clone after the browser raw-fetch
+          # renderer proved to double line numbers (binder /
+          # powermanager browser reads showed 1853/17; the clones
+          # show 974/10 — the error lines match the clones exactly).
+          # CACHE NOTE (runs #243/#244/#245/#246): Restore is
+          # expected to miss (1s, sync ~9-10 min) and no Save step is
+          # expected — save-always still does not save (#245:
+          # Restore 1s MISS, sync 9m20s; no "Cache saved" line; Post
+          # Restore step 0s with no expandable content); the separate
+          # restore+save steps need his word (see the manifest).
+          # Expect Restore to miss and sync ~9-10 min on the next
+          # run too.
           # system/apex/tests + the two MTE test dirs (runs #75/#76/#77 fix — see the comment
           # block at the top of this step). system/apex/tests holds only host test cases +
           # testdata (see the comment block); the MTE dirs hold host tests referencing the same
@@ -4565,6 +4879,31 @@ jobs:
           NOT A REAL FILE - dummy source for the libvibrator_aidl filegroup stub (runs #239/#240/#241/#242 fix).
           EOF
           test -f yuzora-stubs/libvibrator_aidl.aidl || { echo "::error::stub source missing after creation: yuzora-stubs/libvibrator_aidl.aidl"; exit 1; }
+          # Runs #243/#244/#245/#246 fix: dummy source files for
+          # the 5 new filegroup stubs above. All plainly marked NOT
+          # REAL — the lights HAL build never builds
+          # libactivitymanager_aidl or libpowermanager and never runs
+          # the ApexTestCases consumers (no stub consumer is in the
+          # lights service's closure); the files only have to exist
+          # for the filegroups' Srcs(). The 3 apex dummies are valid
+          # EMPTY ZIPs (an APEX is a zip — cheap insurance if a test
+          # tool is ever built). Same heredoc style as the
+          # testkey_rsa4096.pem above; python3 is already used in
+          # this workflow (manifest ET.parse check).
+          cat > yuzora-stubs/activity_manager_procstate_aidl.aidl <<'EOF'
+          NOT A REAL FILE - dummy source for the activity_manager_procstate_aidl filegroup stub (runs #243/#244/#245/#246 fix).
+          EOF
+          test -f yuzora-stubs/activity_manager_procstate_aidl.aidl || { echo "::error::stub source missing after creation: yuzora-stubs/activity_manager_procstate_aidl.aidl"; exit 1; }
+          cat > yuzora-stubs/libpowermanager_aidl.aidl <<'EOF'
+          NOT A REAL FILE - dummy source for the libpowermanager_aidl filegroup stub (runs #243/#244/#245/#246 fix).
+          EOF
+          test -f yuzora-stubs/libpowermanager_aidl.aidl || { echo "::error::stub source missing after creation: yuzora-stubs/libpowermanager_aidl.aidl"; exit 1; }
+          python3 -c "import zipfile; zipfile.ZipFile('yuzora-stubs/com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt.apex', 'w').close()" || { echo "::error::stub source creation failed: yuzora-stubs/com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt.apex"; exit 1; }
+          test -f yuzora-stubs/com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt.apex || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt.apex"; exit 1; }
+          python3 -c "import zipfile; zipfile.ZipFile('yuzora-stubs/com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt.apex', 'w').close()" || { echo "::error::stub source creation failed: yuzora-stubs/com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt.apex"; exit 1; }
+          test -f yuzora-stubs/com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt.apex || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt.apex"; exit 1; }
+          python3 -c "import zipfile; zipfile.ZipFile('yuzora-stubs/com.android.apex.vendor.foo.apex', 'w').close()" || { echo "::error::stub source creation failed: yuzora-stubs/com.android.apex.vendor.foo.apex"; exit 1; }
+          test -f yuzora-stubs/com.android.apex.vendor.foo.apex || { echo "::error::stub source missing after creation: yuzora-stubs/com.android.apex.vendor.foo.apex"; exit 1; }
           # Runs #62/#63/#64 fix, conditional part: see the comment
           # block at the top of this step. The synced
           # build/soong/java/core-libraries/Android.bp is checked
@@ -5279,6 +5618,21 @@ jobs:
             { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a filegroup"; exit 1; }
           done
           echo "runs #239/#240/#241/#242 stubs created: 2 filegroup stubs (libvibrator_aidl + com.android.apex.vendor.foo.with_vintf); no prunes this round."
+          # Runs #243/#244/#245/#246 fix: verify the 5 new
+          # filegroup stubs are present in yuzora-stubs/Android.bp
+          # (same `name: "..."` grep form as the #242 loop above).
+          for stub in activity_manager_procstate_aidl libpowermanager_aidl com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt com.android.apex.vendor.foo; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::stub missing after creation: $stub"; exit 1; }
+          done
+          # Runs #243/#244/#245/#246 fix: the 5 new stubs must be
+          # filegroups (same SIGPIPE-safe wrapped form as the #242
+          # loop above — see EDIT R in the #210 round: the bare
+          # producer | consumer form fails spuriously under pipefail
+          # when the producer dies of SIGPIPE, run #208).
+          for stub in activity_manager_procstate_aidl libpowermanager_aidl com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt com.android.apex.vendor.foo; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::stub $stub is not a filegroup"; exit 1; }
+          done
+          echo "runs #243/#244/#245/#246 stubs created: 5 filegroup stubs (activity_manager_procstate_aidl + libpowermanager_aidl + com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt + com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt + com.android.apex.vendor.foo); no prunes this round."
           echo "runs #144/#145/#146 fix: libwinpthread stub now carries stl: \"none\" (breaks the libwinpthread <-> libc++_static windows_x86_static dependency cycle). No new stubs, no type changes this round."
           echo "runs #147/#148/#149 fix: llvmlibc (external/llvm-libc) + libarm-optimized-routines-mem/-string/-math + libjemalloc5 stubs created (all stl: \"none\"). No type changes this round."
           echo "runs #150/#151/#152 fix: AdbWinApi + AdbWinUsbApi plain cc_library stubs created (both stl: \"none\", windows-enabled). No type changes this round."
@@ -5567,6 +5921,17 @@ jobs:
           # Runs #239/#240/#241/#242 fix: the with_vintf apex dummy
           # must still be a valid zip at build time.
           python3 -c "import zipfile, sys; sys.exit(0 if zipfile.is_zipfile('yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex') else 1)" || { echo "::error::pre-build guard: stub source is not a valid zip at build time: yuzora-stubs/com.android.apex.vendor.foo.with_vintf.apex"; exit 1; }
+          # Runs #243/#244/#245/#246 fix: the 5 dummy source
+          # files for the new filegroup stubs must exist at build
+          # time.
+          for f in yuzora-stubs/activity_manager_procstate_aidl.aidl yuzora-stubs/libpowermanager_aidl.aidl yuzora-stubs/com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt.apex yuzora-stubs/com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt.apex yuzora-stubs/com.android.apex.vendor.foo.apex; do
+            test -f "$f" || { echo "::error::pre-build guard: stub source missing at build time: $f"; exit 1; }
+          done
+          # Runs #243/#244/#245/#246 fix: the 3 apex dummies must
+          # still be valid zips at build time.
+          for f in yuzora-stubs/com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt.apex yuzora-stubs/com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt.apex yuzora-stubs/com.android.apex.vendor.foo.apex; do
+            python3 -c "import zipfile, sys; sys.exit(0 if zipfile.is_zipfile('$f') else 1)" || { echo "::error::pre-build guard: stub source is not a valid zip at build time: $f"; exit 1; }
+          done
           if [ -d system/tools/hidl/test ]; then
             echo "::error::pre-build guard: system/tools/hidl/test present at build time"
             exit 1
@@ -6025,6 +6390,18 @@ jobs:
           # filegroups at build time (same wrapped check as the
           # prune step above).
           for stub in libvibrator_aidl com.android.apex.vendor.foo.with_vintf; do
+            { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a filegroup"; exit 1; }
+          done
+          # Runs #243/#244/#245/#246 fix: the 5 new filegroup
+          # stubs must be present at build time (same `name: "..."`
+          # grep form as above).
+          for stub in activity_manager_procstate_aidl libpowermanager_aidl com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt com.android.apex.vendor.foo; do
+            grep -Fq "name: \"$stub\"" yuzora-stubs/Android.bp || { echo "::error::pre-build guard: stub missing at build time: $stub"; exit 1; }
+          done
+          # Runs #243/#244/#245/#246 fix: the 5 new stubs must be
+          # filegroups at build time (same wrapped check as the
+          # prune step above).
+          for stub in activity_manager_procstate_aidl libpowermanager_aidl com.android.apex.test.sharedlibs_generated.v1.libvX_prebuilt com.android.apex.test.sharedlibs_generated.v2.libvY_prebuilt com.android.apex.vendor.foo; do
             { grep -A1 'filegroup {' yuzora-stubs/Android.bp || true; } | grep -Fq "name: \"$stub\"" || { echo "::error::pre-build guard: stub $stub is not a filegroup"; exit 1; }
           done
           # Runs #105/#106/#107 fix: libjsoncpp must be a plain cc_library
