@@ -6582,3 +6582,91 @@ cc_binary_host {
         "//visibility:public",
     ],
 }
+
+// Runs #274/#275/#276/#277 fix: 9 new stubs (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// All nine are the tools entries of the one test-data genrule in
+// the synced apexer file. The names have no definition in this
+// tree because the projects that define them are not synced. Each
+// stub uses the same host-binary shape upstream uses for that
+// command-line tool, with public visibility and a dummy main
+// source created by the prune step. Two of the nine use the
+// host-only shape, six use the plain shape with host support
+// turned on, and one uses the Java host-binary shape with a
+// dummy main source and no main entry name. The Soong check on
+// the tools edge hard-requires a host tool, so the plain shapes
+// used for other edges do not work here, and all nine dummy
+// binaries are never built or run since the genrule is a test-data
+// genrule outside the lights target closure.
+cc_binary_host {
+    name: "aapt2",
+    srcs: ["aapt2.c"],
+    stl: "",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "e2fsdroid",
+    srcs: ["e2fsdroid.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "mke2fs",
+    srcs: ["mke2fs.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "resize2fs",
+    srcs: ["resize2fs.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "make_f2fs",
+    srcs: ["make_f2fs.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "sload_f2fs",
+    srcs: ["sload_f2fs.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary_host {
+    name: "make_erofs",
+    srcs: ["make_erofs.c"],
+    stl: "",
+    visibility: [
+        "//visibility:public",
+    ],
+}
+cc_binary {
+    name: "blkid",
+    srcs: ["blkid.c"],
+    host_supported: true,
+    visibility: [
+        "//visibility:public",
+    ],
+}
+java_binary_host {
+    name: "bundletool",
+    srcs: ["BundletoolMain.java"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
