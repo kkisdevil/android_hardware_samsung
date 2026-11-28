@@ -6442,3 +6442,24 @@ android_app_certificate {
         "//visibility:public",
     ],
 }
+
+// Runs #255/#256/#257/#258 fix: 1 new stub (see the comment block
+// in the prune step of .github/workflows/build-lights-hal.yml for
+// the per-module verification).
+// The module is the Android Virtualization Framework apex name,
+// listed in the apex_available list of libdebuggerd_common_headers
+// in the synced debuggerd file. The name has no definition in this
+// tree because the Virtualization project is not synced. The stub
+// uses the same plain shape as the other apex names already stubbed
+// in this file, with public visibility and a dummy apex source
+// created by the prune step. The Soong check on this edge is
+// existence only, so the plain shape is enough, and no apex
+// variant is ever created for the name since no apex bundle of
+// that name exists in this build.
+filegroup {
+    name: "com.android.virt",
+    srcs: ["com.android.virt.apex"],
+    visibility: [
+        "//visibility:public",
+    ],
+}
