@@ -4783,6 +4783,220 @@ still 32 projects.
   save step with `if: always()`), which touches the cache steps
   and needs his word - not changed in this fix round.
 
+  Runs #270 (46140307538, stubs push 0faf1ae, 12m21s, job
+  140964543532), #271 (46140592028, manifest push 513a405,
+  14m36s, job 140965409754), #272 (46141068425, manual dispatch
+  ~17:11 IST 2026-11-28 on commit b3c7c65, 15m18s, job
+  140966900930) and #273 (46141310367, README push 110a4fb,
+  14m29s, job 140967653382). ALL FAILED at Soong ninja-file
+  generation, on the SAME fix code (head 110a4fb - the runs
+  #267/#268/#269 1-stub fix, workflow 8cfdc39). Steps (#273,
+  live run page): Init + sync 11m9s passed, Build 42s FAILED
+  (exit 1), Verify / Disk usage / Upload 0s (no artifact).
+  #270 tests partial code (new stubs, OLD workflow 073f12d -
+  no dummy creation); #271/#272/#273 test the full fix code
+  (stubs + workflow + manifest byte-identical; only the README
+  differs). #273 is the primary.
+  THE #270 FIX HELD COMPLETELY: zero apksigner errors in #270,
+  #271, #272 AND #273 - the FIRST java_binary_host stub for a
+  genrule tools: edge is now PROVEN end to end (run #270 proves
+  it even without the dummy file: old workflow, no
+  ApksignerMain.java creation, still zero apksigner errors -
+  the inert-stub logic holds for java_binary_host too). The
+  #266 fix HELD too (zero stats-log-api-gen / aprotoc errors)
+  and the #262 / #258 / #254 / #250 / #246 / #242 / #238 /
+  #234 / #230 / #226 fixes HELD too.
+  NEW FAILURE LAYER - genrule tools: host-tool edge,
+  FOURTEENTH WAVE of the same phase as #230/#234/#238/#242/
+  #246/#250/#254/#258/#262/#266/#270, and the SAME FAILURE CLASS
+  as #262/#266/#270 (a missing HOST TOOL, not an undefined
+  module in the usual dep sense). Raw job logs (only lines
+  starting "error:" counted): the UNION is 2 distinct new
+  modules, 19 genuine lines total (7 + 5 + 3 + 4). SUBSET
+  VARIATION IS BACK - the first round with variation since
+  #250: #270 6x mkbootimg + 1x sefcontext_compile; #271 5x
+  mkbootimg (fastboot 3 + fs_mgr 2), no sefcontext_compile;
+  #272 3x mkbootimg (fs_mgr only); #273 3x mkbootimg (fs_mgr)
+  + 1x sefcontext_compile. Only the union covers all six
+  mkbootimg genrules + the sefcontext_compile genrule:
+  system/core/fastboot/testdata/Android.bp:97:1
+  fastboot_test_vendor_boot_v3, :112:1
+  fastboot_test_vendor_boot_v4_without_frag, :129:1
+  fastboot_test_vendor_boot_v4_with_frag; system/core/fs_mgr/
+  liblp/fuzzer/Android.bp:129:1 test_vendor_boot_v3, :144:1
+  test_vendor_boot_v4_without_frag, :161:1
+  test_vendor_boot_v4_with_frag - all depend on undefined
+  module mkbootimg (each followed by Or did you mean
+  mkbootfs, edit-distance only); system/sepolicy/Android.bp:
+  1338:1 file_contexts_bin_gen depends on undefined module
+  sefcontext_compile (#270 log: 7 lines; #271 log lines
+  1020-1028; #272 log lines 1020-1024; #273 log lines
+  1018-1033). GitHub log search per job: "undefined module"
+  5/5 (#271), 3/3 (#272), 4/4 (#273); "apksigner" 0 genuine
+  in every run (3 matches per job are echoed workflow-script
+  text); "avbtool" 0 genuine in every run (4 matches per job,
+  all echoed script text); "not a host tool provider" 0/0 in
+  every run. The "libcharger_sysprop" lines are a CONFIRMED
+  PHANTOM again (zero genuine errors in #270-#273).
+  MECHANISM - PHASE MASKING, fourteenth wave: the apksigner
+  errors of wave #270 masked this check - the genrule tool-dep
+  validation failed before (or instead of) these seven genrules
+  being reached. With the tool now defined, the next missing
+  host tools surface.
+  Root cause, verified: mkbootimg is the boot-image creation
+  command-line tool. Both reporting files use a
+  genrule_defaults with tools: avbtool + mkbootimg and genrules
+  invoking the location of mkbootimg with header versions 3
+  and 4 - verified against the canonical Googlesource file
+  platform/system/tools/mkbootimg/Android.bp at
+  android-15.0.0_r32 (display lines 33-44): the tool is a
+  python_binary_host, main mkbootimg.py, srcs mkbootimg.py
+  plus gki/generate_gki_certificate.py, defaults
+  mkbootimg_defaults, required avbtool. The defining project
+  (system/tools/mkbootimg) is UNSYNCED - NOT among the 32
+  manifest projects; never sync it. sefcontext_compile is the
+  SELinux file-contexts compiler. The reporting module is the
+  java_genrule file_contexts_bin_gen in SYNCED system/sepolicy/
+  Android.bp:1338, tools: checkfc + sefcontext_compile -
+  verified against the canonical Googlesource file
+  platform/external/selinux/libselinux/Android.bp at
+  android-15.0.0_r32 (lines 224-235): the tool is a
+  cc_binary_host, srcs utils/sefcontext_compile.c,
+  static_libs libselinux + libsepol, stl empty, defaults
+  libselinux_defaults. The defining project
+  (external/selinux) is UNSYNCED - NOT among the 32 manifest
+  projects; never sync it. checkfc is NOT an error: it is a
+  real cc_binary_host in the SYNCED system/sepolicy/tools/
+  Android.bp.
+  TYPE REQUIREMENT - the SAME conclusion as #262/#266/#270,
+  from the same method (read the Soong side first, then the
+  upstream type): Soong build/soong/genrule/genrule.go
+  hard-requires a tools: dep to be a host tool
+  (toolDepsMutator, hostToolDependencyTag;
+  generateCommonBuildActions: "X" is not a host tool
+  provider / host tool "X" missing output file - see the
+  #262 block above for the line numbers). A filegroup stub
+  FAILS the first check; a cc_library / rust_library /
+  java_library_host stub FAILS the second (no host tool
+  output); a device-only cc_binary is not a host module. The
+  stubs MUST be host binaries of the tools' upstream types:
+  python_binary_host for mkbootimg - CODE-PROVEN:
+  build/soong/python/binary.go at android-15.0.0_r32, fetched
+  verbatim - HostToolPath (lines 183-185) returns the binary
+  file, so python_binary_host IS a HostToolProvider;
+  cc_binary_host for sefcontext_compile - PROVEN by #266.
+  The upstream defaults / required / extra srcs all live in
+  the unsynced projects and MUST NOT be referenced (each
+  would itself be an undefined-module error). Both
+  static_libs for sefcontext_compile resolve in-tree
+  (libselinux is a cc_library stub, libsepol a
+  cc_library_static stub). No sdk_version on either stub
+  (host binaries do not take one); no new projects (still
+  32); no prunes.
+  Fix: 2 new stubs (mkbootimg as python_binary_host, main
+  mkbootimg.py, srcs mkbootimg.py, public visibility;
+  sefcontext_compile as cc_binary_host, srcs
+  sefcontext_compile.c, static_libs libselinux + libsepol,
+  stl empty, public visibility), 2 dummy files (mkbootimg.py:
+  valid minimal Python with a main entry point, validated
+  with py_compile; sefcontext_compile.c: valid int main
+  returning 0, validated with gcc -fsyntax-only) created by
+  the prune step. The prune-step check and the pre-build
+  guard both verify the new stubs, their types, and the dummy
+  files. The dummy binaries are never built or run: all seven
+  genrules are test-data genrules NOT in the lights HAL target
+  closure (not deps of android.hardware.light-service.samsung),
+  so the stubs only have to exist with valid host-tool output
+  paths for Soong's graph validation. EMPIRICAL PROOF of the
+  inert-stub logic, from run #270: it used the OLD workflow
+  (073f12d), which never created the new dummy files, yet
+  showed ZERO apksigner errors - Soong graph validation needs
+  the module to exist with a valid host-tool output path; a
+  missing src file does not fail bootstrap (the binary is
+  never built).
+  THE AVBTOOL ANOMALY - NOT CONVERTED THIS ROUND (parent
+  decision recorded): the two mkbootimg consumers list tools:
+  avbtool + mkbootimg, and in-tree avbtool is a FILEGROUP
+  stub (created in the #235-#238 round for data: edges). Per
+  the Soong code a filegroup in tools: MUST error "avbtool is
+  not a host tool provider" when these genrules are processed
+  - but it did not in ANY of #270/#271/#272/#273 ("not a host
+  tool provider" 0/0 in every job). Favoured explanation is
+  PHASE MASKING: the undefined-module errors are raised
+  during dependency resolution, before build-action
+  generation, so the host-provider check was never reached
+  (precedent: run #267 showed zero errors about missing dummy
+  srcs because the apksigner error masked the later phase);
+  the alternative is VARIATION DROP (a variation-less
+  filegroup silently drops out of the visit). The research
+  doc recommends converting avbtool to python_binary_host in
+  the same round to save a cycle. DECISION: NOT converted -
+  the standing rule is "stub ONLY what a raw log reports",
+  no raw log has reported avbtool, and the conversion is a
+  PREDICTION left to the parent. If run #274 reports "avbtool
+  is not a host tool provider", convert it then (fully
+  specified in research-271-modules.md section 5:
+  python_binary_host, main avbtool.py, srcs avbtool.py,
+  dummy avbtool.py replacing the text dummy, prune-step +
+  guard updates; required fec omitted). If variation drop is
+  the true mechanism, no error will ever fire and nothing is
+  lost by waiting.
+  OPEN QUESTIONS (recorded, not blockers): (1) the
+  python_binary_host stub is code-proven (binary.go
+  HostToolPath) but unproven in the narrow sense - the same
+  status java_binary_host had before #270. If #274 reports
+  "mkbootimg is not a host tool provider" or a Python-specific
+  error, revisit the stub SHAPE (e.g. whether main/version
+  must be present), not the module type. (2) Soong's "Or did
+  you mean mkbootfs?" is edit-distance only; mkbootfs is a
+  different tool. (3) The build command echoed in #270's log
+  does not match the workflow's executed command - flagged,
+  not investigated (UI-log rendering; the error lines are the
+  verified part).
+  WORKFLOW COMPACTION: NONE this round. The workflow was
+  400,383 bytes, ~111 KB under the 500 KB limit, and the #274
+  block adds ~19 KB, leaving ~100 KB of margin - above the
+  50 KB compaction trigger. The next compaction round, when
+  needed, compacts the #247/#248/#249/#250 block onward the
+  same way.
+  DUMMY CHOICE: the stub srcs only have to exist and be valid
+  if ever compiled (a minimal Python main + a minimal C main)
+  - the binaries are never built because the seven genrules
+  are outside the lights target closure.
+  FALLBACKS: if a future round reports another tools:
+  "<name>" undefined-module line for a different tool name,
+  stub that name the same way (host binary of the tool's
+  upstream type: cc_binary_host for C++ tools,
+  rust_binary_host for Rust tools, java_binary_host for Java
+  tools, python_binary_host for Python tools) - stub ONLY
+  what a raw log reports. If a future round reports "avbtool
+  is not a host tool provider", convert the avbtool filegroup
+  stub to python_binary_host per the research doc. Alternatives
+  rejected (recorded in the workflow comment): filegroup stub
+  (fails the HostToolProvider check); cc_library /
+  rust_library / java_library_host stub (fails the HostToolPath
+  check); device-only cc_binary (not a host module);
+  cc_binary_host for mkbootimg (satisfies the graph check but
+  is the wrong upstream type for a Python tool); prune
+  system/core/fastboot/testdata + system/core/fs_mgr/liblp/
+  fuzzer whole (both files also define other genrules used by
+  KEPT modules; breaks stub precedent for test-module
+  consumers - same rejection as #250); sync
+  system/tools/mkbootimg or external/selinux (forbidden);
+  ALLOW_MISSING_DEPENDENCIES (forbidden); preemptively convert
+  avbtool (decided strict, see above); preemptively stub
+  other tools: names.
+
+  CACHE NOTE (runs #271/#272/#273): the save-always flip still
+  does NOT save the cache - Restore is expected to miss (0s,
+  sync ~10 min) and no Save step is expected to run - #273:
+  sync 11m9s; no "Cache saved" line; Post Restore step
+  skipped. The next run will also restore-miss and sync
+  ~10 min. The upstream-recommended fix is separate restore +
+  save steps (the save step with `if: always()`), which
+  touches the cache steps and needs his word - not changed in
+  this fix round.
+
   -->
 
 <manifest>
